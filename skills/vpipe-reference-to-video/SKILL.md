@@ -263,22 +263,49 @@ HyperFlow **一个文件覆盖三个 partition**（`transformer` 与 `transforme
 官方 `minimax-h3-reference-to-video.vpipeline` 用**端口路线**而非文件列表：
 
 ```
-load-image → image-resample(1024×1024)                              → ref1
-load-video ┬→ video-to-rgb → image-resample(1344×768) → temporal-stack → ref2
-           └→ audio-to-pcm(32000, stereo) → temporal-stack             → ref3
+load-image → image-resample(1024×1024)                              → 编码器 iport2
+load-video ┬→ video-to-rgb → image-resample(1344×768) → temporal-stack → 编码器 iport3
+           └→ audio-to-pcm(32000, stereo) → temporal-stack             → 编码器 iport4
 ```
 
 关键细节：
-- `attach_audio: [3]` 让 ref3 的音频成为 ref2 的音轨，保持 `<Video 1>` + `<Audio 1>` 配对
+- `attach_audio: [N]` —— **N 是「音频那条参考自己的槽位号」（1 起算）**，不是图也不是端口号；
+  音频必须排在它要归属的片段后面。官方示例只有 3 条参考时两种读法数值恰好相同，
+  **≥4 条参考时才会暴露歧义**
 - `channels: 2` 承载真正的立体声
 - 视频堆叠器 `max_mb: 384` 是有意设的（124 帧 @ 1344×768 = 366 MiB，超过默认 256 MiB 会被截到 86 帧）
-- `reference_video_short_edge: 0` 让参考视频保持在输出画布尺寸上，行数不翻倍
+- **不要照抄 1344×768**：`reference_video_short_edge: 0`（=参考视频保持自己的画布）才是对的。
+  官方实测 `768 → 0` 让参考行 13120 → 7144、耗时 23m07s → 14m17s。
+  端口路线里等价做法是**用 `image-resample` 把参考视频缩到输出画布尺寸**
+- **没用到的参考端口不要接** —— 一个"空"端口会重编号后面的所有参考，悄悄改写整个请求
 
 端口路线的**优势**：可以自己决定每个参考的几何尺寸。文件列表路线则由模型自己定尺寸。
+而且**零保真度代价**：单图情况下端口路线与文件列表路线的成片**逐帧像素完全一致**
+（SSIM 1.000000 / PSNR inf）。
+
+### 多参考到底能不能「分工」（2026-11-14 四组实测）
+
+| 通道 | 能不能分工 | 证据 |
+|---|---|---|
+| **图 → 主体身份** | ✅ 能 | 四组主体都是参考图里那只猫 |
+| **图 → 画风/风格** | ❌ **不能** | 第二张图（水彩熊猫）没有把画面变成水彩，也没变成熊猫；只是改变了构图/场景 |
+| **视频 → 运镜** | ✅ 能（幅度约一半）| 参考的净横移 +334 px，输出 +160 px（48%），方向一致；无视频参考的组是 0 |
+| **视频 → 运动节奏** | ❌ 不能 | 输出与参考的运动能量曲线相关只有 0.01 |
+| **音轨 → 声景** | ✅ 能，**且压过提示词** | 谱形相关 +0.710，谱质心 2859 Hz → 992 Hz（参考 715 Hz），高频 0.723 → 0.120 |
+| **互不串味** | ✅ 能 | 动作参考里的海边/女性/熊猫都没有出现在输出里 |
+
+> **一句话：Ref2VA 的多参考是「多主体 + 运动 + 声音」的多通道，不是「多风格」的多通道。**
+> 想换画风走**图生图**（`vpipe-image-edit` / Boogu），别在参考生视频里折腾。
+
+**代价**：加一条参考视频，前向行数 ×2.14、耗时 ×3（124 帧：6m48s → 20m28s）；
+再加一张图只涨 6.5%。**贵的是视频，不是图。**
+
+完整实测手册见 `references/multi-ref.md`。
 
 ## 参考资料
 
 - `references/ref2va-ports.md` —— 端口与序列布局详解
+- `references/multi-ref.md` —— **多参考组合（端口路线）实测手册**（接线、四个承重细节、attach_audio 槽位号）
 - `references/prompt-guide.md` —— 提示词写法与消融方法论
 - `references/troubleshooting.md` —— 故障排查表
 - `assets/pika-ref2va.vpipeline` —— 可直接改用的出片流水线
