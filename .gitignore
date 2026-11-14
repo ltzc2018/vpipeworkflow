@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.DS_Store
+*.mp4
+*.wav
+*.jpg
+*.jpeg
+*.png
+*.safetensors
+*.log

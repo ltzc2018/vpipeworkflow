@@ -1,0 +1,34 @@
+{
+  "id": "prepare-multimodal-compare",
+  "stages": [
+    {
+      "id": "fetch-lfm3-vl",
+      "type": "model-fetch",
+      "config": {
+        "model_path": "LiquidAI/LFM3-VL-2B",
+        "hf_token": "",
+        "base_path": "./models",
+        "skip_existing_files": true,
+        "overwrite_existing": false
+      }
+    },
+    {
+      "id": "fetch-qwen35-4b",
+      "type": "model-fetch",
+      "iports": [
+        {
+          "src": "fetch-lfm3-vl",
+          "oport": 0
+        }
+      ],
+      "config": {
+        "model_path": "mlx-community/Qwen3.5-4B-MLX-4bit",
+        "hf_token": "",
+        "base_path": "./models",
+        "skip_existing_files": true,
+        "overwrite_existing": false
+      }
+    }
+  ],
+  "subpipelines": []
+}

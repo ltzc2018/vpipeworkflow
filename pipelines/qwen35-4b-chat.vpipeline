@@ -1,0 +1,93 @@
+{
+  "id": "qwen35-4b-chat",
+  "stages": [
+    {
+      "id": "tx",
+      "type": "feedback-tx",
+      "config": {
+        "from": "rx"
+      }
+    },
+    {
+      "id": "sampler",
+      "type": "sampler-select",
+      "config": {
+        "temperature": 0.6,
+        "top_k": 20,
+        "top_p": 0.95,
+        "min_p": 0.0,
+        "repetition_penalty": 1.0,
+        "presence_penalty": 0.0,
+        "seed": 0
+      }
+    },
+    {
+      "id": "input",
+      "type": "text-input",
+      "iports": [
+        {
+          "src": "tx",
+          "oport": 0
+        }
+      ],
+      "config": {
+        "prompt": "q> ",
+        "count": 0,
+        "present_first_without_beat": true,
+        "media": true
+      }
+    },
+    {
+      "id": "chat",
+      "type": "text-chat",
+      "iports": [
+        {
+          "src": "input",
+          "oport": 0
+        },
+        {
+          "src": "sampler",
+          "oport": 0
+        }
+      ],
+      "config": {
+        "hf_dir": "mlx-community/Qwen3.5-4B-MLX-4bit",
+        "compute_dtype": "bf16",
+        "page_tokens": 1024,
+        "max_pages": 64,
+        "max_new_tokens": 1024,
+        "disable_thinking": true,
+        "enable_tools": false,
+        "mtp": false
+      }
+    },
+    {
+      "id": "save",
+      "type": "save-text",
+      "iports": [
+        {
+          "src": "chat",
+          "oport": 0
+        }
+      ],
+      "config": {
+        "path": "out/vqa-answer.txt",
+        "key": "text",
+        "newline": "after",
+        "append": false,
+        "format": "text"
+      }
+    },
+    {
+      "id": "rx",
+      "type": "feedback-rx",
+      "iports": [
+        {
+          "src": "chat",
+          "oport": 0
+        }
+      ]
+    }
+  ],
+  "subpipelines": []
+}
