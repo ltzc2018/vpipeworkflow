@@ -44,7 +44,7 @@
       ],
       "config": {
         "references": [
-          "/Users/minichen/AI-Models/vpipe-workspace/refs/klein-multi-ref-panda.jpg"
+          "refs/klein-multi-ref-panda.jpg"
         ],
         "frames": 124,
         "reference_image_short_edge": 1024,
@@ -166,7 +166,7 @@
         }
       ],
       "config": {
-        "output_url": "/Users/minichen/AI-Models/vpipe-workspace/out/pika-ref2va-panda.mp4",
+        "output_url": "out/pika-ref2va-panda.mp4",
         "enable_video": true,
         "enable_audio": true
       }

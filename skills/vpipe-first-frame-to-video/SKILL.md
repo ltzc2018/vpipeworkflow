@@ -169,6 +169,30 @@ Normal real-time speed, no slow motion. No text, no captions, no logos.
 
 差分图验证：4× 放大后，输出首帧与参考图 crop 的残差**只有低阶强度偏差**（VAE 重建 + H.264 量化），**没有可辨识的结构形状** → 几何完全对齐。
 
+## 锚定的价值在第 1 步就兑现
+
+> 完整数据见 `references/anchor-emergence.md`。
+
+不只是「成片首帧 SSIM 0.9505」——把 TAE 实时预览的每一拍（= 每个去噪步）
+与成片首帧做相位对齐后，可以量出**锚定主体在第几步就已经锁死**：
+
+| 步骤 | i2va（**有锚定**）| t2v（无锚定对照）|
+|---|---|---|
+| step1 | **0.9534** | **0.7085** |
+| step2 | 0.9563 | 0.7099 |
+| step3 | 0.9590 | **0.9238** |
+| step4 | 0.9610 | 0.9552 |
+| step5 | 0.9636 | 0.9675 |
+| step6 | 0.9640 | 0.9678 |
+
+**有锚定：第 1 步就对了，后面 5 步只涨 0.011（磨细节）。**
+**无锚定：前两步还在漂，要到第 3 步才收敛。**
+
+带货场景的直接含义：**商品图锚定后，第 1 步的预览就能判断商品有没有跑偏**，
+不锚定时至少要看第 3 步。省下的正是最贵的那几步，也省掉「跑偏了才发现」的重跑。
+
+配套脚本：`vpipe-live-preview/scripts/p4_beats.py` + `p4_anchor_emergence.py`。
+
 ## 验证保真度
 
 ```bash
@@ -184,6 +208,7 @@ ffmpeg -i f000.png -i ref-crop.png -lavfi "[0:v][1:v]ssim;[0:v][1:v]psnr" -f nul
 
 ## 参考资料
 
+- `references/anchor-emergence.md` —— **锚定涌现曲线**（第几步锁死 + 与 Ref2VA 的区别）
 - `references/anchor-vs-reference.md` —— 锚定与参考的量化对比
 - `references/troubleshooting.md` —— 故障排查表
 - `assets/pika-i2va.vpipeline` —— 可直接改用的出片流水线

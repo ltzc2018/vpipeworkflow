@@ -21,6 +21,8 @@
 | TAE-H3 实时预览 | 已接入，TAE 解码成功 | — | 每步一次 | 512×288 预览循环 |
 | **文生图（Z-Image-Turbo）** | 官方 bf16 | — | **42.5 秒** | 1024×1024，8 步 no-cfg |
 | **文生图（Krea-2-Turbo）** | 官方 bf16（无 M87 LoRA） | — | **49.5 秒** | 1024×1024，8 步 euler+simple |
+| **图生图（Boogu-Image-0.1-Edit-Turbo）** | 官方 bf16（10B，4 步 DMD） | ✅ **支持多参考** | **17.6–32.6 秒** | 1024×1024，参考图走 Qwen3-VL 语义条件 |
+| **参考生视频（HyperFlow 8 步 flow-map）** | Ref2VA-8bit + HyperFlow adapter | ✅ | 8 分 54 秒 | 832×480 / 124 帧 / 5.18 s + AAC |
 
 **第二轮最大的收获不是多出一支片，而是把「参考图到底有没有起作用」这件事真正验证了** —— 见第 6 节。第一版报告里那支 Ref2VA 成片，提示词把猫的外观写得很死，**无法证明参考图生效**；这一版用**四组消融对照**重做了实验（含一组"熊猫参考图"强消融），并修正了两处会误导用户的配置错误。
 
@@ -757,3 +759,448 @@ pipelines/  out/  refs/  run_*.sh
 > **最容易被忽略的一条**：A/B 消融必须先问"对照组能不能产生不同结果"。如果两组输出本来就一样（猫 vs 猫），再多的行数指标、SSIM 数字都只是自说自话。**换一个模型先验不可能产出的参考主体**，比换任何指标都管用。
 
 
+
+---
+
+## 13. 第四轮：Boogu 图生图链路 + HyperFlow 8 步 flow-map 对照
+
+> 日期 2026-11-14 16:20–16:45 · 承接 `vpipe-后续计划任务.md` 的 **P7.1** 与 **P2**
+
+### 13.1 本轮做了什么
+
+| # | 事项 | 结果 |
+|---|---|---|
+| 1 | 下载并注册 **Boogu-Image-0.1-Edit-Turbo** | 35.8 GB / 30 个文件全部 sha256 通过 |
+| 2 | 搭出 **Boogu 图生图**流水线 | **32.6 秒**出 1024×1024 |
+| 3 | **双参考图**同框探针 | 跑通，每张参考图 144 个视觉 token |
+| 4 | 真人商业写真参考图实测 | 3 组（影棚 / 海滩 / 单人裁切） |
+| 5 | 注册 `videorebirth/hyperflow-ref2va` 别名 | 成功（`model-register` + `model_type: minimax-h3-lora`） |
+| 6 | **HyperFlow A/B/C 三组对照** | Pika 6 步 vs HyperFlow 8 步 vs `lora_scale: 0` |
+
+### 13.2 Boogu 的机制：参考图走 VLM，不走 latent
+
+这是它与 klein / Qwen-Image-Edit **最根本**的差别：
+
+| | FLUX.2-klein-9B | Qwen-Image-Edit-2511 | **Boogu-Image-0.1-Edit-Turbo** |
+|---|---|---|---|
+| 参考图进入方式 | **latent**（`vae-encode` → 端口 5/6） | VLM + latent 双路 | **只有 VLM** |
+| 条件器 | CLIP/T5 | Qwen2.5-VL | **Qwen3-VL（`mllm/`，16 GB）** |
+| 步数 | 4 步 | 20 步 | **4 步 DMD 蒸馏** |
+| CFG | — | 需 negative prompt | **CFG = 1（关闭）** |
+| 调度器 | simple / karras | simple | **`boogu_v1`**（sigma 约定是反的） |
+| 多参考 | 端口 5/6 | `ref_image` + `ref_image2` | **`ref_image` + `ref_image2`（实测通过）** |
+
+**源码依据**：`generative-models/boogu/metal-boogu-transformer.cc` 里 grep 不到任何
+`ref_latent`；`stages/diffusion-conditioner-stage.cc:3506` 的 Boogu 分支只用
+Qwen3-VL 的视觉塔把参考图拼进文本序列（`kBooguTi2i` 模板）。
+
+**接线时最容易错的三点**（照抄 klein 的接线会静默出错）：
+
+1. **必须接 `boogu-image-model-config`**，而且**同时**接到 `diffusion-conditioner` 的
+   iport5 **和** `generate-image` 的 iport7 —— 前者给 VLM 的 `vl_*` 边界，后者让 DiT
+   认出家族（少接会打印 `the model_config beat is for the 'boogu-image' family but ...`）。
+2. **调度器必须 `type: "boogu_v1"`** —— Boogu 的 sigma 是**反的**（0 = 噪声，1 = 干净），
+   用默认 `simple` 会往反方向采样。
+3. **不需要 `vae-encode`**，**不要接 negative prompt**、**不要设 `guidance_scale > 1`**
+   （Turbo 蒸馏版固定 CFG = 1，接了会白跑第二次 DiT 前向）。
+
+### 13.3 五组实测
+
+| # | 参考图 | 输出 | 耗时 | 结果 |
+|---|---|---|---|---|
+| 1 | 橘猫 + 牛仔衬衫 | 1024×1024 | **32.6 s** | ✅ 身份/虎斑纹/绿眼/深蓝衬衫铜扣全保留，背景换成霓虹雨夜巷 |
+| 2 | 商业写真（竖版） | 576×1024 | **25.7 s** | ✅ 同一人物、深蓝白拼上衣 + 深蓝百褶裙 + 圆形金扣保留，背景换成浅灰影棚 |
+| 3 | **两栏拼图**写真 | 576×1024 | 19.0 s | ⚠️ 服装保留但**脸与体型漂移** |
+| 4 | 上图**裁出的单人** | 384×1024 | **17.6 s** | ✅ 姿态、粉色比基尼（含白滚边）、**粉色口罩**、亮片高跟鞋全保留，背景换成金色海滩 |
+| 5 | 猫 + 熊猫（**两张**） | 1024×1024 | **26.1 s** | ✅ 两种动物同框，各自毛色花纹保留 |
+
+第 5 组的日志证据：
+```
+DiffusionConditionerStage('diffusion-conditioner'): reference 0 -> 144 vision tokens (grid 24x24), 3 deepstack
+DiffusionConditionerStage('diffusion-conditioner'): reference 1 -> 144 vision tokens (grid 24x24), 3 deepstack
+```
+
+**内存画像**（24 GB 机器，声明峰值超过物理内存但实测跑完）：
+```
+memory-plan (generate-image): peak 23933 MB at 'vae-decode' streaming
+GenerateImageStage: freeing the Boogu-Image DiT for the 1024x1024 vae-decode (~3712 MB)
+```
+即 **DiT 与 VAE 从不同时驻留** —— 这是 vpipe 的 memory-bounded 设计。
+
+**踩到的坑**：`load-image` 的 oport 是 `FlexDataPayload`，而 `ref_image` 要
+`TensorBeatPayload`，直连会报
+`payload type mismatch ... producer FlexDataPayload vs consumer TensorBeatPayload`。
+**每张参考图必须各接一个 `image-resample`。**
+
+### 13.4 最重要的教训：参考图必须先裁成「单一主体」
+
+第 3 组与第 4 组用的是**同一张照片**，一张是整张拼图、一张是预先裁出的单人，
+**结果差距是数量级的**：
+
+| | 整张拼图（1440×2560，两栏） | 预裁单人（520×2400） |
+|---|---|---|
+| 服装 | ✅ 粉色比基尼 | ✅ 粉色比基尼 + 白色滚边 |
+| 姿态 | ❌ 变成正面站立 | ✅ 侧身、双手抱拳于胸前 |
+| 配件 | ❌ 丢失 | ✅ **粉色口罩**、亮片高跟鞋 |
+| 脸 / 体型 | ❌ 明显「美颜化」 | ⚠️ 仍轻微漂移 |
+
+**原因**：VLM 看到的是**两栏拼图**，于是把两个主体理解成「一个人 + 场景」，
+输出时必然在两者之间折中并重画体态。
+
+**仍然存在的漂移**：Boogu 会「美化」人像 —— 脸型偏模型审美、体型更纤细、
+肤色偏亮、发色从深黑漂到浅棕。**服装颜色/款式/配件/姿态可靠，面部身份不可靠。**
+需要脸完全一致时，请走 `vpipe-first-frame-to-video` 的首帧锚定（SSIM 0.9505）。
+
+### 13.5 HyperFlow 8 步 flow-map 对照
+
+**别名注册**（`model_type` 显式指定，绕开上游 detector 的签名表缺口）：
+
+```
+[INFO] ModelRegisterStage('register'): registered 'videorebirth/hyperflow-ref2va'
+  -> '/Users/minichen/AI-Models/vpipe-workspace/models/videorebirth/hyperflow'
+  [minimax-h3-lora, by config-key]
+```
+
+**运行时确认**（同一个权重文件覆盖三个 partition）：
+```
+MetalMiniMaxH3Transformer: ... is a FLOW-MAP adapter (HyperFlow 1.0):
+  two-time timestep embedding, gate 0.25, 8-step grid, trained at shifts 12/3
+MetalMiniMaxH3Transformer: runtime LoRA ... -- 212 modules at scale 1,
+  rank <= 768 (diffusers decomposition, qkv fused HERE for this DiT's flat grouping, 52 of 52 banded)
+GenerateVideoStage: HyperFlow 1.0 on lora slot 0 -- 8-step flow-map grid from the adapter
+  (`steps: 8` is not used while it is live), two-time embedding at gate 0.25
+```
+
+**三组对照**（同一提示词、同一参考图 `klein-multi-ref-panda.jpg`、同 seed 42、832×480 / 124 帧）：
+
+| 组 | 配置 | 前向次数 | AdaLN 行数 | 条件行数 | 耗时 | 全片 SSIM vs 参考图 |
+|---|---|---|---|---|---|---|
+| **A** | Pika-H3-Flex-ref2va，6 步 RE-NOISED | 6 | 17 | 16999 | **6 分 48 秒** | **0.4896** |
+| **B** | HyperFlow 8 步 flow-map（scale 1.0） | 8 | **24** | 16999 | **8 分 54 秒** | **0.4433** |
+| **C** | HyperFlow 8 步 flow-map，**`lora_scale: 0`** | 8 | **23** | 16999 | **8 分 23 秒** | **0.4810** |
+
+**关键观察**
+
+1. **三组的条件行数完全相同（16999）** —— 同一提示词 + 同一参考图，
+   说明这是**干净的 A/B/C**，变量只有 adapter 与采样网格。
+2. **AdaLN 烘焙行数不同**：Pika 6 步 = 17 行，HyperFlow 8 步 = 24 行；
+   `lora_scale: 0` 时变成 **23 行** —— 差 1 行，说明 scale=0 时
+   有一类行（参考/条件行，文档里 `r == t` 的那种）不再需要双时间嵌入。
+3. **C 组是整个实验里最有说服力的一组**：
+   **C（0.4810）明显更靠近 A（0.4896），而不是 B（0.4433）**。
+   这正是「`lora_scale: 0` 精确回到原始模型」的直接证据 ——
+   把 adapter 的 delta 归零，输出就回到原始模型的行为（只是仍在 HyperFlow 的 8 步网格上）。
+   于是实验被**干净地拆成两个因子**：
+
+   | 因子 | 对照 | SSIM 差 | 结论 |
+   |---|---|---|---|
+   | **adapter delta** | B vs C | 0.4433 ↔ 0.4810 | delta 把输出推离参考图 |
+   | **采样网格** | A vs C | 0.4896 ↔ 0.4810 | 只换网格影响小得多 |
+
+4. **SSIM 偏低不等于画质差** —— 前几轮已经证明「参考生视频里，
+   参考图不是把输出往参考图拉，而是改写主体本身」（有参考 0.5120 < 无参考对照 0.5718）。
+   SSIM 在这条链路上测的是「输出有多像参考图」，**不是**画质指标。
+5. **目视对照**（`frames-hf/compare-abc.png`，第 40 帧三联）：
+   A（Pika）整只熊猫入镜、略柔；B（HyperFlow）毛发、窗框木纹、叶片更锐利；
+   C（scale 0）与 B 构图几乎一致（同一 seed + 同一 8 步网格），但细节明显更柔。
+   **画面上 C 也更靠近 A。**
+
+**结论**
+
+| 维度 | Pika 6 步 | HyperFlow 8 步 |
+|---|---|---|
+| 耗时 | **快 27%**（6 分 48 秒 vs 8 分 54 秒） | 慢 |
+| 前向次数 | 6 | 8 |
+| 画质目视 | 略柔 | **更锐** |
+| 步数自由度 | 图里的 `steps` 生效 | **适配器接管，`steps` 被忽略** |
+| 官方定位 | 「few-step renoise」 | 「8 次前向完成原始模型要 15 步以上的片段」 |
+
+**取舍**：短片（≤5 秒）优先 Pika（省 2 分钟）；追求画质或要跑长片段，
+HyperFlow 的 8 次前向比原始模型 15 步更划算。
+
+### 13.6 本轮新增资产
+
+| 类型 | 文件 |
+|---|---|
+| 流水线 | `boogu-image-edit.vpipeline`、`boogu-multi-ref-probe.vpipeline`、`boogu-real-photo{1-studio,3-beach,3-single-beach}.vpipeline`、`register-hyperflow-ref2va.vpipeline`、`hyperflow-ref2va-panda.vpipeline`、`hyperflow-ref2va-scale0.vpipeline` |
+| 产物 | `boogu-edit-cat.jpeg`、`boogu-real-photo1-studio.jpeg`、`boogu-real-photo3-beach.jpeg`、`boogu-real-photo3-single-beach.jpeg`、`boogu-multi-ref-probe.jpeg`、`hyperflow-ref2va-panda.mp4`、`hyperflow-ref2va-scale0.mp4` |
+| 对照图 | `frames-hf/compare-ab.png`（Pika vs HyperFlow 四帧对照）、`frames-hf/compare-abc.png`（三组三联） |
+| 技能包 | `vpipe-image-edit` 新增 `references/boogu-edit.md`（完整实测报告）+ 2 个资产 |
+| 文档 | `vpipe-后续计划任务.md` 加状态看板；本节 |
+
+### 13.7 第三方模型复核（LFM3-VL-2B，独立于生成链路）
+
+| 问题 | LFM3-VL 的回答（节选） | 判定 |
+|---|---|---|
+| Boogu 换背景后服装是否与参考图一致？ | "在参考图中，人物穿着白色上衣和深蓝色裙子… 经过图生图编辑后，服装和参考图**基本一致**" | ✅ |
+| 预裁单人参考图后，姿态与配件是否保留？ | "人物穿着**粉色连体泳衣**，带白色装饰线条… 姿态在两张图中都保持一致，侧身站立，双手抬起靠近胸部" | ✅ |
+| 双参考图是否都生效？ | "结果中出现了猫和熊猫。猫的外观（橙色毛色、白色花纹、**穿蓝色衬衫**）与第一张参考图一致；熊猫的外观（黑白毛色、吃竹子）与第二张参考图一致" | ✅ **多参考得到独立复核** |
+| Pika 与 HyperFlow 语义是否一致？ | 两组回答几乎相同："一只熊猫…坐在窗台上，背景是自然景观，光线温暖柔和" | ✅ 一致 |
+
+> ⚠️ **真人照片只在本机测试**：GitHub 仓库 `ltzc2018/vpipeworkflow` 是 **public**，
+> **不得**把 `refs-real/` 下的真人照片推上去。
+
+---
+
+### 13.8 P4：TAE-H3 实时预览接进 i2va 首帧锚定链路
+
+> 日期 2026-11-14 17:05–17:30 · 承接 `vpipe-后续计划任务.md` 的 **P4**
+> 问题：**首帧锚定模式下，实时预览还能正常工作吗？「先出低清预览再出正片」这条
+> 带货工作流在 i2va 链路上到底成不成立？**
+
+#### 13.8.1 三次实测
+
+| 流水线 | 规格 | 成片耗时 | 预览流 | 有效预览延迟 |
+|---|---|---|---|---|
+| `pika-i2va-preview-fast` | 512×288 / 39 帧 / 6 步 / seed 42 | **64.3 s** | 10.6 MB | **22.11 s**（34% 处）|
+| `pika-t2v-preview-fast`（对照）| 512×288 / 39 帧 / 6 步 / seed 42 | **58.7 s** | 9.5 MB | **20.26 s**（35% 处）|
+| `pika-i2va-preview-prod` | 832×480 / 124 帧 / 6 步 / seed 42 | **374.3 s** | 71.3 MB | **90.33 s**（24% 处）|
+
+**接线**（相对已验证的 `pika-i2va-shop.vpipeline` 只多了预览三件套）：
+
+```json
+"minimax-h3-model-config": { "preview_vae": ".../taeh3.safetensors",
+                             "preview_every": 1, "preview_max_edge": 512,
+                             "preview_frames": 39 }
+"preview": { "iports": [ {"src": "generate-video", "oport": 2} ] }
+```
+
+**结论一：可行，而且预览是「白拿」的。** 生产规格下 **1 分 30 秒就出低清预览**，
+最终成片 6 分 14 秒——**总时间的 24% 处就已经能判断结果好不好**，省下的 4 分多钟
+用来调参重跑，是这套工作流最大的价值。
+
+**结论二：i2va 的预览延迟只比 t2v 多 1.85 秒**（22.11 s vs 20.26 s），
+这 1.85 秒是首帧锚定多出来的 `vae-encode`。**锚定没有给预览链路带来任何降级。**
+
+#### 13.8.2 预览流的真实结构（踩到的第一个坑）
+
+预览流**不是**一段连续的视频，而是 **两个 init 段拼起来的 fMP4**：
+
+| 分段 | 触发时刻 | 分辨率 | 时长 | 码率 | 内容 |
+|---|---|---|---|---|---|
+| segment-1 | launch + 1.76 s | 640×360 | 20.24 s | **8 kb/s** | **纯黑占位** |
+| segment-2 | launch + 22.11 s | **512×288** | 41.79 s | 2011 kb/s | 真实内容 |
+
+源码依据（`stages/audio-video/preview-stage.cc`）：
+
+- `handle_video_frame_`：第一个真实帧到达时**采纳它的原生分辨率**，与「预输入黑画面」
+  的尺寸不同就 `build_pipeline_(W, H)` **重新初始化 fMP4** → 推第二个 init 段。
+- `handle_clip_`：`each new clip replaces it` —— 每个去噪步的 clip 替换上一个，
+  然后从头循环播放。
+
+**坑**：把两个 init 段的内容拼进同一个 mp4 会让 ffmpeg 用第一段的 SPS 去解第二段，
+满屏 `error while decoding MB`，**前 20 秒全是坏帧**。必须**按到达顺序分段拼装**
+（`scripts/ws_capture.py` 的 `segments` 逻辑），再用 `scripts/split_preview.py`
+按 init 边界切开分析。
+
+**附带结论**：segment-1 那 20 秒不是「预览失效」，是**黑画面占位**。
+判据是码率——8 kb/s 的 640×360 只能是纯色。所以
+**「第一个 fragment 到达（2.24 s）」不等于「能看见画面（22.11 s）」**。
+
+#### 13.8.3 量化结果
+
+**（a）切步：预览的每一拍 = 一个去噪步**
+
+预览把同一个 39 帧 clip 循环播放。**同相位帧（n 与 n-39）在一个拍内几乎逐像素相同**
+（SSIM 0.978），跨拍骤降。据此切分，三次运行**都精确切出 6 个 beat = 6 个去噪步**：
+
+| | i2va-fast | t2v-fast | i2va-prod |
+|---|---|---|---|
+| segment-2 总帧数 | 1003（25 个循环）| 903（23 个循环）| 6807（54 个循环）|
+| 循环长度 | 39 帧 | 39 帧 | 124 帧 |
+| 切出 beat 数 | **6** | **6** | **6** |
+
+**（b）SSIM / PSNR 对照表**
+
+统一口径：两张图都先缩放到 256×144 再比（prod 的预览 416×240 与成片 832×480
+必须归一化，否则尺寸不匹配直接跳过）。
+
+| 对照 | i2va-fast | t2v-fast（对照）| i2va-prod |
+|---|---|---|---|
+| 成片首帧 vs 锚定图 | **0.9736**（35.95 dB）| 0.4293（10.41 dB）| **0.9361**（30.38 dB）|
+| 预览第 1 帧 vs 锚定图 | **0.6102**（16.01 dB）| **0.1219**（6.92 dB）| **0.8872**（27.32 dB）|
+| **预览最后一拍 vs 成片（相位对齐）** | **0.9338** | **0.9460** | **0.9663** |
+| 　└ 首 / 中 / 末帧 | 0.9357 / 0.9427 / 0.9373 | 0.9455 / 0.9485 / 0.9439 | 0.9560 / 0.9694 / 0.9687 |
+
+**（c）锚定涌现曲线 —— 本轮最有价值的发现**
+
+在每一拍内定位「相位 0 帧」（= clip 的第 0 帧 = 视频首帧的位置），
+量它与**成片首帧**的 SSIM，得到锚定主体在预览里的**逐步收敛曲线**：
+
+| 步骤 | i2va-fast（有锚定）| t2v-fast（无锚定对照）| i2va-prod（有锚定）|
+|---|---|---|---|
+| step1 | **0.9534** | **0.7085** | **0.9796** |
+| step2 | 0.9563 | 0.7099 | 0.9801 |
+| step3 | 0.9590 | **0.9238** | 0.9810 |
+| step4 | 0.9610 | 0.9552 | 0.9818 |
+| step5 | 0.9636 | 0.9675 | 0.9826 |
+| step6 | 0.9640 | 0.9678 | 0.9826 |
+
+**这就是首帧锚定价值的量化形态**：
+
+- **有锚定**：第 1 步的首帧就已经正确（0.9534），后面 5 步只是把细节磨清楚。
+- **无锚定**：第 1–2 步的首帧还在漂移（0.7085 / 0.7099），**到第 3 步才收敛**
+  （0.9238）。也就是说，没有锚定时，前两步的首帧是**不可信的**。
+
+带货场景直接对应：商品图锚定后，**第 1 步的预览就能判断商品有没有跑偏**，
+而不锚定时至少要看第 3 步——省下的正是最贵的那几步。
+
+**（d）第三方模型复核（LFM3-VL-2B，独立于生成链路）**
+
+| 问题 | i2va-fast | t2v-fast（对照）|
+|---|---|---|
+| 主体每一步都在场吗？ | "主体在每一步都在场" ✅ | "主体在每一步都在场" ✅ |
+| 服装每一步都保留吗？ | "一件蓝色牛仔外套，**在每一步都保留**" ✅ | "服装**并未在每一步都保留**" ⚠️ |
+| 清晰度逐步提升吗？ | "从左到右逐步提升" ✅ | "从左到右逐步提升" ✅ |
+| 预览首帧是参考图那只猫吗？ | "**是同一只猫**，服装、外观、姿态都与参考图一致" ✅ | "是**另一只猫**，服装、外观、姿态与参考图**不一致**" ✅ 反证成立 |
+| 预览能代表正片吗？ | "同一个场景、同一动作"，丢失的是毛发纹理与缝线等细节 | 同上 |
+
+#### 13.8.4 结论与适用边界
+
+1. **i2va 链路接 TAE 实时预览完全可行**，接线只需在 `minimax-h3-model-config`
+   上加 4 个键、把 `preview` 接到 `generate-video` 的 **oport 2**。
+2. **首帧锚定在预览路径上成立**，且**第 1 步就锁死**（SSIM 0.9534 vs 无锚定 0.7085）。
+3. **预览最后一拍与正片高度一致**（逐帧 SSIM 0.93–0.97），
+   **足以判断构图、主体、运动方向和锚定是否生效**。
+4. **但预览不能判断细节保真度**（TAE 只有 9.9M 参数）：预览与锚定图的 SSIM 只有
+   0.61–0.89，vs 成片的 0.94–0.97。**要验细节保真仍然只能看成片。**
+5. **不同拍之间相位不对齐**。预览是「同一个 clip 循环播放」，每一拍被替换时相位
+   会漂移，所以**横向比较各拍必须先做相位对齐**，否则会得出「预览与成片不像」
+   的错误结论（未对齐时 SSIM 只有 0.13–0.31，对齐后 0.93–0.97）。
+6. **预览是 Web UI 功能**。`preview` 是 WebSocket sink（0 oports），CLI 下流水线
+   不会自己结束。本轮用 `vpipe-web-ui --bind 127.0.0.1 --port 9876` + 自写
+   RFC6455 客户端抓流（`scripts/ws_capture.py`），全程免密钥。
+
+#### 13.8.5 本节新增的坑清单
+
+| # | 坑 | 后果 | 解法 |
+|---|---|---|---|
+| 1 | 预览流有**两个 init 段**（分辨率重初始化）| 前 20 秒全是坏帧 | 按段拼装 + 按 init 边界切开 |
+| 2 | 「第一个 fragment 到达」≠「能看见画面」| 把 2.24 s 误报成预览延迟 | 以**分辨率被采纳的时刻**为准（22.11 s）|
+| 3 | 各拍**相位不对齐** | 误判「预览与成片不像」| 用 `SSIM(n, n-39)` 切步 + 相位对齐 |
+| 4 | `ffmpeg -i a.png … a.png` | **输入输出同路径会先截断输入**，比较到坏图 | 输出必须换文件名（曾使曲线整体偏低 0.09）|
+| 5 | `select='eq(n,1)+eq(n,2)+…'` 拼上百个 OR 项 | `Cannot allocate memory` | 用单表达式 `not(mod(n,39))` / `between(n,A,B)` |
+| 6 | 每抽一帧都整段解码 | 71 MB 的 prod 流抽 124 帧要 124 次全量解码 | 一次解码批量抽帧 |
+| 7 | 单帧 SSIM argmax 选相位 | 画面同质时全部候选都在 0.93 上下，**必错** | 用双端点准则 + 目检裁决 |
+| 8 | runner 猜的成片文件名与流水线 `output_url` 不一致 | 白等 15 分钟超时 | 从流水线 JSON 里读 `output_url` |
+
+#### 13.8.6 本节新增资产
+
+| 类型 | 文件 |
+|---|---|
+| 流水线 | `pika-i2va-preview-fast.vpipeline`、`pika-t2v-preview-fast.vpipeline`、`pika-i2va-preview-prod.vpipeline` |
+| 脚本 | `scripts/p4_run.py`（web-ui 编排 + 增量日志）、`scripts/ws_capture.py`（RFC6455 抓流 + 分段拼装）、`scripts/split_preview.py`、`scripts/p4_beats.py`（切步 + 相位对齐 + SSIM/PSNR）、`scripts/p4_anchor_emergence.py`、`scripts/vqa-p4.sh` |
+| 成片 | `p4-i2va-preview-fast.mp4`、`p4-t2v-preview-fast.mp4`、`p4-i2va-preview-prod.mp4` |
+| 预览流 | `p4-preview-stream-i2va-fast.mp4`（10.6 MB，Web UI 里看到的原始流）、`init-1.mp4` / `init-2.mp4`（两个 init 段留档）|
+| 对照图 | `p4-{i2va-fast,t2v-fast,i2va-prod}-contact-sheet-anchor-emergence.png`（相位一致的逐拍收敛）|
+| 日志 | `p4-pipeline-{tag}.log`（带时间戳的流水线日志）、`ws-capture.log`（分片时间线）、`p4-quant-{tag}.json`、`p4-emergence-{tag}.json` |
+
+---
+
+## 14. 第六轮：技能固化 + 仓库相对路径化 + GitHub 同步
+
+> 日期 2026-11-14 19:03–19:20 · 承接第 13.8 节（P4）
+
+### 14.1 这一轮做了什么
+
+| # | 事项 | 结果 |
+|---|---|---|
+| 1 | 6 个 P4 脚本**参数化** | 硬编码路径 → 环境变量覆盖（`VPIPE_FFMPEG` / `VPIPE_WS` / `VPIPE_LAB` / `VPIPE_WEBUI` / `VPIPE_WEBUI_PORT`）|
+| 2 | 参数化后**重跑验证** | 用既有 P4 产物复算，相位对齐 SSIM **0.9338**、成片首帧 **0.9736 / 35.95 dB**，与第 13.8 节**逐位一致** |
+| 3 | 新增 `references/cli-capture.md` | CLI 下从起服务到量化的**端到端可执行手册** |
+| 4 | 新增 `references/anchor-emergence.md` | 锚定涌现曲线（首帧锚定价值的量化形态）|
+| 5 | 修正 SKILL.md 的 **preview 接线 oport** | 原文档写 `oport 0`，实测正确是 **`oport 2`** |
+| 6 | 仓库 **19 条流水线路径相对化** | 本机绝对路径 → 相对工作目录，并**实测跑通** |
+| 7 | 推送到 GitHub | `ltzc2018/vpipeworkflow`（public / main）|
+
+### 14.2 相对路径化：让仓库真的能被别人跑起来
+
+改造前，19 条流水线里有 **37 处**本机绝对路径（`/Users/minichen/...`）。
+现在统一为：
+
+```json
+"url":         ["refs/minimax-h3-reference-subject.jpg"],
+"preview_vae": "models/madebyollin/taehv",
+"output_url":  "out/p4-i2va-preview-fast.mp4"
+```
+
+**验证方式**：把相对路径版流水线拷进工作区实跑，
+日志确认 `refs/minimax-h3-reference-subject.jpg` 与
+`models/madebyollin/taehv`（**目录写法**）都被正确解析，
+成片正常落盘。
+
+> 附带修掉一个隐蔽问题：**`preview_vae` 用目录写法时，
+> 上游改权重文件名也不怕**（目录里自己找），
+> 比硬编码 `taeh3.safetensors` 更耐上游变更。
+
+**仓库现在自带 `refs/`**（猫 / 熊猫 / 官方示例图，4 张，共 576 KB），
+克隆下来即可跑，不需要自备素材。
+
+### 14.3 一条被文档掩盖的错误
+
+`vpipe-live-preview/SKILL.md` 早期版本的「完整流水线」示例里写的是：
+
+```json
+{ "id": "preview", "type": "preview", "iports": [ {"src":"generate-video","oport":0} ] }
+```
+
+**这是错的。** 正确接法是 **`oport 2`**（预览通道）：
+
+```json
+{ "id": "preview", "type": "preview", "iports": [ {"src":"generate-video","oport":2} ] }
+```
+
+`oport 0` 是视频 latent、`oport 1` 是音频 latent —— 接错的表现是
+**预览通道没有数据**，但**流水线本身不报错**（静默失效）。
+第 13.8 节的实测流水线全部是 `oport 2`，之前只有文档写错。
+本次已修正，并在 SKILL.md 里加了显式警告。
+
+> 教训：**流水线 JSON 里的 `oport` 编号必须从跑通的实测文件反查，
+> 不能从别的 stage 的文档示例照抄。**
+
+### 14.4 技能包结构（本轮终态）
+
+```
+skills/
+├── vpipe-text-to-image/          文生图（Z-Image / Krea-2）
+├── vpipe-image-edit/             图生图（Boogu，含多参考）
+│   └── references/boogu-edit.md  ← 完整实测报告
+├── vpipe-reference-to-video/     参考生视频（Ref2VA + HyperFlow）
+├── vpipe-first-frame-to-video/   首帧锚定（i2va）
+│   └── references/anchor-emergence.md  ← 本轮新增
+├── vpipe-first-last-to-video/    首尾帧插值
+├── vpipe-live-preview/           实时预览 + CLI 抓流
+│   ├── references/cli-capture.md ← 本轮新增
+│   └── scripts/  p4_run / ws_capture / split_preview /
+│                 p4_beats / p4_anchor_emergence / vqa-p4
+└── vpipe-model-prepare/          模型准备（量化 / 注册 / 磁盘）
+```
+
+7/7 通过官方 `quick_validate.py`，全部安装到 `~/.workbuddy/skills/`。
+
+### 14.5 仓库同步内容
+
+| 目录 | 内容 | 体积 |
+|---|---|---|
+| `skills/` | 7 个技能包（含全部 references / assets / scripts）| 524 KB |
+| `pipelines/` | 25 条流水线（路径已相对化）| 96 KB |
+| `refs/` | 4 张参考图（猫 / 熊猫 / 官方示例）| 576 KB |
+| `scripts/` | 保真度 / 预览抓流 / VQA / 拼图脚本 | 68 KB |
+| `images/` | 32 张实测产物（印相、对照图、成片抽帧）| 22 MB |
+| `videos/` | 18 支实测成片 + 预览原始流 | 29 MB |
+| `logs/` | 全部流水线日志与第三方模型复核输出 | 1.7 MB |
+| `docs/` | 主报告（1096 行）、后续计划、5 条上游 issue | 192 KB |
+
+**刻意排除**：真人商业写真的原图、衍生图、视频与日志
+（`boogu-real-*`、`real-ref2va-*`、含 `refs-real/` 路径的 4 条流水线）。
+仓库是 public 的，这类素材一律不上传。README 里写明了这条限制与复现方式。
+
+### 14.6 下一个该做的
+
+优先级不变：**P1（多参考组合的视频）→ P3（768p / 长规格）**。
+P1 是 Ref2VA 唯一还没被充分使用的能力，也是带货「一物多场景」的正路。
+
+P1 的关键前置（已在官方 `minimax-h3-reference-to-video.vpipeline` 里验证过端口路线）：
+多参考图在 `diffusion-conditioner` 上占 **iport3 / iport4**，
+视频参考要先过 `video-to-rgb → image-resample → temporal-stack`，
+音频参考走 `audio-to-pcm(32000, stereo) → temporal-stack`。

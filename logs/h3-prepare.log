@@ -1,0 +1,96 @@
+[INFO] PipelineRuntime: pipeline 'prepare-minimax-h3-8bit' has 1 clock domain; domain 0 = {remove-dit-intermediate, quant-enc, quant-dit, fetch}
+[INFO] memory landscape at launch: 24576 MB RAM -- 4784 MB idle, 5378 MB file cache, 3927 MB wired system-wide, 3320 MB compressed, 73 MB swap; this process holds 5 MB
+[INFO] memory landscape: wired pool 18186 MB of 18186 MB the GPU can keep resident, 0 MB of it already in use
+vpipe: launched pipeline './pipelines/prepare-minimax-h3-8bit.vpipeline'
+[INFO] ModelFetchStage('fetch'): fetching 'Comfy-Org/MiniMax-H3' from ModelScope -> './models/Comfy-Org/MiniMax-H3'
+[INFO]   [1/4] diffusion_models/minimax_h3_fl2va_bf16.safetensors (61.7 GB) ...
+[PROGRESS] 0% of 'download Comfy-Org/MiniMax-H3' completed at 08:56:10 (0/123599845928)
+[PROGRESS] 0% of 'minimax_h3_fl2va_bf16.safetensors' completed at 08:56:10 (162884/66280487368)
+[PROGRESS] 10% of 'minimax_h3_fl2va_bf16.safetensors' completed at 08:58:52 (6630079520/66280487368)
+[PROGRESS] 10% of 'download Comfy-Org/MiniMax-H3' completed at 09:01:18 (12361104452/123599845928)
+[PROGRESS] 20% of 'minimax_h3_fl2va_bf16.safetensors' completed at 09:01:40 (13259373636/66280487368)
+[PROGRESS] 30% of 'minimax_h3_fl2va_bf16.safetensors' completed at 09:04:21 (19887307790/66280487368)
+[PROGRESS] 20% of 'download Comfy-Org/MiniMax-H3' completed at 09:06:22 (24722963524/123599845928)
+[PROGRESS] 40% of 'minimax_h3_fl2va_bf16.safetensors' completed at 09:07:05 (26516388932/66280487368)
+[PROGRESS] 50% of 'minimax_h3_fl2va_bf16.safetensors' completed at 09:09:41 (33140505668/66280487368)
+[PROGRESS] 30% of 'download Comfy-Org/MiniMax-H3' completed at 09:11:13 (37084298308/123599845928)
+[PROGRESS] 60% of 'minimax_h3_fl2va_bf16.safetensors' completed at 09:12:15 (39769127986/66280487368)
+[PROGRESS] 70% of 'minimax_h3_fl2va_bf16.safetensors' completed at 09:14:51 (46399585348/66280487368)
+[PROGRESS] 40% of 'download Comfy-Org/MiniMax-H3' completed at 09:16:03 (49441471556/123599845928)
+[PROGRESS] 80% of 'minimax_h3_fl2va_bf16.safetensors' completed at 09:17:30 (53028240398/66280487368)
+[PROGRESS] 90% of 'minimax_h3_fl2va_bf16.safetensors' completed at 09:20:12 (59652865092/66280487368)
+[PROGRESS] 50% of 'download Comfy-Org/MiniMax-H3' completed at 09:21:06 (61800676420/123599845928)
+[PROGRESS] 100% of 'minimax_h3_fl2va_bf16.safetensors' completed at 09:22:55 (66280487368/66280487368)
+[INFO]     minimax_h3_fl2va_bf16.safetensors: sha256 907d4add438438ec1544f5240c3b38532ed934fe6be75677a6bbda2a6fdd6182
+[INFO]   [2/4] text_encoders/qwen3vl_32b_minimax_h3_bf16.safetensors (48.0 GB) ...
+[PROGRESS] 0% of 'qwen3vl_32b_minimax_h3_bf16.safetensors' completed at 09:23:28 (1752115/51506295256)
+[PROGRESS] 10% of 'qwen3vl_32b_minimax_h3_bf16.safetensors' completed at 09:25:26 (5151554665/51506295256)
+[PROGRESS] 60% of 'download Comfy-Org/MiniMax-H3' completed at 09:26:28 (74161583665/123599845928)
+[PROGRESS] 20% of 'qwen3vl_32b_minimax_h3_bf16.safetensors' completed at 09:27:23 (10305404009/51506295256)
+[PROGRESS] 30% of 'qwen3vl_32b_minimax_h3_bf16.safetensors' completed at 09:29:23 (15454370921/51506295256)
+[PROGRESS] 70% of 'download Comfy-Org/MiniMax-H3' completed at 09:31:10 (86523180593/123599845928)
+[PROGRESS] 40% of 'qwen3vl_32b_minimax_h3_bf16.safetensors' completed at 09:31:18 (20605058135/51506295256)
+[PROGRESS] 50% of 'qwen3vl_32b_minimax_h3_bf16.safetensors' completed at 09:33:13 (25757219945/51506295256)
+[PROGRESS] 60% of 'qwen3vl_32b_minimax_h3_bf16.safetensors' completed at 09:35:10 (30907825257/51506295256)
+[PROGRESS] 80% of 'download Comfy-Org/MiniMax-H3' completed at 09:35:49 (98885170737/123599845928)
+[PROGRESS] 70% of 'qwen3vl_32b_minimax_h3_bf16.safetensors' completed at 09:37:09 (36058430569/51506295256)
+[PROGRESS] 80% of 'qwen3vl_32b_minimax_h3_bf16.safetensors' completed at 09:39:08 (41208708201/51506295256)
+[PROGRESS] 90% of 'download Comfy-Org/MiniMax-H3' completed at 09:40:32 (111243425329/123599845928)
+[PROGRESS] 90% of 'qwen3vl_32b_minimax_h3_bf16.safetensors' completed at 09:41:04 (46359542889/51506295256)
+[PROGRESS] 100% of 'qwen3vl_32b_minimax_h3_bf16.safetensors' completed at 09:43:04 (51506295256/51506295256)
+[INFO]     qwen3vl_32b_minimax_h3_bf16.safetensors: sha256 600d567f6a9629c8574e8e7041b199bdd9c59a986afa7906910a81919610607d
+[INFO]   [3/4] vae/minimax_h3_video_vae_fp16.safetensors (4.9 GB) -- present, skip
+[INFO]   [4/4] vae/minimax_h3_audio_vae_fp32.safetensors (577.2 MB) -- present, skip
+[INFO] ModelFetchStage('fetch'): 4 file(s) (2 downloaded, 2 already present), 115.1 GB total
+[INFO] ModelFetchStage('fetch'): 2 of 2 downloaded file(s) matched the checksum 'Comfy-Org/MiniMax-H3' publishes
+[PROGRESS] 100% of 'download Comfy-Org/MiniMax-H3' completed at 09:43:29 (123599845928/123599845928)
+[INFO]   [companion] tokenizer/tokenizer.json <- MiniMaxAI/MiniMax-H3
+[INFO]   [companion] tokenizer/tokenizer_config.json <- MiniMaxAI/MiniMax-H3
+[INFO] ModelFetchStage('fetch'): 2/2 companion file(s) from outside 'Comfy-Org/MiniMax-H3'
+[INFO] ModelFetchStage('fetch'): registered 'Comfy-Org/MiniMax-H3-FL2VA' in the model registry
+[WARN] ModelFetchStage('fetch'): the catalogue lists 17 companion checkpoint(s) for this model that are NOT fetched: 'OpenVDN/vdn-minimax-h3-stage-b', 'OpenVDN/vdn-minimax-h3-stage-dmd', 'larryvrh/MiniMax-H3-Turbo-Lora-v1-850-ema', 'Efficient-Large-Model/Open-H3-Regenerate-2K-lora', 'Efficient-Large-Model/Open-H3-Regenerate-2K-upscaler', 'Efficient-Large-Model/Open-H3-Regenerate-2K-fast-vae', 'TaoLiveAIGC/TaoMate-H3', 'lightx2v/Minimax-h3-Turbo-4step-768p', 'lightx2v/Minimax-h3-Turbo-8step', 'lightx2v/Minimax-h3-Turbo-8step-768p', 'lightx2v/Minimax-h3-Turbo-8step-768p-split', 'lightx2v/Minimax-h3-Turbo-4step-768p-v1.2', 'lightx2v/Minimax-h3-Turbo-4step-768p-v1.2-comfyui', 'Pika-Labs/Pika-H3-Flex-fl2va', 'videorebirth/hyperflow', 'madebyollin/taeh3', 'Kijai/MiniMax-H3-TAE'. A stage that wants one will refuse at launch; fetch each with model-fetch model_path=<key>
+[INFO] model registry: 'Comfy-Org/MiniMax-H3-FL2VA' -> '/Users/minichen/AI-Models/vpipe-workspace/models/Comfy-Org/MiniMax-H3'
+[INFO] ModelQuantizeStage('quant-dit'): quantizing 'Comfy-Org/MiniMax-H3-FL2VA' -> 'local/MiniMax-H3-FL2VA-8bit-dit' (8-bit g64)
+[INFO] model registry: 'Comfy-Org/MiniMax-H3-FL2VA' -> '/Users/minichen/AI-Models/vpipe-workspace/models/Comfy-Org/MiniMax-H3'
+[INFO] model registry: 'Comfy-Org/MiniMax-H3-FL2VA' -> '/Users/minichen/AI-Models/vpipe-workspace/models/Comfy-Org/MiniMax-H3'
+[INFO] ModelQuantizeStage('quant-dit'): minimax-h3 repack '/Users/minichen/AI-Models/vpipe-workspace/models/Comfy-Org/MiniMax-H3' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-FL2VA-8bit-dit' (quantizing diffusion_models, copying the other components)
+[INFO] ModelQuantizeStage('quant-dit'): quantizing the AdaLN modulation (adaln_proj.linear, 13B of 33B) at 8-bit; body stays 8-bit
+[NORMAL] model-quantize: 535 tensors -> 8-bit g64, scales F16 (/Users/minichen/AI-Models/vpipe-workspace/models/Comfy-Org/MiniMax-H3/diffusion_models/minimax_h3_fl2va_bf16.safetensors -> /Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-FL2VA-8bit-dit/diffusion_models)
+[PROGRESS] 0% of 'quantize' completed at 09:43:30 (4/535)
+[PROGRESS] 10% of 'quantize' completed at 09:43:32 (54/535)
+[PROGRESS] 20% of 'quantize' completed at 09:43:35 (108/535)
+[PROGRESS] 30% of 'quantize' completed at 09:43:37 (164/535)
+[PROGRESS] 40% of 'quantize' completed at 09:43:40 (214/535)
+[PROGRESS] 50% of 'quantize' completed at 09:43:42 (268/535)
+[PROGRESS] 60% of 'quantize' completed at 09:43:45 (324/535)
+[PROGRESS] 70% of 'quantize' completed at 09:43:48 (378/535)
+[PROGRESS] 80% of 'quantize' completed at 09:43:50 (428/535)
+[PROGRESS] 90% of 'quantize' completed at 09:43:52 (484/535)
+[PROGRESS] 'quantize' ended at 09:43:54, last reported 98% (529/535)
+[INFO] model-quantize: /Users/minichen/AI-Models/vpipe-workspace/models/Comfy-Org/MiniMax-H3/diffusion_models/minimax_h3_fl2va_bf16.safetensors -> /Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-FL2VA-8bit-dit/diffusion_models (8-bit g64): 259 quantized, 276 passthrough
+[NORMAL] ModelQuantizeStage('quant-dit'): quantized minimax-h3 diffusion_models '/Users/minichen/AI-Models/vpipe-workspace/models/Comfy-Org/MiniMax-H3' -> self-contained '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-FL2VA-8bit-dit' (8-bit g64)
+[INFO] ModelQuantizeStage('quant-dit'): registered 'local/MiniMax-H3-FL2VA-8bit-dit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-FL2VA-8bit-dit' in the model registry
+[INFO] model registry: 'local/MiniMax-H3-FL2VA-8bit-dit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-FL2VA-8bit-dit'
+[INFO] ModelQuantizeStage('quant-enc'): quantizing 'local/MiniMax-H3-FL2VA-8bit-dit' -> 'local/MiniMax-H3-FL2VA-8bit' (8-bit g64)
+[INFO] model registry: 'local/MiniMax-H3-FL2VA-8bit-dit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-FL2VA-8bit-dit'
+[INFO] model registry: 'local/MiniMax-H3-FL2VA-8bit-dit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-FL2VA-8bit-dit'
+[INFO] ModelQuantizeStage('quant-enc'): minimax-h3 repack '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-FL2VA-8bit-dit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-FL2VA-8bit' (quantizing text_encoders, copying the other components)
+[INFO] ModelQuantizeStage('quant-enc'): text encoder '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-FL2VA-8bit-dit/text_encoders/qwen3vl_32b_minimax_h3_bf16.safetensors' (arch 'unknown', 50 layers, prefix 'model.layers.')
+[NORMAL] model-quantize: 902 tensors -> 8-bit g64, scales F16 (/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-FL2VA-8bit-dit/text_encoders/qwen3vl_32b_minimax_h3_bf16.safetensors -> /Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-FL2VA-8bit/text_encoders)
+[PROGRESS] 0% of 'quantize' completed at 09:44:37 (1/902)
+[PROGRESS] 10% of 'quantize' completed at 09:44:40 (91/902)
+[PROGRESS] 20% of 'quantize' completed at 09:44:45 (184/902)
+[PROGRESS] 30% of 'quantize' completed at 09:44:51 (275/902)
+[PROGRESS] 40% of 'quantize' completed at 09:44:58 (361/902)
+[PROGRESS] 50% of 'quantize' completed at 09:45:03 (452/902)
+[PROGRESS] 60% of 'quantize' completed at 09:45:11 (542/902)
+[PROGRESS] 72% of 'quantize' completed at 09:45:13 (653/902)
+[PROGRESS] 81% of 'quantize' completed at 09:45:13 (737/902)
+[PROGRESS] 91% of 'quantize' completed at 09:45:13 (821/902)
+[PROGRESS] 100% of 'quantize' completed at 09:45:14 (902/902)
+[INFO] model-quantize: /Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-FL2VA-8bit-dit/text_encoders/qwen3vl_32b_minimax_h3_bf16.safetensors -> /Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-FL2VA-8bit/text_encoders (8-bit g64): 350 quantized, 552 passthrough
+[NORMAL] ModelQuantizeStage('quant-enc'): quantized minimax-h3 text_encoders '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-FL2VA-8bit-dit' -> self-contained '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-FL2VA-8bit' (8-bit g64)
+[INFO] ModelQuantizeStage('quant-enc'): registered 'local/MiniMax-H3-FL2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-FL2VA-8bit' in the model registry
+[INFO] ModelRemoveStage('remove-dit-intermediate'): deleted '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-FL2VA-8bit-dit' (removed 19 entries)
+[INFO] ModelRemoveStage('remove-dit-intermediate'): removed 'local/MiniMax-H3-FL2VA-8bit-dit' from the model registry (+ deleted files)
+[INFO] PipelineRuntime: pipeline 'prepare-minimax-h3-8bit' ran for 49 m 44 s

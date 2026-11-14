@@ -164,7 +164,7 @@
         }
       ],
       "config": {
-        "output_url": "/Users/minichen/AI-Models/vpipe-workspace/out/h3-t2v-turbo.mp4",
+        "output_url": "out/h3-t2v-turbo.mp4",
         "enable_video": true,
         "enable_audio": true
       }

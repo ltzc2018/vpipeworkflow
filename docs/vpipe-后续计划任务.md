@@ -6,6 +6,35 @@
 
 ---
 
+## 状态看板（2026-11-14 19:15 更新）
+
+| 任务 | 状态 | 结果 |
+|---|---|---|
+| **P4 TAE 预览接 i2va** | ✅ **完成** | 三次实测（i2va-fast / t2v 对照 / i2va-prod）；**有效预览延迟 22.1 s（fast）/ 90.3 s（prod，占成片时间 24%）**；预览最后一拍 vs 成片逐帧 **SSIM 0.9338 / 0.9460 / 0.9663**；**锚定涌现曲线**：有锚定 step1 = **0.9534**，无锚定 step1 = **0.7085**、到 step3 才收敛 |
+| **第 6 轮：技能固化 + GitHub 同步** | ✅ **完成** | 6 个 P4 脚本**参数化**（环境变量覆盖）+ 用既有产物重跑验证（相位对齐 SSIM **0.9338** 复现）；新增 `references/cli-capture.md`（CLI 抓流手册）+ `references/anchor-emergence.md`（锚定涌现曲线）；仓库 **19 条流水线路径相对化**并实测跑通；**推送到 `ltzc2018/vpipeworkflow`** |
+| **P7.1 Boogu 图生图** | ✅ **完成** | 权重 35.8 GB 下载 + 校验通过；5 组实测出片，**17.6–32.6 秒/张**；**双参考图同框跑通**（各 144 视觉 token） |
+| **P2 HyperFlow 对照** | ✅ **完成** | 别名已注册（`videorebirth/hyperflow-ref2va`）；A（Pika 6 步 6 分 48 秒）vs B（HyperFlow 8 步 **8 分 54 秒**）vs C（`lora_scale: 0`）三组跑完 |
+| **P7.3 klein 多参考** | 🔁 **被替代** | klein 是 gated 模型（HF 本机不通），但 **Boogu 原生支持双参考图**，功能上覆盖了「多参考合成」这一需求 |
+| P7.2 Qwen-Image-Edit-2511 | ⛔ 阻塞 | 完整下载需 57.7 GB，24 GB 机器装不下；本轮已中止并清理 12 GB 半成品 |
+| P1 多参考组合（视频） | ⬜ 待做 | 9 图 / 3 视频 / 3 音频的官方上限路线，素材已备 |
+| P3 768p / 10s / 15s | ⬜ 待做 | 需先确认 `lightx2v` 在 ModelScope 可用 |
+| P5 图像模型 4-bit 量化 | 🚫 **建议跳过** | 上游 issue #41：4-bit 对 Z-Image 直接挂、对 Qwen-Image-2.1 静默输出全透明图，**且报成功零警告** |
+| P6 上游 issue | 📄 文档已备 | 5 条 + 新增第 6 条（`model_variant` 显示名无法匹配），待用户手动提交 |
+
+**本轮新增的可复用资产**
+- `pipelines/boogu-image-edit.vpipeline` / `boogu-multi-ref-probe.vpipeline`
+- `pipelines/register-hyperflow-ref2va.vpipeline`（别名注册）
+- `pipelines/hyperflow-ref2va-panda.vpipeline` / `hyperflow-ref2va-scale0.vpipeline`
+- 技能包 `vpipe-image-edit` 新增 `references/boogu-edit.md`（完整实测报告）
+- **P4 新增**：`pipelines/pika-{i2va,t2v}-preview-{fast,prod}.vpipeline`
+- **P4 新增脚本**：`scripts/p4_run.py`（web-ui 编排 + 增量日志）、`scripts/ws_capture.py`（RFC6455 抓流 + **分段拼装**）、`scripts/split_preview.py`、`scripts/p4_beats.py`（切步 + 相位对齐 + SSIM/PSNR）、`scripts/p4_anchor_emergence.py`、`scripts/vqa-p4.sh`
+
+**P4 顺手挖到的 8 个坑**（详见报告 13.8.5），最关键两条：
+1. **预览流有两个 init 段**（分辨率重初始化），必须按段拼装，否则前 20 秒全是坏帧
+2. **各拍相位不对齐**，横向比较必须先做相位对齐，否则会把 0.93 误判成 0.13
+
+---
+
 ## 0. 先说结论：对原「仍可做」清单的修正
 
 原清单的 6 项里，**有 2 项的判断需要修正**，1 项已经完成，1 项风险很高。
@@ -177,7 +206,14 @@ temb = emb(t) + gate * (emb_r(r) - emb(t))        gate = 0.25
 
 ---
 
-## 任务 P4 · TAE-H3 实时预览接进 i2va
+## 任务 P4 · TAE-H3 实时预览接进 i2va（✅ 2026-11-14 完成）
+
+> **完成情况**：三次实测跑通（i2va-fast / t2v 对照 / i2va-prod），全部指标与坑位见
+> 报告 `vpipe-H3-部署与测试报告.md` 第 **13.8 节**。要点：
+> - 有效预览延迟 **22.1 s**（fast）/ **90.3 s**（prod，占成片时间 24%）
+> - 预览最后一拍 vs 成片逐帧 **SSIM 0.9338 / 0.9460 / 0.9663**
+> - **锚定涌现曲线**：有锚定 step1 = 0.9534；无锚定 step1 = 0.7085，step3 才收敛
+> - 8 个新坑（尤其：预览流有**两个 init 段**、各拍**相位不对齐**）
 
 **优先级：中。** 链路已验证，只是换到 i2va 流水线。
 

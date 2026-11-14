@@ -1,10 +1,16 @@
-__pycache__/
-*.pyc
 .DS_Store
-*.mp4
-*.wav
-*.jpg
-*.jpeg
-*.png
+*.pyc
+__pycache__/
+
+# 本机私有素材：真人商业写真（仓库为 public，一律不上传）
+refs-real/
+*real-photo*
+*real-ref2va*
+*boogu-real*
+
+# 模型权重与中间产物
+models/
 *.safetensors
-*.log
+*.ckpt
+*.gguf
+frag.body

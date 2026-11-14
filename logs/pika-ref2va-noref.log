@@ -1,0 +1,159 @@
+[NORMAL] libavutil: using '@loader_path/libavutil.dylib'
+[NORMAL] libavcodec: using '@loader_path/libavcodec.dylib'
+[NORMAL] libswresample: using '@loader_path/libswresample.dylib'
+[NORMAL] libswscale: using '@loader_path/libswscale.dylib'
+[NORMAL] libavformat: using '@loader_path/libavformat.dylib'
+[NORMAL] libavdevice: using '@loader_path/libavdevice.dylib'
+[NORMAL] libavfilter: using '@loader_path/libavfilter.dylib'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] PipelineRuntime: pipeline 'pika-ref2va-noref' has 3 clock domains; domain 0 = {audio-vae-decode, video-ref-encoder, minimax-h3-model-config, text-prompt, model-select}; domain 1 = {}; domain 2 = {rgb-to-video}; crossers = {save-video, vae-decode, generate-video}
+[INFO] memory landscape at launch: 24576 MB RAM -- 14712 MB idle, 1007 MB file cache, 3471 MB wired system-wide, 2417 MB compressed, 391 MB swap; this process holds 8 MB
+[INFO] memory landscape: wired pool 18186 MB of 18186 MB the GPU can keep resident, 0 MB of it already in use
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'Pika-Labs/Pika-H3-Flex-ref2va' -> '/Users/minichen/AI-Models/vpipe-workspace/models/Pika-Labs/Pika-H3-Flex'
+[INFO] model registry: 'Pika-Labs/Pika-H3-Flex-ref2va' -> '/Users/minichen/AI-Models/vpipe-workspace/models/Pika-Labs/Pika-H3-Flex'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'Pika-Labs/Pika-H3-Flex-ref2va' -> '/Users/minichen/AI-Models/vpipe-workspace/models/Pika-Labs/Pika-H3-Flex'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] resource-plan: 5 activation arena(s) declared, 4139 MB; peak across phases 3396 MB
+[INFO] resource-plan: 67483 MB of model weights declared before init (67827 MB of claims, before shared checkpoints are counted once)
+[INFO] resource-plan: 35537 MB preloaded / 9444 MB if every streamable component streams
+[INFO] resource-plan: 68569 MB of that is phase-limited; peak across phases 35537 MB
+[INFO] resource-plan: peak 9444 MB in phase 'condition' (condition 9444 MB, denoise 5759 MB, decode-audio 584 MB, decode 5942 MB)
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'Pika-Labs/Pika-H3-Flex-ref2va' -> '/Users/minichen/AI-Models/vpipe-workspace/models/Pika-Labs/Pika-H3-Flex'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'Pika-Labs/Pika-H3-Flex-ref2va' -> '/Users/minichen/AI-Models/vpipe-workspace/models/Pika-Labs/Pika-H3-Flex'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] memory-plan (declared): peak 9804 MB at 'generate-video' streaming, 70646 MB at 'generate-video' preloaded, over 9 stages in running order (minimax-h3-model-config 4622 MB, text-prompt 4622 MB, model-select 4622 MB, video-ref-encoder 4622 MB, generate-video 9804 MB, audio-vae-decode 5202 MB, vae-decode 4625 MB, rgb-to-video 4622 MB, save-video 4622 MB)
+vpipe: launched pipeline './pipelines/pika-ref2va-noref.vpipeline'
+[INFO] MiniMaxH3ModelConfigStage('minimax-h3-model-config'): shifts 12.0/3.0, condition t 0.999/1.000, audio as long as the video, runtime lora at 1.00
+[INFO] ModelSelectStage('model-select'): model = 'local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] GenerateVideoStage('generate-video'): MiniMax-H3 partition 'ref2va' (models DB says model_type 'minimax-h3-ref2va', so taken from the record)
+[INFO] GenerateVideoStage('generate-video'): MiniMax-H3 (video+audio) at 832x480x124 frames, 6 steps, shifts 12.0/3.0
+[INFO] AudioVaeDecodeStage('audio-vae-decode'): minimax-h3 audio VAE loaded -- 32000 Hz, 32 latent channels, hop 800 (40 latents/s), unload_when_idle=yes
+[INFO] VideoRefEncoderStage('video-ref-encoder'): MiniMax-H3 ref2va encoders ready (conditioner tap 50 streamed, video VAE, audio VAE)
+[INFO] VideoRefEncoderStage('video-ref-encoder'): memory-bounded -- the conditioner and the VAEs are dropped once a request is encoded and reloaded for the next one
+[NORMAL] [h3-refenc] presentation: 99 tokens, conditioner 5101 ms
+[INFO] VideoRefEncoderStage('video-ref-encoder'): prompt only (an explicitly empty reference list) -> 99 conditioning rows, no reference rows
+[INFO] GenerateVideoStage('generate-video'): generation 1, seed 42
+[INFO] model registry: 'Pika-Labs/Pika-H3-Flex-ref2va' -> '/Users/minichen/AI-Models/vpipe-workspace/models/Pika-Labs/Pika-H3-Flex'
+[INFO] GenerateVideoStage('generate-video'): MiniMax-H3 footprint 21 GB (others 34 GB, less 12 GB the AdaLN bake retires) + 8 GB headroom -> STREAM blocks
+[INFO] model registry: 'Pika-Labs/Pika-H3-Flex-ref2va' -> '/Users/minichen/AI-Models/vpipe-workspace/models/Pika-Labs/Pika-H3-Flex'
+[PROGRESS] 'encoding references' ended at 11:25:51
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] MetalMiniMaxH3Transformer: runtime LoRA '/Users/minichen/AI-Models/vpipe-workspace/models/Pika-Labs/Pika-H3-Flex/ref2va/adapter.safetensors' -- 208 modules at scale 1, rank <= 384 (diffusers decomposition, qkv fused HERE for this DiT's flat grouping, 52 of 52 banded; matrix-core band tiles ready)
+[INFO] MetalMiniMaxH3Transformer: '/Users/minichen/AI-Models/vpipe-workspace/models/Pika-Labs/Pika-H3-Flex/ref2va/adapter.safetensors' states a sampling contract (pika-flex-ref2va-v1): 6 steps on its own grid, fresh noise each step, shifts 12/3
+[INFO] MetalMiniMaxH3Transformer: adapter factors stream with their blocks -- 1268 MB spilled (200 projections), 25 MB held for the streamed block
+[INFO] GenerateVideoStage('generate-video'): pika-flex-ref2va-v1 on lora slot 0 -- its sampling contract runs 6 steps on its own grid, fresh noise each step (`steps: 6` is not used while it is live)
+[INFO] GenerateVideoStage('generate-video'): memory-bounded -- the DiT is dropped after each clip so the VAE decode has working set, and reloads on the next prompt (its blocks stream, so the box is already tight)
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'Pika-Labs/Pika-H3-Flex-ref2va' -> '/Users/minichen/AI-Models/vpipe-workspace/models/Pika-Labs/Pika-H3-Flex'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'Pika-Labs/Pika-H3-Flex-ref2va' -> '/Users/minichen/AI-Models/vpipe-workspace/models/Pika-Labs/Pika-H3-Flex'
+[INFO] memory-plan (generate-video): peak 9804 MB at 'generate-video' streaming, 38715 MB at 'generate-video' preloaded, over 9 stages in running order (minimax-h3-model-config 4622 MB, text-prompt 4622 MB, model-select 4622 MB, video-ref-encoder 4622 MB, generate-video 9804 MB, audio-vae-decode 5202 MB, vae-decode 4625 MB, rgb-to-video 4622 MB, save-video 4622 MB)
+[INFO] GenerateVideoStage('generate-video'): MiniMax-H3 DiT streams its 50 blocks; the resident set grows into free RAM as the denoise runs and is given back when the box needs it
+[INFO] GenerateVideoStage('generate-video'): prompt-only Ref2VA -- the request's reference list is explicitly empty, so the Ref2VA weights denoise from the prompt alone over the text-to-video layout
+[INFO] GenerateVideoStage('generate-video'): reclaimable RAM ~14398 MB + up to 0 MB the OS can swap (4096 MB allowed by swap_allowance_mb, 0 MB other processes are actually holding -- nothing to spend: 5476 MB anonymous, less 1562 MB purgeable, 3362 MB wired system-wide and 2716 MB this process's own); 5% margin
+[INFO] MetalMiniMaxH3Transformer: residency probe 50 blocks of 50 (390 MB each, 14218 MB reclaimable, wire budget 18186 MB) -- uncapped, the wire budget is the gate
+[NORMAL] MetalMiniMaxH3Transformer: baked AdaLN for 6 steps (11 rows) -- 51 projections (13216 MB of weights) replaced by 101 MB of tables, and no longer streamed per step
+[INFO] h3-denoise: 6 steps RE-NOISED on the sampling contract's grid (pika-flex-ref2va-v1): x0 at each sigma, then fresh noise to the next
+[NORMAL] MetalMiniMaxH3Transformer: rope table bf16, angles fp32 -- matching ComfyUI / diffusers
+[NORMAL] [h3-dit] first forward at 14943 rows: 5386 ms before block 0 (scratch 0, residency+wire 80, gemm autotune 5294, rope/temb/attn setup 12)
+[PROGRESS] 0% of 'denoise' completed at 11:26:02 (0/300)
+[PROGRESS] 10% of 'denoise' completed at 11:26:30 (30/300)
+[PROGRESS] 20% of 'denoise' completed at 11:26:58 (60/300)
+[PROGRESS] 30% of 'denoise' completed at 11:27:26 (90/300)
+[PROGRESS] 40% of 'denoise' completed at 11:27:54 (120/300)
+[PROGRESS] 50% of 'denoise' completed at 11:28:22 (150/300)
+[PROGRESS] 60% of 'denoise' completed at 11:28:51 (180/300)
+[PROGRESS] 70% of 'denoise' completed at 11:29:21 (210/300)
+[PROGRESS] 80% of 'denoise' completed at 11:29:49 (240/300)
+[PROGRESS] 90% of 'denoise' completed at 11:30:18 (270/300)
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'Pika-Labs/Pika-H3-Flex-ref2va' -> '/Users/minichen/AI-Models/vpipe-workspace/models/Pika-Labs/Pika-H3-Flex'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'Pika-Labs/Pika-H3-Flex-ref2va' -> '/Users/minichen/AI-Models/vpipe-workspace/models/Pika-Labs/Pika-H3-Flex'
+[INFO] memory-plan (generate-video): peak 16871 MB at 'generate-video' streaming, 45782 MB at 'generate-video' preloaded, over 9 stages in running order (minimax-h3-model-config 4622 MB, text-prompt 4622 MB, model-select 4622 MB, video-ref-encoder 4622 MB, generate-video 16871 MB, audio-vae-decode 5202 MB, vae-decode 4625 MB, rgb-to-video 4622 MB, save-video 4622 MB)
+[INFO] GenerateVideoStage('generate-video'): DiT residency ended at 18 of 50 blocks (7485 MB), 0 pinned at load
+[PROGRESS] 'denoise' ended at 11:30:46, last reported 99% (298/300)
+[INFO] GenerateVideoStage('generate-video'): emitted MiniMax-H3 latents #1 -- video [24, 37, 30, 52] + audio [2, 32, 207]
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] VaeDecodeStage('vae-decode'): loading the MiniMax-H3 video VAE from '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[PROGRESS] 0% of 'vae decode' completed at 11:30:46 (0/84)
+[INFO] AudioVaeDecodeStage('audio-vae-decode'): decoded clip #1 -- 207 latent frames -> 2 x 165600 samples (5.17 s at 32000 Hz)
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[PROGRESS] 10% of 'vae decode' completed at 11:30:53 (9/84)
+[PROGRESS] 20% of 'vae decode' completed at 11:30:57 (17/84)
+[PROGRESS] 30% of 'vae decode' completed at 11:31:02 (26/84)
+[PROGRESS] 40% of 'vae decode' completed at 11:31:07 (34/84)
+[PROGRESS] 50% of 'vae decode' completed at 11:31:11 (42/84)
+[PROGRESS] 60% of 'vae decode' completed at 11:31:16 (51/84)
+[PROGRESS] 70% of 'vae decode' completed at 11:31:20 (59/84)
+[PROGRESS] 80% of 'vae decode' completed at 11:31:25 (68/84)
+[PROGRESS] 90% of 'vae decode' completed at 11:31:30 (76/84)
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[INFO] model registry: 'local/MiniMax-H3-Ref2VA-8bit' -> '/Users/minichen/AI-Models/vpipe-workspace/models/local/MiniMax-H3-Ref2VA-8bit'
+[PROGRESS] 'vae decode' ended at 11:31:34, last reported 98% (83/84)
+[INFO] PipelineRuntime: pipeline 'pika-ref2va-noref' ran for 5 m 50 s

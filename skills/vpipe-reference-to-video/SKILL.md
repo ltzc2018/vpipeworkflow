@@ -45,6 +45,7 @@ Ref2VA 的序列是 `[text | reference blocks | target audio | target video]`，
 | 路线 | 权重 | 参考 | 耗时 | 规格 |
 |---|---|---|---|---|
 | 参考生视频 | Ref2VA-8bit + Pika H3 Flex ref2va | ✅ | 6 分 49 秒 | 832×480 / 124 帧 / 5.18 s + AAC |
+| 参考生视频（HyperFlow 8 步 flow-map） | Ref2VA-8bit + `videorebirth/hyperflow-ref2va` | ✅ | 8 分 54 秒 | 832×480 / 124 帧 / 5.18 s + AAC |
 | 参考生视频（官方已发布配对） | FL2VA-8bit + VDN 线性分支 | ✅ | 8 分 20 秒 | 960×544 / 124 帧 / 5.18 s + AAC |
 | 参考生视频（无参考对照） | Ref2VA-8bit | ❌ 空列表 | 5 分 50 秒 | 960×544 / 124 帧 |
 
@@ -180,6 +181,71 @@ MiniMax-H3 会把每个参考重采样到 24 fps。输入途中丢了帧率 = �
 **6. 服装/配饰经常丢失**
 参考图负责"主体长什么样"，但服装、配饰往往不自动保留。需要保真见 `vpipe-first-last-to-video`。
 
+## 两种 runtime adapter：Pika H3 Flex vs HyperFlow（2026-11-14 三组对照实测）
+
+`minimax-h3-model-config` 的 `lora` 字段决定用哪个 runtime adapter。
+本机把**同一提示词、同一参考图、同一 seed** 的三组跑完：
+
+| 组 | `lora` | `lora_scale` | 前向次数 | AdaLN 烘焙行数 | 条件行数 | 耗时 | 全片 SSIM vs 参考图 |
+|---|---|---|---|---|---|---|---|
+| **A** | `Pika-Labs/Pika-H3-Flex-ref2va` | 1.0 | 6 | 17 | 16999 | **6 分 48 秒** | **0.4896** |
+| **B** | `videorebirth/hyperflow-ref2va` | 1.0 | 8 | **24** | 16999 | 8 分 54 秒 | 0.4433 |
+| **C** | `videorebirth/hyperflow-ref2va` | **0.0** | 8 | **23** | 16999 | 8 分 23 秒 | **0.4810** |
+
+**三组条件行数完全相同（16999）** → 这是干净的对照，变量只有 adapter 与采样网格。
+
+**C 组是最有说服力的一组**：C（0.4810）明显更靠近 A（0.4896）而不是 B（0.4433），
+**直接证明 `lora_scale: 0` 精确回到原始模型**（只是仍在 HyperFlow 的 8 步网格上）。
+实验被拆成两个因子：
+
+| 因子 | 对照 | SSIM 差 | 结论 |
+|---|---|---|---|
+| **adapter delta** | B vs C | 0.4433 ↔ 0.4810 | delta 把输出推离参考图 |
+| **采样网格** | A vs C | 0.4896 ↔ 0.4810 | 只换网格影响小得多 |
+
+**取舍**：短片（≤5 秒）优先 Pika（省 2 分钟）；追求画质或跑长片段，
+HyperFlow 的 8 次前向比原始模型 15 步划算。目视上 HyperFlow 的毛发/木纹/叶片更锐。
+
+### HyperFlow 的三个硬事实
+
+1. **HyperFlow 不是 LoRA**，是「LoRA + 时间步 MLP 的一处结构改动」：
+   `temb = emb(t) + gate * (emb_r(r) - emb(t))`，`gate = 0.25`。
+   每一步每行需要两个数 `(t, r)`；条件行没有要去的地方，所以那里 `r == t`。
+2. **不需要设置步数**。适配器文件里写明了蒸馏时的 sigma 网格
+   （9 点、8 次前向），只要适配器生效，vpipe 就跑这个网格；图里的 `steps` 在此期间**不被使用**。
+   日志会明写：`HyperFlow 1.0 on lora slot 0 -- 8-step flow-map grid from the adapter
+   ('steps: 8' is not used while it is live), two-time embedding at gate 0.25`。
+3. **`video_shift` / `audio_shift` 必须保持 12 / 3**（与训练时一致），`lora_scale` 保持 1.0。
+   设 0 = 精确回到原始模型（可做同模型 A/B）；中间值是**未训练过的状态**。
+
+### 别名注册（Ref2VA 专用）
+
+HyperFlow **一个文件覆盖三个 partition**（`transformer` 与 `transformer_ref` 都兼容），
+但 Ref2VA 要用注册名 `videorebirth/hyperflow-ref2va`：
+
+```json
+{
+  "id": "register",
+  "type": "model-register",
+  "iports": [],
+  "config": {
+    "model_dir": "/abs/path/models/videorebirth/hyperflow",
+    "key": "videorebirth/hyperflow-ref2va",
+    "model_type": "minimax-h3-lora"
+  }
+}
+```
+```
+[INFO] ModelRegisterStage('register'): registered 'videorebirth/hyperflow-ref2va'
+  -> '.../models/videorebirth/hyperflow' [minimax-h3-lora, by config-key]
+```
+
+> `model_type` 要显式写 —— 上游 detector 的签名表**认不出**
+> `videorebirth/hyperflow` / `videorebirth/hyperflow-ref2va`（上游单测已知失败项）。
+>
+> `lora` 字段也接受**文件直路径**，所以不注册别名也能跑通 flow-map 逻辑；
+> 注册只是为了在选择器里能直接选。
+
 ## 验证参考图是否真的生效
 
 **这是本技能最该被认真执行的部分。** 直接看片子里"像不像"是自说自话。
@@ -216,4 +282,5 @@ load-video ┬→ video-to-rgb → image-resample(1344×768) → temporal-stack 
 - `references/prompt-guide.md` —— 提示词写法与消融方法论
 - `references/troubleshooting.md` —— 故障排查表
 - `assets/pika-ref2va.vpipeline` —— 可直接改用的出片流水线
-- `assets/prepare-ref2va-8bit.vpipeline` —— Ref2VA 8-bit 准备流水线
+- `assets/pika-ref2va-strong-ablation.vpipeline` —— 强消融（先验不可达主体）
+- `assets/prepare-ref2va-8bit.vpipeline` —— Ref2VA 8-bit 准备流水线（官方全量版）

@@ -15,7 +15,7 @@
       "iports": [],
       "config": {
         "url": [
-          "/Users/minichen/AI-Models/vpipe-workspace/refs/minimax-h3-reference-subject.jpg"
+          "refs/minimax-h3-reference-subject.jpg"
         ]
       }
     },
@@ -210,7 +210,7 @@
         }
       ],
       "config": {
-        "output_url": "/Users/minichen/AI-Models/vpipe-workspace/out/pika-i2va-shop.mp4",
+        "output_url": "out/pika-i2va-shop.mp4",
         "enable_video": true,
         "enable_audio": true
       }

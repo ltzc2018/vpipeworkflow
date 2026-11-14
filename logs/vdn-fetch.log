@@ -1,0 +1,16 @@
+[INFO] PipelineRuntime: pipeline 'cli-model-fetch-0' has 1 clock domain; domain 0 = {model-fetch}
+[INFO] memory landscape at launch: 24576 MB RAM -- 9885 MB idle, 6405 MB file cache, 2512 MB wired system-wide, 2457 MB compressed, 399 MB swap; this process holds 5 MB
+[INFO] memory landscape: wired pool 18186 MB of 18186 MB the GPU can keep resident, 0 MB of it already in use
+vpipe: launched stage 'model-fetch'
+[INFO] ModelFetchStage('model-fetch'): fetching 'OpenVDN/vdn-minimax-h3' from ModelScope -> './models/OpenVDN/vdn-minimax-h3'
+[INFO]   [1/8] stage-dmd-step-250/linear_branch/config.json (465.0 B) ...
+[PROGRESS] 0% of 'download OpenVDN/vdn-minimax-h3' completed at 10:50:23 (0/5464957032)
+[INFO]   [2/8] stage-dmd-step-250/linear_branch/model.safetensors (4.0 GB) ...
+[PROGRESS] 0% of 'model.safetensors' completed at 10:50:23 (31889/4279428112)
+[PROGRESS] 10% of 'model.safetensors' completed at 10:50:33 (430996498/4279428112)
+[PROGRESS] 10% of 'download OpenVDN/vdn-minimax-h3' completed at 10:50:36 (548011491/5464957032)
+[PROGRESS] 20% of 'model.safetensors' completed at 10:50:43 (859831350/4279428112)
+[PROGRESS] 20% of 'download OpenVDN/vdn-minimax-h3' completed at 10:50:49 (1093090769/5464957032)
+[PROGRESS] 30% of 'model.safetensors' completed at 10:50:53 (1284914212/4279428112)
+[PROGRESS] 30% of 'download OpenVDN/vdn-minimax-h3' completed at 10:51:02 (1644150261/5464957032)
+[PROGRESS] 40% of 'model.safetensors' completed at 10:51:03 (1715567670/4279428112)

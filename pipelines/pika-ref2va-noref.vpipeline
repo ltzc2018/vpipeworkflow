@@ -164,7 +164,7 @@
         }
       ],
       "config": {
-        "output_url": "/Users/minichen/AI-Models/vpipe-workspace/out/pika-ref2va-noref.mp4",
+        "output_url": "out/pika-ref2va-noref.mp4",
         "enable_video": true,
         "enable_audio": true
       }

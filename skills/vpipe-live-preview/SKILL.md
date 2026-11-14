@@ -96,12 +96,16 @@ open -a "Vpipe Manager"
         "preview_frames": 39,
         "unload_when_idle": "always"
       } },
-    { "id": "preview", "type": "preview", "iports": [ {"src":"generate-video","oport":0} ],
+    { "id": "preview", "type": "preview", "iports": [ {"src":"generate-video","oport":2} ],
       "config": {} }
   ],
   "subpipelines": []
 }
 ```
+
+> ⚠️ **`preview` 必须接 `generate-video` 的 `oport 2`**（预览通道）。
+> 接 `oport 0`（视频 latent）或 `oport 1`（音频 latent）都不对 —— 早期版本的
+> 本技能文档里写的是 `oport 0`，已修正。
 
 **预览用的分辨率要低**：512×288 / 39 帧 / 4 步。预览本身就是为了快，不要用成片的 960×544。
 
@@ -174,5 +178,76 @@ curl -sL "https://api.github.com/repos/madebyollin/taehv/contents/taeh3.safetens
 
 - `references/preview-setup.md` —— TAE-H3 获取与路径写法
 - `references/troubleshooting.md` —— 故障排查表
+- `references/i2va-preview-findings.md` —— **i2va 首帧锚定链路的完整实测报告**（2026-11-14）
+- `references/cli-capture.md` —— **CLI 下把预览流抓下来做量化**（免 Web UI 手工操作）
 - `assets/h3-taeh3-preview.vpipeline` —— 预览流水线（文件路径写法）
 - `assets/h3-taeh3-preview-dir.vpipeline` —— 预览流水线（目录路径写法）
+- `assets/pika-i2va-preview-fast.vpipeline` —— **i2va 首帧锚定 + 预览（512×288 / 39 帧，实测通过）**
+- `assets/pika-i2va-preview-prod.vpipeline` —— 同上，生产规格（832×480 / 124 帧）
+- `assets/pika-t2v-preview-fast.vpipeline` —— t2v 对照组（无锚定，用于量化锚定价值）
+- `scripts/p4_run.py` —— 编排：起 web-ui → 载流水线 → 启动 → 抓流 → 等成片 → 停
+- `scripts/ws_capture.py` —— 极简 RFC6455 客户端 + 分段拼装 fMP4
+- `scripts/split_preview.py` —— 按 init 段把预览流切成独立可解码的 mp4
+- `scripts/p4_beats.py` —— 切步 + 印相 + SSIM/PSNR 量化
+- `scripts/p4_anchor_emergence.py` —— 锚定涌现曲线（每一步主体是否已锁死）
+- `scripts/vqa-p4.sh` —— 第三方模型（LFM3-VL）复核
+
+### 路径约定
+
+技能资产里的 `.vpipeline` **路径相对 vpipe 工作目录**（即 `~/AI-Models/vpipe-workspace`）：
+
+```json
+"url":         ["refs/minimax-h3-reference-subject.jpg"],
+"preview_vae": "models/madebyollin/taehv",
+"output_url":  "out/p4-i2va-preview-fast.mp4"
+```
+
+`preview_vae` 用**目录**写法（目录里自己找权重文件），上游改文件名也不怕。
+换成别的机器时，改这三处（或整体替换成绝对路径）即可。
+
+### 脚本的路径配置
+
+全部脚本支持环境变量覆盖，无需改代码：
+
+| 变量 | 含义 | 默认 |
+|---|---|---|
+| `VPIPE_FFMPEG` | ffmpeg 可执行文件 | `PATH` 上的 `ffmpeg` → 本机 hermes 路径 |
+| `VPIPE_WS` | vpipe 工作目录 | `~/AI-Models/vpipe-workspace` |
+| `VPIPE_LAB` | 实验室目录（产物落盘处） | `~/WorkBuddy/vpipe-lab` |
+| `VPIPE_WEBUI` | `vpipe-web-ui` 可执行文件 | `/Applications/Vpipe Manager.app/Contents/Helpers/vpipe-web-ui` |
+| `VPIPE_WEBUI_PORT` | web-ui 端口 | `9876` |
+
+---
+
+## i2va（首帧锚定）链路：已验证可用
+
+> 完整数据见 `references/i2va-preview-findings.md`。
+
+**接线不用改锚定部分**，只在 `minimax-h3-model-config` 上加预览三件套，
+并把 `preview` 接到 **`generate-video` 的 oport 2**：
+
+```json
+"preview_vae": "<abs>/models/madebyollin/taehv/taeh3.safetensors",
+"preview_every": 1, "preview_max_edge": 512, "preview_frames": 39
+```
+
+**实测结论**（M5 Pro / 24 GB）：
+
+| | i2va-fast | t2v 对照 | i2va-prod |
+|---|---|---|---|
+| 有效预览延迟 | 22.11 s | 20.26 s | **90.33 s**（成片的 24%）|
+| 预览最后一拍 vs 成片（相位对齐） | SSIM 0.9338 | 0.9460 | 0.9663 |
+| 预览第 1 帧 vs 锚定图 | **0.6102** | 0.1219 | 0.8872 |
+
+**锚定在预览路径上第 1 步就锁死**（step1 SSIM 0.9534）；无锚定时 step1 只有
+0.7085，要到 step3 才收敛 —— 这是首帧锚定价值的量化形态。
+
+### 三个最容易踩的坑（另五个见 references）
+
+1. **预览流有两个 init 段**。preview stage 采纳真实原生分辨率时会重新初始化
+   fMP4 → 推第二个 init 段。**按到达顺序分段拼装**，否则前 20 秒全是坏帧。
+2. **「第一个 fragment 到达」≠「能看见画面」**。头 20 秒是 640×360 / 8 kb/s 的
+   **黑画面占位**，不是预览失效。有效延迟以**分辨率被采纳的时刻**为准。
+3. **各拍相位不对齐**。预览是同一 clip 循环播放，每拍替换时相位会漂移。
+   横向比较必须先做**相位对齐**，否则会把 0.93 误判成 0.13。
+   切步用「同相位帧（n 与 n-39）在一个拍内 SSIM 0.978，跨拍骤降」。

@@ -22,9 +22,16 @@ agent_created: true
 
 | 模型 | 类型 | 特性 | 状态 |
 |---|---|---|---|
-| **FLUX.2-klein-9B** | `flux2` | 支持**多参考图**（`klein-multi-ref`）、KV 缓存变体提速 | 官方文档完整，本机待装 |
-| **Qwen-Image-Edit-2511** | `qwen-image-edit` | 20B，指令式编辑能力强 | 本机下载中 |
-| **Boogu-Image-0.1-Edit-Turbo** | `boogu-image-edit` | 10B，**4 步蒸馏**，最快 | 本机下载中 |
+| **Boogu-Image-0.1-Edit-Turbo** | `boogu-image-edit` | 10B，**4 步蒸馏**，**参考图走 VLM 不走 latent**，**支持双参考图** | ✅ **本机已装已验证**（17.6–32.6 秒/张） |
+| **FLUX.2-klein-9B** | `flux2` | 支持**多参考图**（`klein-multi-ref`）、KV 缓存变体提速 | 官方文档完整，本机待装（**gated 模型**） |
+| **Qwen-Image-Edit-2511** | `qwen-image-edit` | 20B，指令式编辑能力强 | **本机装不下**（需 57.7 GB，24 GB 机器） |
+
+> **本机当前唯一跑通的图生图路径是 Boogu**（2026-11-14 实测）。
+> 详见 `references/boogu-edit.md`；流水线模板见 `assets/boogu-image-edit.vpipeline`。
+>
+> **Boogu 的核心机制与下面「参考图走 latent」那一节不同**：
+> 它的 DiT **没有任何 `ref_latent` 通路**，参考图**只**经 Qwen3-VL 视觉塔进入条件。
+> 所以它**不需要 `vae-encode`**，而且**两张参考图可以直接同框生成**（各 144 个视觉 token）。
 
 ## 核心机制：参考图走 latent
 
@@ -79,6 +86,78 @@ text-prompt → diffusion-conditioner ───────┴→ generate-image
 ```
 
 **参考图接在 `generate-image` 的端口 5**。
+
+## Boogu-Image-Edit 接线（本机已验证，**优先用这个**）
+
+Boogu 与 klein / Qwen 的**三点关键差异**（照抄 klein 的接线会静默出错）：
+
+1. **必须接 `boogu-image-model-config`**，且**同时**接到
+   `diffusion-conditioner` 的 iport5 **和** `generate-image` 的 iport7。
+   前者给 VLM 的 `vl_*` 边界，后者让 DiT 认出家族；少接 `generate-image` 那条会打印
+   `the model_config beat is for the 'boogu-image' family but the resident checkpoint is ...`。
+2. **调度器必须 `type: "boogu_v1"`**。Boogu 的 sigma 约定**是反的**（0 = 噪声，1 = 干净），
+   用默认 `simple` 会往反方向采样。
+3. **不需要 `vae-encode`**（没有 latent 通路），**不要接 negative prompt、不要设 `guidance_scale > 1`**
+   （Turbo 蒸馏版固定 CFG = 1）。
+
+```json
+{ "id": "model-select", "type": "model-select",
+  "config": { "hf_dir": "Boogu/Boogu-Image-0.1-Edit-Turbo" } },
+{ "id": "load-ref", "type": "load-image",
+  "config": { "url": ["/abs/path/ref.jpg"] } },
+{ "id": "ref-resample", "type": "image-resample",
+  "iports": [ {"src":"load-ref","oport":0} ],
+  "config": { "width":1024, "height":1024, "fit":"crop", "algorithm":"lanczos" } },
+{ "id": "text-prompt", "type": "text-prompt",
+  "config": { "text": "Replace the background with a neon-lit rainy alley, keep the same cat, same fur pattern, same pose." } },
+{ "id": "boogu-model-config", "type": "boogu-image-model-config", "config": {} },
+{ "id": "scheduler-select", "type": "scheduler-select",
+  "config": { "type": "boogu_v1", "steps": 4, "seq_len": 4096 } },
+{ "id": "diffusion-conditioner", "type": "diffusion-conditioner",
+  "iports": [ {"src":"text-prompt","oport":0}, {"src":"","oport":0},
+              {"src":"model-select","oport":0}, {"src":"ref-resample","oport":0},
+              {"src":"","oport":0}, {"src":"boogu-model-config","oport":0} ],
+  "config": {} },
+{ "id": "generate-image", "type": "generate-image",
+  "iports": [ {"src":"diffusion-conditioner","oport":0}, {"src":"","oport":0},
+              {"src":"model-select","oport":0}, {"src":"","oport":0},
+              {"src":"scheduler-select","oport":0}, {"src":"","oport":0},
+              {"src":"","oport":0}, {"src":"boogu-model-config","oport":0} ],
+  "config": { "width":1024, "height":1024, "steps":4, "seed":42 } },
+{ "id": "vae-decode", "type": "vae-decode",
+  "iports": [ {"src":"generate-image","oport":0}, {"src":"model-select","oport":0} ], "config": {} },
+{ "id": "save-image", "type": "save-image",
+  "iports": [ {"src":"vae-decode","oport":0} ],
+  "config": { "path": "out/edited.jpeg", "quality": 95 } }
+```
+
+### Boogu 多参考图（实测：猫 + 熊猫同框）
+
+```
+load-ref-1  → ref-resample-1 ─→ diffusion-conditioner[3]  (ref_image)
+load-ref-2  → ref-resample-2 ─→ diffusion-conditioner[4]  (ref_image2)
+```
+
+**每张参考图必须各接一个 `image-resample`**。
+`load-image` 的 `url` 数组写多个元素时，多出来的 oport 是 `FlexDataPayload`，
+而 `ref_image` 要 `TensorBeatPayload`，直连会报
+`payload type mismatch ... producer FlexDataPayload vs consumer TensorBeatPayload`。
+
+### Boogu 实测要点（本机，24 GB）
+
+| 项 | 实测值 |
+|---|---|
+| 1024×1024 编辑 | **32.6 秒** |
+| 576×1024 竖版 | **25.7 秒** |
+| 384×1024 竖版 | **17.6 秒** |
+| 双参考图 1024×1024 | **26.1 秒** |
+| 参考图视觉 token | 每张 **144**（grid 24×24，3 层 deepstack） |
+
+**参考图必须预先裁成「单一主体」**：同一张两栏拼图作参考 → 脸与体型大幅漂移；
+裁成单人单幅后 → 姿态、服装、配件（含口罩）、亮片鞋全部保留。
+
+**Boogu 会「美化」人像**：脸型、体型、肤色、发色都会朝模型审美漂。
+**换背景/换场景够用；要保脸请走 `vpipe-first-frame-to-video` 的首帧锚定。**
 
 ## 多参考合成（商品图 + 场景图）
 
@@ -168,16 +247,30 @@ clean minimal background -- no text, no watermark
 上游 issue #41：Qwen-Image-2.1 的 4-bit 产物会**静默输出全透明图**，量化报成功且零警告。**务必目检输出是不是空白。**
 
 **5. `image-resample` 的 `fit` 会裁切**
-`fit: "crop"` 居中裁切，`fit: "letterbox"` 留边。参考图与输出比例差异大时，选错会切掉主体。
+可选值是 `pad | crop | stretch | manual | pad_to_grid | crop_to_grid | crop_to_area`
+（**没有 `letterbox`**，`pad` 就是留边）。
+`crop` 居中裁切、`pad` 留边。参考图与输出比例差异大时，选错会切掉主体 ——
+竖版人像长图（如 520×2400）配 `crop` 到 576×1024 会**直接切掉头和脚**，用 `pad`。
+
+**5b. Boogu：调度器不用 `boogu_v1` 会采样到反方向**
+Boogu 的 sigma 约定是反的（0 = 噪声，1 = 干净），`scheduler-select.type` 必须是 `boogu_v1`。
+
+**5c. Boogu：`load-image` 直连 `ref_image` 会报类型不匹配**
+`load-image` 出 `FlexDataPayload`，`ref_image` 要 `TensorBeatPayload` —— 中间必须加 `image-resample`。
+
+**5d. Boogu：多主体参考图会让脸和体型漂移**
+两栏拼图作参考 → 模型把两个主体当成「一个人 + 场景」来折中。
+**先裁成单人单幅再喂。**
 
 **6. `compare-image` stage 可用于并排对照**
 klein 官方流水线里有一个 `compare-image` stage，同时接原图和解码图，输出并排对照图 —— 调试时很方便。
 
 ## 参考资料
 
-- `references/edit-models.md` —— 三个模型的接线差异对照
-- `references/prompt-recipes.md` —— 编辑类提示词模板
+- `references/boogu-edit.md` —— **Boogu 完整实测报告**（机制对照、五个用例、漂移分析、故障排查）
 - `references/troubleshooting.md` —— 故障排查表
-- `assets/klein-ref-edit.vpipeline` —— klein 单参考编辑
-- `assets/klein-multi-ref.vpipeline` —— klein 多参考合成
-- `assets/qwen-image-2.1-edit.vpipeline` —— Qwen-Image-Edit 编辑
+- `assets/boogu-image-edit.vpipeline` —— **Boogu 单参考编辑（本机实测通过）**
+- `assets/boogu-multi-ref.vpipeline` —— **Boogu 双参考同框（实测通过）**
+- `assets/klein-ref-edit.vpipeline` —— klein 单参考编辑（未在本机实测）
+- `assets/klein-multi-ref.vpipeline` —— klein 多参考合成（未在本机实测）
+- `assets/qwen-image-2.1-edit.vpipeline` —— Qwen-Image-Edit 编辑（未在本机实测）

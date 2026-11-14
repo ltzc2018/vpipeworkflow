@@ -180,7 +180,7 @@
         }
       ],
       "config": {
-        "output_url": "/Users/minichen/AI-Models/vpipe-workspace/out/h3-taeh3-preview-dir.mp4",
+        "output_url": "out/h3-taeh3-preview-dir.mp4",
         "enable_video": true,
         "enable_audio": true
       }

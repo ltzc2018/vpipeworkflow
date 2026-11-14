@@ -47,7 +47,7 @@
         "audio_shift": 3.0,
         "condition_timestep": 1.0,
         "audio_seconds": 0.0,
-        "preview_vae": "/Users/minichen/AI-Models/vpipe-workspace/models/madebyollin/taehv/taeh3.safetensors",
+        "preview_vae": "models/madebyollin/taehv/taeh3.safetensors",
         "preview_every": 1,
         "preview_max_edge": 512,
         "preview_frames": 39,
@@ -181,7 +181,7 @@
         }
       ],
       "config": {
-        "output_url": "/Users/minichen/AI-Models/vpipe-workspace/out/h3-taeh3-preview.mp4",
+        "output_url": "out/h3-taeh3-preview.mp4",
         "enable_video": true,
         "enable_audio": true
       }
