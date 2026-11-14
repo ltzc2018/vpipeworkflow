@@ -1,0 +1,3 @@
+########## p3-768p-shift6.vpipeline (21:54:26) ##########
+/Applications/WorkBuddy.app/Contents/Resources/app.asar.unpacked/cli/vendor/sandbox-center-runtime-kit/shim/brokered-bin/codebuddy-toybox-dispatch: line 663: 50603 Hangup: 1               CODEBUDDY_TOYBOX_DISPATCH_ACTIVE="$__cb_app" "$__cb_toybox" "$__cb_app" "$@" 2> "$__cb_err"
+/Applications/WorkBuddy.app/Contents/Resources/app.asar.unpacked/cli/vendor/sandbox-center-runtime-kit/shim/brokered-bin/codebuddy-toybox-dispatch: line 663: 50604 Hangup: 1               CODEBUDDY_TOYBOX_DISPATCH_ACTIVE="$__cb_app" "$__cb_toybox" "$__cb_app" "$@" 2> "$__cb_err"

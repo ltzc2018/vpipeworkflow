@@ -1,0 +1,180 @@
+{
+  "overview": {
+    "shift6": {
+      "resolution": "1344x768",
+      "duration": "00:00:05.18",
+      "frames": 124,
+      "fps": "24",
+      "bytes": 1457034,
+      "has_audio": "yes",
+      "detail_native": 167.7,
+      "detail_canvas": 167.7,
+      "detail_first_third": 159.5,
+      "detail_last_third": 176.1,
+      "jitter": 2.53,
+      "frozen_pairs": 0,
+      "y_first": 93.4,
+      "y_last": 99.1,
+      "y_mean": 98.9,
+      "near_black_frames": 0,
+      "audio": {
+        "present": true,
+        "seconds": 5.17,
+        "rms": 0.00247,
+        "peak": 0.11618,
+        "silent": false,
+        "centroid_hz": 3274.9,
+        "low_ratio": 0.19
+      },
+      "sat_mean": 0.4714,
+      "sat_max": 0.5218,
+      "contrast": 70.62,
+      "path": "/Users/minichen/AI-Models/vpipe-workspace/out/p3-768p-shift6.mp4"
+    },
+    "shift12": {
+      "resolution": "1344x768",
+      "duration": "00:00:05.18",
+      "frames": 124,
+      "fps": "24",
+      "bytes": 1432700,
+      "has_audio": "yes",
+      "detail_native": 158.6,
+      "detail_canvas": 158.6,
+      "detail_first_third": 145.8,
+      "detail_last_third": 166.4,
+      "jitter": 2.735,
+      "frozen_pairs": 0,
+      "y_first": 94.8,
+      "y_last": 99.6,
+      "y_mean": 100.8,
+      "near_black_frames": 0,
+      "audio": {
+        "present": true,
+        "seconds": 5.17,
+        "rms": 0.00456,
+        "peak": 0.16495,
+        "silent": false,
+        "centroid_hz": 3095.9,
+        "low_ratio": 0.1305
+      },
+      "sat_mean": 0.4854,
+      "sat_max": 0.5449,
+      "contrast": 72.93,
+      "path": "/Users/minichen/AI-Models/vpipe-workspace/out/p3-768p-shift12.mp4"
+    },
+    "544p": {
+      "resolution": "960x544",
+      "duration": "00:00:05.18",
+      "frames": 124,
+      "fps": "24",
+      "bytes": 1422797,
+      "has_audio": "yes",
+      "detail_native": 175.1,
+      "detail_canvas": 50.3,
+      "detail_first_third": 68.3,
+      "detail_last_third": 33.0,
+      "jitter": 2.61,
+      "frozen_pairs": 0,
+      "y_first": 115.4,
+      "y_last": 113.7,
+      "y_mean": 114.9,
+      "near_black_frames": 0,
+      "audio": {
+        "present": true,
+        "seconds": 5.17,
+        "rms": 0.00457,
+        "peak": 0.09155,
+        "silent": false,
+        "centroid_hz": 3954.5,
+        "low_ratio": 0.1028
+      },
+      "sat_mean": 0.4113,
+      "sat_max": 0.4357,
+      "contrast": 75.8,
+      "path": "/Users/minichen/AI-Models/vpipe-workspace/out/p3-544p-ref.mp4"
+    },
+    "4step": {
+      "resolution": "1344x768",
+      "duration": "00:00:05.18",
+      "frames": 124,
+      "fps": "24",
+      "bytes": 1440104,
+      "has_audio": "yes",
+      "detail_native": 170.6,
+      "detail_canvas": 170.6,
+      "detail_first_third": 159.1,
+      "detail_last_third": 176.1,
+      "jitter": 2.993,
+      "frozen_pairs": 0,
+      "y_first": 106.9,
+      "y_last": 97.4,
+      "y_mean": 100.8,
+      "near_black_frames": 0,
+      "audio": {
+        "present": true,
+        "seconds": 5.17,
+        "rms": 0.00385,
+        "peak": 0.24185,
+        "silent": false,
+        "centroid_hz": 3047.7,
+        "low_ratio": 0.244
+      },
+      "sat_mean": 0.4409,
+      "sat_max": 0.4478,
+      "contrast": 70.66,
+      "path": "/Users/minichen/AI-Models/vpipe-workspace/out/p3-768p-4step.mp4"
+    },
+    "long241": {
+      "resolution": "1344x768",
+      "duration": "00:00:10.13",
+      "frames": 243,
+      "fps": "24",
+      "bytes": 2771418,
+      "has_audio": "yes",
+      "detail_native": 173.2,
+      "detail_canvas": 173.2,
+      "detail_first_third": 190.1,
+      "detail_last_third": 156.6,
+      "jitter": 2.295,
+      "frozen_pairs": 0,
+      "y_first": 99.4,
+      "y_last": 97.7,
+      "y_mean": 98.3,
+      "near_black_frames": 0,
+      "audio": {
+        "present": true,
+        "seconds": 10.12,
+        "rms": 0.00266,
+        "peak": 0.06729,
+        "silent": false,
+        "centroid_hz": 2481.4,
+        "low_ratio": 0.25
+      },
+      "sat_mean": 0.4979,
+      "sat_max": 0.5082,
+      "contrast": 67.92,
+      "path": "/Users/minichen/AI-Models/vpipe-workspace/out/p3-768p-shift6-241f.mp4"
+    }
+  },
+  "pairs": {
+    "shift6 vs shift12": {
+      "ssim": 0.6520185161290323,
+      "psnr": 17.7
+    },
+    "shift6 vs 4step": {
+      "ssim": 0.6103671209677419,
+      "psnr": 14.27
+    },
+    "shift6 vs long241": {
+      "ssim": 0.534654255144033,
+      "psnr": 12.71
+    },
+    "544p_up vs shift6": {
+      "ssim": 0.5688156129032258,
+      "psnr": 12.64
+    }
+  },
+  "_files": {
+    "544p_up": "/tmp/p3-544p-up.mp4"
+  }
+}

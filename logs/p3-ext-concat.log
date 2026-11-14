@@ -1,0 +1,21 @@
+[NORMAL] libavutil: using '@loader_path/libavutil.dylib'
+[NORMAL] libavcodec: using '@loader_path/libavcodec.dylib'
+[NORMAL] libswresample: using '@loader_path/libswresample.dylib'
+[NORMAL] libswscale: using '@loader_path/libswscale.dylib'
+[NORMAL] libavformat: using '@loader_path/libavformat.dylib'
+[NORMAL] libavdevice: using '@loader_path/libavdevice.dylib'
+[NORMAL] libavfilter: using '@loader_path/libavfilter.dylib'
+[INFO] AudioToPcmStage('audio-to-pcm'): output_sample_rate=32000 Hz, chunk_duration_s=5.1667, chunk_overlap_s=0, max_chunk_duration_s=30, emit_log_every=1
+[INFO] PipelineRuntime: pipeline 'p3-ext-concat' has 4 clock domains; domain 0 = {}; domain 1 = {}; domain 2 = {}; domain 3 = {rgb-to-video}; crossers = {save-video, video-to-rgb, audio-to-pcm, load-parts}
+[INFO] memory landscape at launch: 24576 MB RAM -- 15083 MB idle, 1609 MB file cache, 2820 MB wired system-wide, 2586 MB compressed, 3163 MB swap; this process holds 6 MB
+[INFO] memory landscape: wired pool 18186 MB of 18186 MB the GPU can keep resident, 0 MB of it already in use -- and the box is ALREADY paging, so growth will be refused until that clears
+vpipe: launched pipeline './pipelines/p3-ext-concat.vpipeline'
+[INFO] AudioToPcmStage('audio-to-pcm'): opened decoder codec_id=86032 in_sr=32000 in_ch=2 (resampler builds on first frame)
+[INFO] video-to-rgb('video-to-rgb'): first segment: codec_id=33 832x480 extradata=42b db_key= parent='out/p3-ext-part1.mp4'
+[INFO] LoadVideoStage('load-parts'): joined part 2 of 4 -- 'out/p3-ext-part2.mp4' continues at 5.175 s
+[INFO] video-to-rgb('video-to-rgb'): sws initial geometry: 832x480 pix_fmt=5
+[INFO] video-to-rgb('video-to-rgb'): source colour BT.709 full range, read from the frame
+[INFO] LoadVideoStage('load-parts'): joined part 3 of 4 -- 'out/p3-ext-part3.mp4' continues at 5.175 s
+[INFO] LoadVideoStage('load-parts'): joined part 4 of 4 -- 'out/p3-ext-part4.mp4' continues at 5.175 s
+[INFO] LoadVideoStage('load-parts'): end of 4 inputs joined, 'out/p3-ext-part1.mp4' … 'out/p3-ext-part4.mp4' after 496 video + 164 audio packet(s)
+[INFO] PipelineRuntime: pipeline 'p3-ext-concat' ran for 5.8 s

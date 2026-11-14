@@ -77,10 +77,47 @@ PUT /api/log/level   {"level": "debug"}
 
 | 文件 | 内容 |
 |---|---|
-| `preview-stream.mp4` | **按到达顺序拼装**的完整流（init1 + frags1 + init2 + frags2…）|
-| `init-1.mp4` | 第 1 个 init 段留档（**766 B，不能单独解码**）|
-| `init-2.mp4` | 第 2 个 init 段留档（同上）|
+| `preview-stream.mp4` | **可播的拼装版**（各段重封装后统一画布拼成，0 解码错误）|
+| `preview-stream-segN.fmp4` | **按段落的原始 fMP4**（init + 自己的 fragments，无损，源证据）|
+| `preview-stream-segN.mp4` | 每段重封装后的合法 MP4（`<tag>-partN.mp4`）|
+| `init-1.mp4` / `init-2.mp4` | 第 N 个 init 段留档（**766 B，不能单独解码**）|
 | `ws-capture.log` | 分片时间线 + 每条消息的字节数 |
+
+### ⚠️ 2026-11-14 修正：交付物曾是一份畸形 MP4
+
+**旧写法把 `init1 + frags1 + init2 + frags2` 顺序拼成单个 `preview-stream.mp4`**，
+于是文件里有**两个 `moov`**（中间还嵌了一个 `ftyp`）。MP4 规范里 moov 只能有一个，
+解码器走到第二个 moov 会重置参数集（SPS/PPS），后续 fragment 全用错误配置去解：
+
+```
+[h264 @ ...] top block unavailable for requested intra mode
+[h264 @ ...] error while decoding MB 32 0, bytestream 11979
+```
+
+**后果**：整个预览流从第 1 帧到最后一帧大面积花屏 —— 抽帧拼图里几乎全是噪点与竖条。
+量化：原文件 41.79 s，**解码错误贯穿全片**；修复后 **0 处**，画面恢复成清晰的橘猫。
+
+> ⚠️ 讽刺的是：这个坑**早就写在本文件第 3 节**（「不切会怎样：满屏 error」），
+> 但当时的切分只用在**分析脚本**里，**交付的那份文件从没被切过**。
+> **教训：诊断脚本切对了 ≠ 交付物是对的。交付前必须对交付文件本身做解码复检。**
+
+**现在怎么修**（`scripts/p4_fix_preview.py`，已同步进技能包）：
+
+```bash
+python3 scripts/p4_fix_preview.py \
+    --raw  deliverables/p4-preview/i2va-fast/preview-stream.mp4 \
+    --outdir deliverables/p4-preview/i2va-fast --tag i2va-fast \
+    --concat --concat-name preview-stream-fixed.mp4
+```
+
+它做三件事：
+
+1. **按 box 结构切段**（解析 `moov` 出现的位置，比按日志字节数切更可靠）
+2. **每段各自 ffmpeg 重封装**成合法 MP4（`partN.mp4`）
+3. **统一到第一段的画布后拼成单文件**（不同分辨率的段不能 `-c copy` 直拼）
+
+抓流脚本 `scripts/ws_capture.py` 已同步改成**源头修复**：不再拼畸形文件，
+改为每段各写一个 `preview-stream-segN.fmp4`，再调用上面的修复器产出可播文件。
 
 ### 为什么有两个 init 段
 
@@ -92,12 +129,17 @@ PUT /api/log/level   {"level": "debug"}
 - `handle_clip_`：`each new clip replaces it` —— 每个去噪步的 clip 替换上一个，
   然后从头循环播放
 
-实测（i2va-fast）：
+实测（三组全部同规律）：
 
-| 分段 | 触发时刻 | 分辨率 | 时长 | 码率 | 内容 |
-|---|---|---|---|---|---|
-| segment-1 | launch + 1.76 s | 640×360 | 20.24 s | **8 kb/s** | **纯黑占位** |
-| segment-2 | launch + 22.11 s | **512×288** | 41.79 s | 2011 kb/s | 真实内容 |
+| 实验 | segment-1 | segment-2 |
+|---|---|---|
+| i2va-fast | 640×360 / 39 moof / 20.24 s / **纯黑** | 512×288 / 84 moof / 41.79 s |
+| t2v-fast | 640×360 / 35 moof / 18.16 s / **纯黑** | 512×288 / 76 moof / 37.63 s |
+| i2va-prod | 640×360 / 170 moof / 88.36 s / **纯黑** | **416×240** / 568 moof / 283.63 s |
+
+**segment-1 是 100% 纯黑占位**，量化：i2va-fast 的 segment-1 共 **506 帧，
+亮度均值 min=max=avg=0.00，近黑帧占比 506/506**；segment-2 的 1003 帧亮度
+从 31.08 升到 142.15（denoise 收敛曲线），近黑帧 0 帧。
 
 **关键判据**：8 kb/s 的 640×360 只能是纯色。
 所以「第一个 fragment 到达（2.24 s）」**不等于**「能看见画面（22.11 s）」。

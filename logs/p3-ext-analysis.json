@@ -1,0 +1,128 @@
+{
+  "parts": {
+    "part1": {
+      "bytes": 35235683,
+      "duration": "00:00:05.18",
+      "resolution": "832x480",
+      "has_audio": true,
+      "frames": 124,
+      "frozen_pairs": 0,
+      "y_first": 114.5,
+      "y_last": 102.6,
+      "inside_ssim_p5": 0.9562,
+      "inside_ssim_p50": 0.9716,
+      "inside_ssim_p95": 0.9856
+    },
+    "part2": {
+      "bytes": 34783995,
+      "duration": "00:00:05.18",
+      "resolution": "832x480",
+      "has_audio": true,
+      "frames": 124,
+      "frozen_pairs": 0,
+      "y_first": 101.5,
+      "y_last": 102.4,
+      "inside_ssim_p5": 0.9579,
+      "inside_ssim_p50": 0.9708,
+      "inside_ssim_p95": 0.9831
+    },
+    "part3": {
+      "bytes": 34689524,
+      "duration": "00:00:05.18",
+      "resolution": "832x480",
+      "has_audio": true,
+      "frames": 124,
+      "frozen_pairs": 0,
+      "y_first": 93.8,
+      "y_last": 99.3,
+      "inside_ssim_p5": 0.9627,
+      "inside_ssim_p50": 0.9784,
+      "inside_ssim_p95": 0.9866
+    },
+    "part4": {
+      "bytes": 33367088,
+      "duration": "00:00:05.18",
+      "resolution": "832x480",
+      "has_audio": true,
+      "frames": 124,
+      "frozen_pairs": 0,
+      "y_first": 86.0,
+      "y_last": 72.1,
+      "inside_ssim_p5": 0.9815,
+      "inside_ssim_p50": 0.9884,
+      "inside_ssim_p95": 0.9942
+    }
+  },
+  "seams": {
+    "part1->part2": {
+      "seam_ssim": 0.4572,
+      "seam_psnr": 14.528745,
+      "seam_dY": 1.1,
+      "prev_last_frame": 123,
+      "shift_dx": 0.0,
+      "shift_dy": 0.0,
+      "seam_ssim_aligned": 0.515,
+      "seam_ssim_aligned_px": "0,0",
+      "inside_p5_baseline": 0.9562,
+      "verdict": "接缝 SSIM 0.457205 远低于段内 p5 0.9562；相位相关测得位移为 (0, 0)，补偿后 SSIM 仅 0.515 → **不是几何错位，是重新渲染导致的像素级纹理漂移**（语义/构图/身份/光线连贯，但细节不逐像素延续）"
+    },
+    "part2->part3": {
+      "seam_ssim": 0.3578,
+      "seam_psnr": 11.339111,
+      "seam_dY": 8.59,
+      "prev_last_frame": 123,
+      "shift_dx": 6.03,
+      "shift_dy": 76.02,
+      "seam_ssim_aligned": 0.4216,
+      "seam_ssim_aligned_px": "6,76",
+      "inside_p5_baseline": 0.9579,
+      "verdict": "接缝低于段内 p5（可见跳变），位移补偿后 SSIM=0.4216"
+    },
+    "part3->part4": {
+      "seam_ssim": 0.2812,
+      "seam_psnr": 10.111637,
+      "seam_dY": 13.28,
+      "prev_last_frame": 123,
+      "shift_dx": 1.77,
+      "shift_dy": -86.11,
+      "seam_ssim_aligned": 0.3321,
+      "seam_ssim_aligned_px": "2,-86",
+      "inside_p5_baseline": 0.9627,
+      "verdict": "接缝低于段内 p5（可见跳变），位移补偿后 SSIM=0.3321"
+    }
+  },
+  "ssim_selfcheck": {
+    "numpy": 0.9758,
+    "ffmpeg": 0.972773,
+    "shift_dx": 0.0,
+    "shift_dy": 0.0
+  },
+  "full": {
+    "bytes": 27061034,
+    "duration": "00:00:20.70",
+    "resolution": "832x480",
+    "has_audio": true,
+    "frames": 496,
+    "frozen_pairs": 0,
+    "y_first": 114.5,
+    "y_last": 72.1,
+    "seam_frame_diffs": [
+      27.707,
+      48.498,
+      58.359
+    ],
+    "median_frame_diff": 2.424
+  },
+  "full2": {
+    "bytes": 13606254,
+    "duration": "00:00:10.35",
+    "resolution": "832x480",
+    "has_audio": true,
+    "frames": 248,
+    "frozen_pairs": 0,
+    "seam_frame_diffs": [
+      27.707
+    ],
+    "median_frame_diff": 2.861
+  }
+}

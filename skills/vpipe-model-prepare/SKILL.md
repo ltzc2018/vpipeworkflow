@@ -59,6 +59,7 @@ HuggingFace 在本机 curl 超时。不设 `VPIPE_MODEL_SOURCE=modelscope` 会�
 | `prepare-minimax-h3-preview.vpipeline` | TAE-H3 预览解码器 | ~0.2 GB |
 | `prepare-image-models.vpipeline` | Z-Image-Turbo + Krea-2-Turbo | 31 + 33 GB |
 | `prepare-multimodal-compare.vpipeline` | LFM3-VL-2B + Qwen3.5-4B | 3.6 + 2.9 GB |
+| `prepare-minimax-h3-768p.vpipeline` | **768p 适配器**（lightx2v，ModelScope 唯一可用源；换 `model_variant` 取其它变体） | 1.29 GB |
 
 ## 磁盘实测数据（本机 M5 Pro 24GB）
 
@@ -183,6 +184,7 @@ $VPIPE --list-models | head -50
 - `references/disk-management.md` —— 磁盘回收手册与踩坑记录
 - `references/quantization.md` —— 量化机制与已知缺陷
 - `references/model-registry.md` —— 注册表与 model_variant 匹配规则
+- `references/768p-adapters.md` —— **768p / 长规格手册**：lightx2v 适配器家族、shift 6 规则、24 GB 资源画像、帧数↔成本模型、四段式续接
 - `assets/prepare-minimax-h3-8bit.vpipeline` —— 改写版 FL2VA 准备（修了 #15）
 - `assets/prepare-ref2va-8bit-hardlink.vpipeline` —— 硬链接复用版 Ref2VA 准备（省 27 GB）
 - `assets/prepare-pika-h3-flex.vpipeline` —— Pika adapter 准备
