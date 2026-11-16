@@ -1,0 +1,31 @@
+[INFO] PipelineRuntime: pipeline 'lfm3-vl-vqa' has 1 clock domain; domain 0 = {rx, save, chat, input, sampler, tx}
+[INFO] memory landscape at launch: 24576 MB RAM -- 6599 MB idle, 3293 MB file cache, 2312 MB wired system-wide, 8946 MB compressed, 812 MB swap; this process holds 5 MB
+[INFO] memory landscape: wired pool 18186 MB of 18186 MB the GPU can keep resident, 0 MB of it already in use -- and the box is ALREADY paging, so growth will be refused until that clears
+[INFO] model registry: 'LiquidAI/LFM3-VL-2B' -> '/Users/minichen/AI-Models/vpipe-workspace/models/LiquidAI/LFM3-VL-2B'
+[INFO] ModelLoader::load('/Users/minichen/AI-Models/vpipe-workspace/models/LiquidAI/LFM3-VL-2B'): processor_config.json: image_mean=[0.5000, 0.5000, 0.5000] image_std=[0.5000, 0.5000, 0.5000]
+[INFO] ModelLoader::load('/Users/minichen/AI-Models/vpipe-workspace/models/LiquidAI/LFM3-VL-2B'): processor_config.json: image_mean=[0.5000, 0.5000, 0.5000] image_std=[0.5000, 0.5000, 0.5000]
+[INFO] ModelLoader::load('/Users/minichen/AI-Models/vpipe-workspace/models/LiquidAI/LFM3-VL-2B'): processor_config.json: image_mean=[0.5000, 0.5000, 0.5000] image_std=[0.5000, 0.5000, 0.5000]
+[INFO] resource-plan: 2 activation arena(s) declared, 4065 MB; peak across phases 4065 MB
+[INFO] resource-plan: 3658 MB of model weights declared before init (3658 MB of claims, before shared checkpoints are counted once)
+[INFO] resource-plan: peak 7723 MB in phase 'condition' (condition 7723 MB, denoise 7723 MB, decode-audio 7723 MB, decode 7723 MB)
+[INFO] model registry: 'LiquidAI/LFM3-VL-2B' -> '/Users/minichen/AI-Models/vpipe-workspace/models/LiquidAI/LFM3-VL-2B'
+[INFO] memory-plan (declared): peak 3658 MB at 'sampler' streaming, 3658 MB at 'sampler' preloaded, over 6 stages in running order (sampler 3658 MB, tx 3658 MB, input 3658 MB, chat 3658 MB, rx 3658 MB, save 3658 MB)
+vpipe: launched pipeline './pipelines/lfm3-vl-vqa.vpipeline'
+[INFO] model registry: 'LiquidAI/LFM3-VL-2B' -> '/Users/minichen/AI-Models/vpipe-workspace/models/LiquidAI/LFM3-VL-2B'
+[INFO] SaveTextStage('save'): writing to 'out/vqa-p9-a-cam.txt' (key='text', truncate, newline-after)
+[INFO] TextChatStage('chat'): loading model from 'LiquidAI/LFM3-VL-2B' (dtype=f16, page_tokens=1024, max_pages=64)
+[INFO] ModelLoader::load('/Users/minichen/AI-Models/vpipe-workspace/models/LiquidAI/LFM3-VL-2B'): processor_config.json: image_mean=[0.5000, 0.5000, 0.5000] image_std=[0.5000, 0.5000, 0.5000]
+[INFO] GenerativeModelManager::load('/Users/minichen/AI-Models/vpipe-workspace/models/LiquidAI/LFM3-VL-2B'): 3680 MB wired as it loaded (the compressor cannot take it; charged to the wired pool; 3657 MB of load temporaries wired and freed)
+[INFO] TextChatStage('chat'): model ready (24 layers, vocab=128000, thinking=off)
+q> [INFO] SamplerSelectStage('sampler'): temperature 0.1, top_k 50, top_p 1, min_p 0, rep 1.1, presence 0, seed 0
+[INFO] TextChatStage('chat'): sampler = sampled (temperature 0.1, top_k 50, top_p 1, min_p 0, rep 1.1, presence 0, seed 0)
+[NORMAL] libavutil: using '@loader_path/libavutil.dylib'
+[NORMAL] libavcodec: using '@loader_path/libavcodec.dylib'
+[NORMAL] libswresample: using '@loader_path/libswresample.dylib'
+[NORMAL] libswscale: using '@loader_path/libswscale.dylib'
+[NORMAL] libavformat: using '@loader_path/libavformat.dylib'
+[NORMAL] libavdevice: using '@loader_path/libavdevice.dylib'
+[NORMAL] libavfilter: using '@loader_path/libavfilter.dylib'
+根据提供的关键帧，镜头似乎是缓慢推近或略微拉近的，因为从第一张到第四张图片中，猫和窗户的比例在变大，但没有明显的剧烈运动。画面整体在向右移动，以背景景物为参照，可以看到窗外的树木和阳光的位置逐渐从画面中央移动到右侧。这表明相机可能正在向右平移，或者是由于拍摄角度的变化导致的视觉错觉。
+[INFO] TextChatStage('chat'): prefill 970 tok in 0.149 s = 6502.1 tok/s, decode 103 tok in 1.724 s = 59.7 tok/s, ctx_pos 1074
+q> [INFO] PipelineRuntime: pipeline 'lfm3-vl-vqa' ran for 3.4 s

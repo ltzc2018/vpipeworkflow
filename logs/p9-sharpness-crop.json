@@ -1,0 +1,92 @@
+[
+  {
+    "path": "/Users/minichen/AI-Models/vpipe-workspace/out/p9-ref2va-768p-a.mp4",
+    "frames": 124,
+    "crop": [
+      462,
+      150,
+      420,
+      420
+    ],
+    "detail_raw": 306.2,
+    "detail_med": 153.1,
+    "grain": 1.097,
+    "snr_texture": 139.5,
+    "med_over_raw": 0.5
+  },
+  {
+    "path": "/Users/minichen/AI-Models/vpipe-workspace/out/p9-ref2va-768p-b-shift12.mp4",
+    "frames": 124,
+    "crop": [
+      462,
+      150,
+      420,
+      420
+    ],
+    "detail_raw": 413.2,
+    "detail_med": 178.7,
+    "grain": 1.102,
+    "snr_texture": 162.1,
+    "med_over_raw": 0.432
+  },
+  {
+    "path": "/Users/minichen/AI-Models/vpipe-workspace/out/p9-ref2va-768p-c-multiref.mp4",
+    "frames": 124,
+    "crop": [
+      462,
+      150,
+      420,
+      420
+    ],
+    "detail_raw": 213.7,
+    "detail_med": 83.6,
+    "grain": 0.887,
+    "snr_texture": 94.2,
+    "med_over_raw": 0.391
+  },
+  {
+    "path": "/Users/minichen/AI-Models/vpipe-workspace/out/p9-ref2va-768p-d-shift8.mp4",
+    "frames": 124,
+    "crop": [
+      462,
+      150,
+      420,
+      420
+    ],
+    "detail_raw": 280.7,
+    "detail_med": 138.1,
+    "grain": 0.967,
+    "snr_texture": 142.8,
+    "med_over_raw": 0.492
+  },
+  {
+    "path": "/Users/minichen/AI-Models/vpipe-workspace/out/p3-768p-shift6.mp4",
+    "frames": 124,
+    "crop": [
+      462,
+      150,
+      420,
+      420
+    ],
+    "detail_raw": 606.9,
+    "detail_med": 319.1,
+    "grain": 1.961,
+    "snr_texture": 162.8,
+    "med_over_raw": 0.526
+  },
+  {
+    "path": "/Users/minichen/AI-Models/vpipe-workspace/out/p3-768p-shift12.mp4",
+    "frames": 124,
+    "crop": [
+      462,
+      150,
+      420,
+      420
+    ],
+    "detail_raw": 603.6,
+    "detail_med": 300.3,
+    "grain": 1.939,
+    "snr_texture": 154.9,
+    "med_over_raw": 0.497
+  }
+]
