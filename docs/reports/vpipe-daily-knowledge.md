@@ -1413,7 +1413,6 @@ HF `Comfy-Org/MiniMax-H3-Image` 讨论区断言：ComfyUI 的 **`lcm`**（每步
 | **P29** | **2K refiner 验证** | `open_regenerate_2k_refiner_rank_384` 5.87 GB | 1 次 768p→2K | 磁盘 + 显存 |
 
 ### 5.5 本轮踩的坑与结论
-
 1. ★★★ **「生态有」≠「vpipe 有」≠「本机跑得动」是三道独立的门。**
    本轮三连命中：ControlNet（生态有 / vpipe 无）、H3-Image（vpipe 有 / 本机装不下）、
    RelayVSR 2×（生态有 / vpipe 硬编码只吃 4×）。
@@ -1429,3 +1428,23 @@ HF `Comfy-Org/MiniMax-H3-Image` 讨论区断言：ComfyUI 的 **`lcm`**（每步
    本实验室的自查能力（逐位判据 + σ 网格公式 + 运行时真值）要继续自建。
 8. ★ **磁盘 5.3 GiB 仍是第一约束**：P22 / P27-c / P29 全部被它挡住；
    P13b 之所以能跑，是因为「模型全在本地 + 22 帧短片 + 产物 240 KB」。
+
+### 5.6 收尾对账（SOP §12.10 六项，本轮实测）
+
+| # | 检查项 | 实测结果 |
+|---|---|---|
+| 1 | 轮次状态与锁释放 | `round` = **5**、`last_run` = `2026-11-18 06:30`；`.auto-round.lock` **已删除** |
+| 2 | 报告字节一致 | 本地 4 份 vs 仓库 `docs/reports/`：**296 257 / 99 423 / 120 923 / 39 837 B，全部逐字节相同** |
+| 3 | 技能包三方一致 | 安装版 ↔ 实验室副本 ↔ 仓库：**85 个文件、0 差异** |
+| 4 | 产物齐备 | 5 臂成片（各 240 KB）+ 5 份日志 + 5 个 `.done` + 3 张印相 + `analysis.json` **全部在位** |
+| 5 | 真人素材防火墙 | 仓库索引 **484 条目 / 远端树 522 条目 → 真人文件 0** |
+| 6 | 推送一致性 | `HEAD == origin/main == 6835491`，工作区 clean |
+
+- **GitHub 提交**：`6835491`（`docs: 第 5 轮夜间知识同步（2026-11-18 06:30）— P13b 判决…`）。
+- **新增技能文件**：`h3-ecosystem-map.md` / `h3-prompt-format.md` / `h3-image-candidate.md`
+  + `sigma-grid.md` 第 7 节 + `sampler-spec.md` 第 8 节。
+- **新增脚本**：`make_p13b_pipelines.py` / `p13b_runner.sh` / `p13b_analysis.py` /
+  `p13b_contact.sh` / `vqa-p13b.sh`（共 5 个）。
+- **新增流水线**：`p13b-{ersde,default}{,-r1,-r2,-r3}.vpipeline`（7 个）。
+- **磁盘仍 5.3 GiB**（< 15 GiB 下限）→ **下一轮的第一约束仍是先清盘**
+  （P22 FlashVSR 3.51 GB / P27-c PDD 1.73 GB / P29 2K refiner 5.87 GB 全被它挡住）。
