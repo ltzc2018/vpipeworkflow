@@ -313,3 +313,24 @@ git push origin main
 - 本轮磁盘仅 **5.1 GiB**（远低于 15 GiB 下限）→ 刻意选「**模型已在本地、只跑短片**」：
   22 帧 / 1344×768 / 8 步，**每臂 3 分 55 秒、产物仅 240 KB** → 三臂 + 一次重复运行全部完成。
 - **规律**：短片（22 帧 = 17×1+5）+ 本地已有模型 + 单臂 < 4 分钟 ≈ 可在低磁盘下做完整对照。
+
+### 10.10 ★★★ GitHub 同步脚本的 `cp -R` 尾斜杠缺陷（已修，第 3 轮发现）
+
+- **BSD/macOS 的 `cp -R src/ dst/` 是「把 src 的*内容*铺到 dst」**，不是「把 src 这个目录搬进 dst」。
+- 旧写法 `cp -R "$d" "$REPO/skills/"`（`$d` 带尾斜杠）→ 每个技能的内容被**平铺**到仓库 `skills/` 顶层：
+  `skills/SKILL.md`、`skills/references/`、`skills/assets/`、`skills/scripts/`。
+- **后果（实测）**：
+  1. 正确定位的 `skills/<name>/…` **从此再也没被刷新** —— 实测陈旧了整整两轮
+     （`vpipe-model-prepare/references/768p-adapters.md`：仓库 21 603 B vs 源 36 163 B）；
+  2. `skills/SKILL.md` 被**最后一个技能覆盖**（实测 = `vpipe-text-to-image`）→ public 仓库里误导读者；
+  3. 内容只靠平铺副本才进了仓库 → 仓库里长期存在两套漂移的技能副本。
+- **修法**（已改 `scripts/nightly_sync.sh`）：显式指定目标目录
+  ```bash
+  mkdir -p "$REPO/skills/$name"
+  cp -R "$d" "$REPO/skills/$name/"      # ← 目标带斜杠 = 内容进该技能目录
+  ```
+- **配套清理**：删掉仓库顶层的 `skills/{references,assets,scripts}/` 与 `skills/SKILL.md`
+  （已逐文件核对：全部在 `skills/<name>/…` 有副本，0 个独有文件）。
+- **验收口径**：同步后必须逐个比对「仓库 `skills/<name>/references/X`」与「实验室 `skills/<name>/references/X`」的字节数，
+  **不能只看树里有这个文件**。
+- **通用教训**：BSD 与 GNU 的 `cp` 在尾斜杠上语义不同；**跨机器写同步脚本时，先用 `cp -R src/ dst/` 实测一次**。

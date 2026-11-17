@@ -2902,3 +2902,15 @@ prompt produce a **different scene**」。
    要测 6.0 须下 `minimax_h3_ref2v_turbo_4step_v1.0_768p_bf16.safetensors`（1.38 GB）。
 6. **生产链建议（源自本轮）**：Ref2VA 768p **默认用 `video_shift: 6.0`**（上游官方值）；
    12.0 作为可 A/B 的备选（细节更高，但属另一条 σ 网格，且本机漂移 8.7%）。
+
+#### 18.3.8 ★ 附带修掉：GitHub 同步脚本的 `cp -R` 尾斜杠缺陷（第 3 轮自查发现）
+
+- **BSD/macOS 的 `cp -R src/ dst/` 是「把 src 的*内容*铺到 dst」**；
+  旧写法 `cp -R "$d" "$REPO/skills/"`（`$d` 带尾斜杠）把每个技能的内容**平铺**到仓库 `skills/` 顶层。
+- **实测后果**：① 正确定位的 `skills/<name>/…` **陈旧了整整两轮**
+  （`vpipe-model-prepare/references/768p-adapters.md` 仓库 21 603 B vs 源 36 163 B）；
+  ② `skills/SKILL.md` 被最后一个技能覆盖（= `vpipe-text-to-image`）→ public 仓库里误导；
+  ③ 仓库长期存在两套漂移的技能副本（本次共 58 个重复文件）。
+- **已修**：`cp -R "$d" "$REPO/skills/$name/"`，并删除顶层扁平副本（逐文件核对 0 个独有文件）。
+  修后仓库 **464 个文件**（原 522），真人文件 **0**，技能副本与实验室源**逐字节一致**。
+- **新增验收口径**：同步后必须逐个比对仓库与实验室的技能副本字节数，**不能只看树里有没有这个文件**。
