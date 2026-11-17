@@ -1,15 +1,16 @@
 # vpipe 后续计划任务清单
 
 > 基于 GitHub `tgo-app-dev/vpipe`（`main` @ `4dc36b7`，**2026-11-16**；**已装 App `0.1 (9db5dd7*0)` 落后 12 个 commit，但本地源码树 `33cda00` 只落后 2 个** —— 见第 2 轮修订）、官方 `docs/MINIMAX-H3-zh-cn.md`（+ 英文版 `docs/MINIMAX-H3.md` 249 KB）、官方 release、issue（**至少 59 条**），以及 YouTube/社区实测资料整理
-> 生成时间：2026-11-14 · **最近更新：2026-11-18 03:07（第 3 轮续作 · P15 可复现性基线）**
+> 生成时间：2026-11-14 · **最近更新：2026-11-18 04:30（第 4 轮 · P18 `dmd` 采样器判决 + vpipe 原生 Metal 超分发现）**
 > 机器：Mac mini M5 Pro / 24 GB / 15 核 / macOS 27.2
 
 ---
 
-## 状态看板（2026-11-18 03:07 更新）
+## 状态看板（2026-11-18 04:30 更新）
 
 | 任务 | 状态 | 结果 |
 |---|---|---|
+| **第 4 轮 · 2026-11-18 04:30 夜间知识同步** | ✅ **完成（★★★ `dmd` 采样器对纹理沸腾的判决 + ★★ vpipe 原生 Metal 超分链路发现）** | 检索 **19 类源**（GitHub API × 4 + 仓库树扫描 + 上游 `docs/RELAYVSR.md` 全文 + 上游 `docs/MINIMAX-H3.md` + 上游 README + 上游源码 × 3 + ModelScope × 3 + LightX2V 官方 README + ComfyUI PR #17511 + 论文 arXiv 2609.37850 + 社区 × 6）。**上游仍零增量**（HEAD 仍 `4dc36b7`、release 仍 v0.1.110、issue 状态全未变、**PR 数 0**、#55 仍 open/0 评论/开放 28 天）。**★ 四个关键增量**：① **vpipe 上游自带原生 Metal 视频超分**（RelayVSR 4× / FlashVSR+ 4×，41 个源码文件 + 379 行新文档 `docs/RELAYVSR.md`），**内存账已可直接判定本机可行性**（480×270→1920×1080 = **11.7 GB** ✅；960×540→4K = **21.8 GB** ✅ 紧；1280×720→5120×2880 = **32 GB** ❌）；② **★ 更正：本地 build `33cda00` 其实已经有 FlashVSR/FlashVSR+**（stage + Metal kernel + 3 条官方流水线全在），**只有 RelayVSR 本体没有** → **不升 main 也能做超分实验**；③ **ModelScope 上 FlashVSR 全套可得**：`kuohao/FlashVSR-v1.1` **6.48 GB**（含 companion `posi_prompt.pth`，一个仓库就够）+ **`mlx-community/FlashVSR-v1.1-bf16` 3.27 GB**（Apple 原生 MLX）→ **磁盘紧张时的最优解**；④ 上游 `docs/MINIMAX-H3.md` 新增 **H3 Image VAE 章节**（PSNR **34.9 vs 32.3 dB**、快 2.8×、色偏 <0.5 级 vs 暗 3 级）+ **VDN `vdn_range` 章节**。**实验（P18 · 3 臂 + 1 参照，每臂 219/219/220 s）**：`dmd`（每步重注噪）vs `euler` —— **★ 首次在 vpipe/H3 上跑通 `dmd`**（日志原话 `h3-denoise: 8 steps RE-NOISED (x0 at each sigma, then fresh noise to the next)`）；**HF jitter 0.1075 → 0.0937 = −12.82%**、**frame diff −9.40%**、**sharpness +10.27%**、**static_hf_jitter −11.68%**、**用时 0%**；**★ 两条确定性判决**：接端口+euler 与不接端口 **跨轮次逐位相同**（SSIM 1.000000 / PSNR inf）→ **sampler 端口透明**；**`dmd` 跑两次逐位相同** → **重注噪路径也是确定性的**；**★ 首帧 SSIM 0.440051 → 「换采样器 = 换场景」**。**⚠️ 不是根治**：静态地板 0.0010，`dmd` 仍是 **94× 地板**。**★ 独立验证社区结论**：HF `Comfy-Org/MiniMax-H3-Image` 讨论区断言「ComfyUI `lcm`（≡ `dmd`）消除纹理麻点、euler 会累积」→ **本机实测成立**。**⚠️ LFM3-VL 再次给出与量化相反的答案**（纹理与场景同一性两问都反）→ 再次印证已知缺陷 ②④。详见报告第 **18.4** 节 |
 | **第 3 轮续作 · 2026-11-18 03:07 · P15 可复现性基线** | ✅ **完成（★★★ 推翻第 3 轮的一条归因 + 拿到确定性复现能力）** | 检索 **17 类源**（GitHub commits/issues API × 3 + commit `e6972ac` 全文 + 上游 `docs/MINIMAX-H3.md` 与 `docs/PLUGINS.md` + 上游源码 × 3 + ModelScope 文件清单/README + ModelTC 官方 README + MiniMax 官方 release notes + 社区 × 5 + sd.cpp 仓库 + NVIDIA 2K 项目）。**上游仍零增量（HEAD `4dc36b7`）；issue #55 至今 0 评论、开放 28 天**。**★★ 最重要的一条：第 3 轮「已装 App 旧 → 不可复现」的归因被实测推翻** —— **App(9db5dd7) 与本地 build(33cda00) 同配置输出逐位完全相同**（framemd5 同 / 音频 md5 同 / SSIM **1.000000** / PSNR inf / 字节 244 535 = 244 535）；**真因是 `autotune` 默认 true 的内核竞速**（上游 `e6972ac` 原文：「`autotune` false asks for a repeatable generation」）。**实验（P15，4 臂串行，每臂 220–227 s）**：`autotune: false` 关在 `generate-video` + `vae-decode` + `video-ref-encoder` 三处 → **B1 vs B2 逐位完全相同**（SSIM **1.000000** / PSNR **inf**）；**关竞速反而快 5 s（−2.2%）**（首帧前向 4710 ms 里 **4635 ms 在竞速**，98.4%）；竞速漂移 = **纯细节噪声**（at1 vs at2 同场景同语义，sharpness +9.1% / HF jitter +20.3% / frame diff +25.2% / static_hf_jitter +14.5%，与第 3 轮基线四项吻合）。**另三条硬知识**：① **σ 网格闭式公式**（`q_i=(N−i)/N`，`σ=shift·q/(1+(shift−1)q)`，视频/音频共用 q）—— 与上游 vpipe 文档 + ModelTC 官方表**逐位互验 33 个数值**，已固化为 `scripts/p15_sigma_grid.py`；② **H3 的 sampler spec 在 iport 3**，只认 `euler`/`dmd`/`res_multistep`，**`dpmpp_sde` 仍被排除** → **`dmd`（每步重注噪、seed 取自 clip）是 #55 的本机候选解法，零下载**；③ lightx2v 官方 Model Specs 表 + ModelScope **27 个 safetensors vs 上游 catalog 12 个**（差集含 **v1.3**）→ **上游 catalog 落后，是可上报的实质增量**。详见报告第 **18.3.9** 节 |
 | **第 3 轮 · 2026-11-18 02:30 夜间知识同步** | ✅ **完成（P13 纹理沸腾复现 + 一条方法学结论）** | 检索 6 类源（GitHub releases/commits/issues/compare API + **上游官方文档 `docs/MINIMAX-H3.md`** + 上游源码 + ModelScope + sdnext + AICU/VibingTalk/note.com/掘金类社区实测）。上游 **零新增**（HEAD 仍 `4dc36b7`、release 仍 v0.1.110、issue 状态全未变、ModelScope 28 文件零变化）。**★★ 四个关键增量**：① **上游官方文档自带适配器→shift 对照表**：`Ref2VA 8-step 768p → shift 6.0`（「the only Ref2VA adapter that needs `video_shift: 6.0`」）、`Ref2VA 4-step v0.1 → 12/3`（544p）——**与第 17.4.1 节「Ref2VA 768p 12.0 更锐」冲突，已加前提修订**；② **上游 `sigmas` 字段 = ComfyUI `er_sde` 的 σ 表逐位相同 → issue #55 的第 2 条请求上游已经做了**；③ **换 shift = 换场景**：只改 shift 时首帧 SSIM 仅 **0.46–0.56**（vpipe 里不存在「同一场景的 shift 对照」）；④ **★★ 已装 App 不是 seed 可复现的**：同配置连跑两次 **0/22 帧逐位相同、整段 SSIM 仅 0.750072**（上游 bit-for-bit 修复 `e6972ac` 晚于 App）→ **本机漂移基线 8.7%（sharpness）/ 18.4%（HF jitter）**。**实验（P13，3 臂 + 1 次重复运行，每臂 3m55s）**：静态夹具 22 帧，HF jitter **0.0010（地板）→ 0.0995~0.1293（模型生成，107–129×）**，94–98% 像素静止 → **纹理沸腾独立复现成功**；`er_sde` σ 网格的 −16% 落在漂移带内 → **不可下结论**；只有 shift 12.0 的 sharpness **+16.8%** 明确超过漂移 8.7%。**⚠️ 其中「不可复现的归因」已被第 3 轮续作（P15）推翻，见 18.3.9.3 修订 R3-1**。详见报告第 **18.3** 节 |
 | **第 2 轮 · 2026-11-18 00:31 夜间知识同步** | ✅ **完成（P11 收口）** | 检索 6 类源（GitHub releases/commits/issues/compare API + 本地源码 + ModelScope 全量文件清单 + HF 模型页 + 社区实测 + 本机 issue 追踪）。**★ P11 收口，那 0.03 的差是测量伪影不是编码开销**：三段消融（25.7 s，**无模型、不占 GPU**）证明 ① 口径 B（落盘 PNG 再比）**≡** 口径 C（强制 gbrp 域直比），`|B−C| = 0.000000`；② 口径 A（默认协商）的读数**随被测视频像素格式漂移 0.1752**，而 B/C 极差仅 **0.0003** —— 因为 ffmpeg 会把**参考图 auto_scale 到视频格式**才比较（`rgb24/pc → yuv420p/tv` 或 `→ yuv444p/bt709/pc`）；③ 真值基准（全部 ffv1 无损编码器）测出 **4:2:0 只丢 0.0046 SSIM**，真正吃掉 0.015 的是 `limited+bt601+h264` 叠加。**④ 报告内部方向性矛盾已判定**：口径 A **恒高于** B（+0.17~0.19），第 17.3/18.1 节表述正确，**第 15.4.2 节括号那句写反了**。**⑤ 历史表安全性已复核**：第 16/17 节全部关键表被测文件同为 `yuv420p(tv,smpte170m)` → **历史结论不受影响**。另订正两条框架：已装 App **本就支持** `yuv444p/full/bt709/ffv1`（无需升级）；**「落后 12 commit」只对已装 App 成立**，本地源码树只落后 2 个 → **P12 大幅降价**。新增 ModelScope 适配器全量盘点（28 文件，本机只有 4 个）→ 登记 P11b/P11c/P10/P14 四个待验证任务。详见报告第 **18.2** 节 |
@@ -144,6 +145,69 @@
 
 ---
 
+## 每日知识增量（2026-11-18 04:30 · 第 4 轮）
+
+> 本节由夜间自动任务累积写入（**只追加**）。完整版见 `vpipe-daily-knowledge.md` 第 4 轮；主报告对应第 **18.4** 节。
+
+### 本轮一句话
+
+**上游依然零增量（HEAD 仍 `4dc36b7`、PR 数 0、#55 仍开放 28 天零评论），
+本轮的价值全部来自「回读上游官方文档 + 源码 + 生态」**——
+① 发现 **vpipe 上游自带原生 Metal 视频超分**（RelayVSR 4× / FlashVSR+ 4×）；
+② **实测判决 `dmd` 采样器把纹理沸腾压低 12.8%、同时更锐 10.3%、零额外耗时**（issue #55 的本机首个「有解」结果）；
+③ **独立验证了社区断言**（ComfyUI `lcm` ≡ vpipe `dmd`，重注噪采样器消除高频纹理病理）。
+
+### 本轮的四条关键增量
+
+| # | 增量 | 要点 |
+|---|---|---|
+| 1 | ★★★ **vpipe 原生 Metal 超分** | 上游 `main` 有 41 个 relayvsr/flashvsr 源码文件 + 379 行新文档 `docs/RELAYVSR.md`。**内存账可直接判定本机可行性**：480×270→1920×1080 = **11.7 GB** ✅；960×540→3840×2160 = **21.8 GB** ✅紧；1344×768→5376×3072 = **32 GB** ❌。⇒ **本实验室 768p 的 4× 装不下**，但 **544p→4K** 与 **480p→1080p** 在本机可行 → 给第 16 节「768p 值 3.09× 时间换 3.33× 细节」补了**第三条路** |
+| 2 | ★★★ **更正：本地 build 已有 FlashVSR** | 实测本地 `33cda00` **有** `flashvsr-model-config` / `flashvsr-src-encoder` stage + Metal kernel + **3 条官方流水线**；**只有 RelayVSR 本体没有**（随 `81cd674` / 2026-11-14）。⇒ **不升 main 也能做超分实验**（本轮差点把零成本路线误判成高成本） |
+| 3 | ★★★ **P18 实验判决** | `dmd`（每步取 x0 再重注噪到下一个 σ）vs `euler`，静态夹具 22 帧 / 1344×768 / 8 步 / seed 42 / **三处 `autotune:false`（漂移=0）**：**HF jitter 0.1075 → 0.0937 = −12.82%**、frame diff **−9.40%**、**sharpness +10.27%**、static_hf_jitter **−11.68%**、**用时 0%**；**两条确定性判决**：接端口+euler 与不接端口**跨轮次逐位相同**（端口透明）、**`dmd` 跑两次逐位相同**（重注噪路径确定）；**首帧 SSIM 0.440051 → 「换采样器 = 换场景」** |
+| 4 | ★★ **社区结论被独立验证** | HF `Comfy-Org/MiniMax-H3-Image` 讨论区断言「ComfyUI `lcm` 每步取端点预测再重注噪 → 消除纹理麻点；`euler` 会累积；**病理在采样器侧不在权重侧**」。**`lcm` ≡ `dmd` = 同一机制** → 本机实测 **−12.82%** 证实 |
+
+### 关键量化结果（本轮实验，P18 · `dmd` vs `euler`）
+
+| 判据 | 结果 |
+|---|---|
+| **A（接端口+euler）vs 参照（不接端口，第 3 轮产物）** | ★ **framemd5 同**（`0d77d033…`）、**音频 md5 同**（`9bc16008…`）、**SSIM 口径A 1.000000**、**PSNR inf**、字节 **244 535 = 244 535** → **sampler 端口透明 + 跨轮次 bit-for-bit 复现** |
+| **B vs B2（`dmd` 两次）** | ★ **framemd5 同**（`4db48192…`）、**音频 md5 同**（`782be4e6…`）、**SSIM 1.000000**、**PSNR inf**、字节 **241 997 = 241 997** → **重注噪路径也是确定性的** |
+| **A vs B** | 整段 SSIM 口径A **0.635965** / PSNR **15.267388** / **首帧 SSIM 0.440051** → **换采样器 = 换场景** |
+| **HF jitter** | euler **0.1075** → dmd **0.0937** = **−12.82%** |
+| **frame diff** | 0.003669 → 0.003324 = **−9.40%** |
+| **sharpness** | 559.73 → **617.19** = **+10.27%** |
+| **static_hf_jitter** | 0.1010 → 0.0892 = **−11.68%** |
+| **用时** | 219 s / 219 s / 220 s → **重注噪零额外耗时** |
+| ⚠️ **与地板比** | 静态夹具地板 **0.0010** → `dmd` 的 0.0937 **仍是地板的 94×** → **压低 13%，不是根治** |
+
+**日志里的显式回显（机制是打印出来的，不是推断）**：
+`[INFO] h3-denoise: 8 steps RE-NOISED (x0 at each sigma, then fresh noise to the next), as the sampler asks`
+→ **`dmd` 在 H3 上确实被实现了**（第 3 轮担心的「被排除后回落默认」没有发生）。
+
+### 新增待验证任务（本轮登记）
+
+| 任务 | 一句话 | 优先级 |
+|---|---|---|
+| **P13b** | `sigmas`（ComfyUI `er_sde` σ 表）网格对照，**≥3 次**；第 3 轮那个 **−16%** 当时落在 18.4% 漂移带内 → **现在漂移=0，重跑即可直采**（并与 P18 的 −12.82% 形成「网格效应 vs 更新式效应」对照） | 🔴 **最高（由 🔴 高上调）** |
+| **P22 · ★ FlashVSR / FlashVSR+ 超分** | **本地 build 已有** stage + Metal kernel + 3 条官方流水线 → **不升 main 就能跑**；权重 ModelScope **`kuohao/FlashVSR-v1.1` 6.48 GB**（含 companion `posi_prompt.pth`）或 **`mlx-community/FlashVSR-v1.1-bf16` 3.27 GB**（Apple 原生 MLX） | 🔴 高（⛔ 磁盘 5.6 GiB；**3.27 GB 那档可试**） |
+| **P23 · ★ RelayVSR 4×** | 上游文档已完整；**本地 build 无此 stage** → **需升 main + 重编**；权重 10.2 GB；**本机上限已判定**（1080p ✅ / 4K 紧 / 768p 的 4× ❌） | 🟡 中（磁盘 + 重编双阻塞） |
+| **P24 · ★ 超分接缝的 15 帧周期判据** | 关键帧间隔 = `window−1` = **15** 帧；社区预言「detail 以 15 帧节奏脉动 = 接缝」→ 算 HF jitter 的**周期性**：有 15 帧周期 = 超分接缝伪影；无周期 = 生成端沸腾 | 🟡 中 |
+| **P25 · ★ HF Space 零下载预判** | `Upsampler/relayvsr` 免费档、≤10 秒片段 → **磁盘紧张时的唯一廉价入口**：先判「超分到底补不补细节」 | 🟡 中 |
+| **P18b · `dmd` / `er_sde` 正交拆解** | 一个改「更新式」、一个改「σ 网格」→ 混着比会同时引入两个混淆项 | 🟡 中 |
+| **P26 · `res_multistep`** | 官方 NPU 路径明确列出；本轮只测了 `dmd` | 🟡 中 |
+
+### 本轮新增的可复用资产
+
+- **流水线**：`p18-euler` / `p18-dmd` / `p18-dmd2`（三臂，`generate-video` 的 **iport 3** 接 `diffusion-sampler-select`）
+- **脚本**：`make_p18_pipelines.py`（含 iport 自检）/ `p18_runner.sh`（幂等 + PID 续接 + 内存门限 + 脱离进程组）/
+  `p18_analysis.py`（`-map 0:v` 逐帧判据 + 双口径 SSIM + 效应量）/ `p18_contact.sh`（印相）/` `vqa-p18.sh`（LFM3-VL）
+- **技能包**：★ 新增 **`vpipe-model-prepare/references/relayvsr-flashvsr.md`**（原生 Metal 超分手册，12 节）；
+  `sampler-spec.md` 追加第 7 节（P18 判决）；`texture-boiling.md` 追加第 9 节（`dmd` 压低沸腾 13%）
+- **产物**：`deliverables/videos/p18-{euler,dmd,dmd2}.mp4`；`deliverables/images/p18-{contact-sheet,first-frame-2arms,first-last-2arms}.png`
+- **判据 JSON**：`logs/p18-analysis.json`
+
+---
+
 ## 每日知识增量（2026-11-18 03:07 · 第 3 轮续作 · P15）
 
 > 本节由夜间自动任务累积写入（**只追加**）。完整版见 `vpipe-daily-knowledge.md`；主报告对应第 18.3.9 节。
@@ -192,8 +256,8 @@
 | 任务 | 一句话 | 优先级 |
 |---|---|---|
 | **P15b · 用 `autotune: false` 重跑历史关键对照** | 重跑 P9 四组 shift 对照（**第 17.4.1 节「Ref2VA 768p 12.0 更锐」+16.7%**）与 P13 shift12 臂（+16.8%）→ 现在同 seed 换 shift = **纯粹换 σ 网格**，不再混入竞速噪声 | 🔴 **最高** |
-| **P18 · `dmd` sampler 对纹理沸腾的作用** | `diffusion-sampler-select{method: dmd}` → `generate-video` 的 **iport 3**；`dmd` = 每步重注噪（`x0=x+σ·v` → `(1−σ')·x0+σ'·n`，噪声取自 clip 自己的 seed）→ **#55 的本机候选解法，零下载**。⚠️ `dmd` 同时改了「网格 + 更新式」两个因子，**必须拆开测** | 🔴 高 |
-| **P13b · `sigmas` 网格对照（≥3 次）** | 用 `scripts/p15_sigma_grid.py` 生成任意网格；在 `autotune: false` 下漂移≈0 → **3 次即可给出干净方差** | 🔴 高 |
+| **P18 · `dmd` sampler 对纹理沸腾的作用** | `diffusion-sampler-select{method: dmd}` → `generate-video` 的 **iport 3**；`dmd` = 每步重注噪（`x0=x+σ·v` → `(1−σ')·x0+σ'·n`，噪声取自 clip 自己的 seed）→ **#55 的本机候选解法，零下载**。⚠️ `dmd` 同时改了「网格 + 更新式」两个因子，**必须拆开测** | ✅ **完成（2026-11-18 第 4 轮）** —— **HF jitter 0.1075 → 0.0937 = −12.82%**、frame diff **−9.40%**、**sharpness +10.27%**、static_hf_jitter **−11.68%**、**用时 0%**（219 s = 219 s）；**★ 首次在 vpipe/H3 上跑通 `dmd`**（日志原话 `h3-denoise: 8 steps RE-NOISED (x0 at each sigma, then fresh noise to the next)`）；**★ 两条确定性判决**：① 接端口+euler 与不接端口 **跨轮次逐位相同**（SSIM 1.000000 / PSNR inf / 字节 244 535 = 244 535）→ **sampler 端口透明**；② **`dmd` 跑两次逐位相同**（SSIM 1.000000 / 字节 241 997 = 241 997）→ **重注噪路径也是确定性的**；**⚠️ 首帧 SSIM 0.440051 → 「换采样器 = 换场景」**；**⚠️ 不是根治**（静态地板 0.0010 → 仍是 94× 地板）；**★ 独立验证社区结论**（HF `Comfy-Org/MiniMax-H3-Image` #5：ComfyUI `lcm` ≡ `dmd`，能消除纹理麻点）。**遗留**：网格 vs 更新式的正交拆解 → **P18b** |
+| **P13b · `sigmas` 网格对照（≥3 次）** | 用 `scripts/p15_sigma_grid.py` 生成任意网格；在 `autotune: false` 下漂移≈0 → **3 次即可给出干净方差** | 🔴 **最高（由「高」上调）** —— 第 3 轮测得的 **−16%** 当时**落在 18.4% 漂移带内 → 不可下结论**；**现在漂移 = 0，重跑即可直接采信**（且能与 P18 的 −12.82% 形成「网格效应 vs 更新式效应」的对照） |
 | **P19 · 参考图缩放策略** | `fit: pad`（保比例）vs `fit: stretch`（**唯一改长宽比的模式**）对照**非正方形**参考图；并对照 lightx2v 的 `match`（面积匹配、不上采样） | 🟡 中 |
 | **P10 · TaoMate-H3** | `TaoLiveAIGC/TaoMate-H3`（**2.5 GB，可下**）→ 3 步流式；`"taomate": "auto"`；**自带网格，不取 `sigmas` 也不取 sampler** | 🟡 中 |
 | **P11b · Ref2VA 4 步 v1.0 768p** | `minimax_h3_ref2v_turbo_4step_v1.0_768p_bf16`（1.32 GB）；配合官方 Model Specs 表的 12/3（544p v0.1）与 6/3（768p v1.0）两条线 | 🟡 中 |

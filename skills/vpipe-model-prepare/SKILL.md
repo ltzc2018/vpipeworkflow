@@ -59,6 +59,7 @@ HuggingFace 在本机 curl 超时。不设 `VPIPE_MODEL_SOURCE=modelscope` 会�
 | `prepare-minimax-h3-preview.vpipeline` | TAE-H3 预览解码器 | ~0.2 GB |
 | `prepare-image-models.vpipeline` | Z-Image-Turbo + Krea-2-Turbo | 31 + 33 GB |
 | `prepare-multimodal-compare.vpipeline` | LFM3-VL-2B + Qwen3.5-4B | 3.6 + 2.9 GB |
+| `prepare-minimax-h3-768p.vpipeline` | **768p 适配器**（lightx2v，ModelScope 唯一可用源；换 `model_variant` 取其它变体） | 1.29 GB |
 
 ## 磁盘实测数据（本机 M5 Pro 24GB）
 
@@ -183,6 +184,12 @@ $VPIPE --list-models | head -50
 - `references/disk-management.md` —— 磁盘回收手册与踩坑记录
 - `references/quantization.md` —— 量化机制与已知缺陷
 - `references/model-registry.md` —— 注册表与 model_variant 匹配规则
+- `references/768p-adapters.md` —— **768p / 长规格手册**：lightx2v 适配器家族、shift 6 规则、24 GB 资源画像、帧数↔成本模型、四段式续接
+- `references/sigma-grid.md` —— ★ **σ 网格闭式公式**（`q_i=(N−i)/N`，`σ=shift·q/(1+(shift−1)q)`，视频/音频共用 q）+ 音频反解 + 步数语义
+- `references/sampler-spec.md` —— ★ **H3 采样器能力清单**（端口 3、只认 `euler`/`dmd`/`res_multistep`、**P18 实测：`dmd` 把纹理沸腾压低 12.82% 且更锐 10.27%**、`sigmas` 优先级）
+- `references/texture-boiling.md` —— **纹理沸腾（上游 issue #55）**：三指标严格实现、静态夹具地板、可复现性开关、**`dmd` 是本机唯一零下载的缓解手段（压低 13%，非根治）**
+- `references/relayvsr-flashvsr.md` —— ★★ **原生 Metal 视频超分**（RelayVSR 4× / FlashVSR+ 4×）：内存账与本机 24 GB 可行性判定、**本地 build 已有 FlashVSR**、ModelScope 权重可得性、接缝 15 帧周期判据
+- `references/troubleshooting.md` —— 常见故障排查
 - `assets/prepare-minimax-h3-8bit.vpipeline` —— 改写版 FL2VA 准备（修了 #15）
 - `assets/prepare-ref2va-8bit-hardlink.vpipeline` —— 硬链接复用版 Ref2VA 准备（省 27 GB）
 - `assets/prepare-pika-h3-flex.vpipeline` —— Pika adapter 准备
