@@ -1,6 +1,7 @@
 {
-  "round": 3,
-  "last_run": "2026-11-18 02:30",
+  "round": 4,
+  "last_run": "2026-11-18 04:30",
   "note": "自动任务轮次计数器：每完成一轮 +1；失败不递增",
-  "continuation": "2026-11-18 03:07 第3轮续作 P15 可复现性基线（不占轮次编号；下一轮仍取第4轮 / 报告 18.4）"
+  "last_round_topic": "第4轮：vpipe原生Metal视频超分(RelayVSR/FlashVSR)发现 + P18 `dmd` 采样器对纹理沸腾的判决（HF jitter −12.82%、sharpness +10.27%）",
+  "next_suggestions": ["P13b `sigmas`/er_sde 网格对照（≥3次，漂移=0 下可直接采信第3轮那个 −16%）", "P22 FlashVSR 超分（本地 build 已有 stage；权重走 ModelScope mlx-community/FlashVSR-v1.1-bf16 3.27 GB 或 kuohao/FlashVSR-v1.1 6.48 GB）", "P15b 用 autotune:false 重跑第 17.4.1 节 Ref2VA 768p shift 对照", "P25 用 HF Space Upsampler/relayvsr 零下载预判超分效果"]
 }
