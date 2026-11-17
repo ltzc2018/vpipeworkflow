@@ -416,3 +416,230 @@ Video Rebirth（非 MiniMax 官方）的 H3 压缩少步版：
 - **LFM3-VL 可作为带视觉的语言模型**（我们用它做第三方复核，是官方支持的用法）
 - **更广 LoRA 支持**：`.safetensors` 可直装 LoRA 槽（**FP8 暂不支持**）；ComfyUI int8 ConvRot × pruned 权重格式
 - **上游文档扩到 27 个 md**；**英文版 `docs/MINIMAX-H3.md`（249 KB）比中文版多 73 KB** → 长视频指南的权威出处是英文版
+
+---
+
+## 12. 第 2 轮（2026-11-18）：YUV 口径归因收口 + 版本落差订正 + 适配器全量盘点
+
+> 来源：`vpipe-lab/report/vpipe-H3-部署与测试报告.md` §18.2、`vpipe-lab/report/vpipe-daily-knowledge.md` 第 2 轮、
+> 脚本 `vpipe-lab/scripts/p11_caliper.py`（原始数据 `vpipe-lab/p11-caliper.json`）。
+> **本节是对第 11.5 节的实测修订 —— 第 11.5 节的直觉方向对，归因对象错。**
+
+### 12.1 ★★ SSIM 口径：那个 0.03 是「比较域」造成的伪影，不是编码开销
+
+第 11.5 节说「4:4:4 下这 0.03 应显著变小」。**实测：能变小，但真凶不是像素格式，是比较域。**
+
+**三个口径（务必分清）**
+
+| 口径 | 命令形态 | 比较域 | 与视频像素格式的关系 |
+|---|---|---|---|
+| **A**（我们长期用的） | `-i vid -i ref.png -lavfi "[0:v][1:v]ssim"` | **YUV 域** | **强依赖** —— ffmpeg 会把参考图 auto_scale 到视频格式 |
+| **B**（PNG 落盘再比） | 两边都落 PNG 再比 | **RGB 域**（gbrp） | **无关** |
+| **C**（判别用） | `-lavfi "[0:v]format=gbrp[a];[1:v]format=gbrp[b];[a][b]ssim"` | **RGB 域**（gbrp） | **无关** |
+
+**★ 关键事实 1：B ≡ C**（实测 `|B − C| = 0.000000`，两个视频、四种格式全部成立）
+→ 「PNG 落盘再比」和「强制 gbrp 域直比」**是同一个度量**，别当成两件事。
+
+**★ 关键事实 2：口径 A 的读数随被测视频像素格式漂移，B/C 不漂移**
+
+| 变体 | 口径 A | 口径 B | 口径 C |
+|---|---:|---:|---:|
+| yuv420p/limited/bt601 + h264 | **0.5796** | 0.3900 | 0.3900 |
+| yuv422p/full/bt709 + ffv1 | **0.6191** | 0.3902 | 0.3902 |
+| yuv444p/full/bt709 + ffv1 | **0.7244** | 0.3902 | 0.3902 |
+| yuv444p/limited/bt709 + ffv1 | **0.7549** | 0.3901 | 0.3901 |
+
+口径 A 极差 **0.1752**；口径 B/C 极差 **0.0003**。
+
+**机制（`ffmpeg -v verbose` 直接读到，不是推测）**：口径 A 下**参考图被 auto_scale 到视频的像素格式**才参与比较：
+
+```
+4:2:0 视频：rgb24/gbr/pc  →  yuv420p/smpte170m/tv    ← 参考图被 4:2:0 抽样 + 压到 limited
+4:4:4 视频：rgb24/gbr/pc  →  yuv444p/bt709/pc         ← 无抽样、范围无损
+```
+
+⇒ **口径 A 的分数里混进了「参考图被降采样的程度」**，它不是纯粹的相似度度量。
+
+**★ 关键事实 3：4:2:0 真丢色度，但只丢 0.0046**
+真值基准（从无损 4:4:4/ffv1 解出 RGB 帧，各变体**全用 ffv1 无损编码器**，差值只可能来自色度抽样）：
+
+| 变体 | SSIM vs 真值逐帧 | PSNR |
+|---|---:|---:|
+| 自检（真值自比） | 1.000000 | inf |
+| 4:4:4 | **0.999977** | 82.31 dB |
+| 4:2:2 | 0.997014 | 48.63 dB |
+| 4:2:0 | 0.995417 | 46.67 dB |
+| 4:2:0 + limited + bt601 + h264（默认全链） | 0.984282 | 41.58 dB |
+
+⇒ **真正吃掉 0.015 的是 `limited range` + `bt601` + `h264 有损压缩` 三条叠加，不是色度抽样。**
+
+**★ 关键事实 4：方向 —— 口径 A 恒高于口径 B**（+0.17~0.19）
+实测 `pika-i2va-shop.mp4 vs ref-cat-832.png`：A=0.5774 / B=0.3895 → **A−B = +0.1879**。
+`p4-i2va-preview-fast.mp4 vs 锚定图`：A=0.3453 / B=0.1735 → **+0.1718**。
+⇒ 报告第 17.3 / 18.1 节「PNG 再比偏低」**正确**；第 15.4.2 节括号「PNG 再比**会高**」**写反了**。
+
+**★ 历史表安全性**：抽查第 16/17 节全部关键表被测文件，
+像素格式**全部一致**（`h264 / yuv420p(tv, smpte170m)`）→ **历史结论不受影响**。
+
+### 12.2 ★ 纪律：跨像素格式比较必须换口径
+
+> **口径 A 的读数依赖被测视频的像素格式。**
+> **今后凡跨格式比较（如 4:2:0 vs 4:4:4），必须用口径 B/C，或在比较前把双方统一转码到同一格式。**
+> 同格式组间比较（当前所有历史表）不受此影响。
+
+**生产链建议**：交付片用 `yuv444p + full + bt709 + ffv1`（或至少 `full + bt709`），
+相对默认链（`yuv420p + limited + bt601 + h264`）**可回收约 0.011 SSIM**。
+LFM3-VL 第三方复核也判不出 4:2:0 与 4:4:4 的肉眼差别（`vpipe-lab/scripts/vqa-p11.sh`）。
+
+### 12.3 ★ 版本落差订正：「落后 12 个 commit」只对已装 App 成立
+
+| 对象 | 实测版本 | 与上游 `main @ 4dc36b7` 的差距 |
+|---|---|---|
+| 已安装 App 的 `vpipe` helper | `0.1 (9db5dd7*0)` | **落后 12 个 commit** |
+| 本地源码树 `vpipe-lab/repo/vpipe` | `33cda00`（2026-11-13，depth-1 shallow clone） | **只落后 2 个 commit** |
+| 本地已编译 build | `build/apps/vpipe/vpipe` → `0.1 (33cda00*0)` | 可运行 |
+
+⇒ **P12 的成本远低于原设想**：只需把源码树从 `33cda00` 再拉 2 个 commit，不必重编译整条链。
+
+**本地 build 的坑**：直接跑会 `dlopen failed for libavutil.dylib` →
+需 `DYLD_LIBRARY_PATH="/Applications/Vpipe Manager.app/Contents/Frameworks"`。
+但这样会加载 App 的 `libvpipe`（9db5dd7），**版本串会从 `33cda00*0` 变成 `9db5dd7*0`**
+→ 用版本串判断「跑的是哪个 build」时必须知道这一点。
+
+### 12.4 ★ YUV 4:4:4 / BT.709 / FFV1：**已装 App 就支持**，不必等升级
+
+第 11.1 / 11.5 节把这一组能力记作「上游新增，需升级才能拿到」。**实测证伪**：
+
+- **行为探针**：非法 `pix_fmt="yuv999p"` 被拒并打印
+  `pix_fmt 'yuv999p' is not yuv420p, yuv422p, yuv444p or rgb24`；`yuv444p` 被接受
+- **实跑探针**：`load-video → video-to-rgb → rgb-to-video(yuv444p/full/bt709) → save-video(ffv1)`
+  在**已装 App** 上跑通（797 ms），产出经 ffmpeg 确认为 `ffv1, yuv444p(pc, bt709), 832x480`
+- **源码佐证**：`stages/rgb-to-video-stage.cc:34-40` 三个选项数组早已存在
+
+⇒ **缺的不是能力，是「测量」。** 第 16 节的续接流水线（`p3-ext-part1.vpipeline`）**早就在用官方 lossless 配方**。
+
+### 12.5 ModelScope `lightx2v/Minimax-h3-Turbo` 全量盘点（28 文件）
+
+本机现有 4 个（`models/lightx2v/`，5.7 GB）：
+`fl2v 4step v1.2 768p bf16`、`fl2v 8step v1.0 768p bf16`、`fl2v 8step v1.0 768p comfyui_bf16`、`ref2v 8step v1.0 768p bf16`。
+
+**从未测过的新变体**（下载即用，各 1.38 GB）：
+
+| 变体 | 文件 | CommitDate |
+|---|---|---|
+| Ref2VA 4-step 768p | `minimax_h3_ref2v_turbo_4step_v1.0_768p_bf16.safetensors` | 2026-10-20 |
+| Ref2VA 8-step v1.1 768p | `minimax_h3_ref2v_turbo_8step_v1.1_768p_bf16.safetensors` | 2026-10-20 |
+| FL2VA 4-step v1.3 768p | `minimax_h3_fl2v_turbo_4step_v1.3_768p_bf16.safetensors` | 2026-10-20 |
+| FL2VA 8-step v1.2 768p | `minimax_h3_fl2v_turbo_8step_v1.2_768p_bf16.safetensors` | 2026-11-12 |
+
+**`_comfyui_bf16` 变体更大**（1.96–2.12 GB），两者都在。
+
+### 12.6 ★ shift 规则再补一条线索：4-step 家族可能是 6.0
+
+- `lightx2v/Minimax-h3-Turbo-SLA` 的 `minimax_h3_fl2v_turbo_4step_v0.1_768p_sla_bf16.safetensors`
+  （1.29 GB）元数据写 **`video_flow_shift 6.0 / audio_flow_shift 3.0`**
+- 而第 9.2 节实测：**Ref2VA 768p 是 12.0 更锐**（FL2VA 768p 是 6.0 更锐）
+- ⇒ **4-step 家族的 shift 可能与 8-step 不同**；**在拿到 Ref2VA 4-step 768p 实测前，不改第 9.2 节任何结论**
+
+### 12.7 4 步「固定时间步嵌入」机制（独立佐证第 9 节结论）
+
+adapter 元数据带 `pdd_config`（`nfe=4, grid_size=256`）→ 调度器建 257 点 σ 网格切 4 段，
+每段蒸馏头权重除以该段 σ 跨度；`num_inference_steps = steps + 1` 个 σ 点使 transformer 恰好被调用 `steps` 次；
+`_FusedProjection` 存 4 组输出投影、`_FourStepController` 是按步切头的 forward hook、
+`validate_four_step_call()` 断言恰好 4 次前向。
+
+⇒ **从机制层面印证「4 步适配器必须同时把 pipeline `steps` 改成 4」，不是巧合。**
+
+### 12.8 本轮新增的坑
+
+1. **`ffprobe` 不在 PATH**（本机 `~/.hermes/tools/ffmpeg-9.0.1-darwin-arm64/` 只有 `ffmpeg`）
+   → 用 `ffmpeg -hide_banner -i <file>` 读 `Stream #0:0 ... Video:` 行代替
+2. **二进制字符串探测对本机 vpipe 无效**：`grep -a "yuv444p"` 0 命中
+   （helper 只有 107 KB，真正代码在 `Contents/Frameworks/libvpipe*.dylib`）
+   → 用**行为探针**（非法值被拒 + 实跑 + ffmpeg 验产物）
+3. **ffv1 不接受 rgb24**：`avcodec_open2 failed: the frames are rgb24 and 'ffv1' may not accept it`
+   → 零损失基准只能取「真值 PNG 序列自比」
+4. **`ssim` stats 在 RGB 域输出 R/G/B 而非 Y/U/V** → 正则要兼容两种，否则整批测量**静默返回 None**
+5. **PSNR 不能复用 SSIM 的滤镜串** → 必须把 `ssim` 换成 `psnr`
+6. **Bash 工具 cwd 会在多次调用间漂移** → 写文件一律用绝对路径
+
+---
+
+## 13. ★★ 上游权威 shift 规则表（2026-11-18 第 3 轮核对，本节优先于第 9/12 节的经验结论）
+
+> 来源：`vpipe-lab/repo/vpipe/docs/MINIMAX-H3.md`（上游官方文档，本地源码树 `33cda00` 自带）
+> 行号：1946–1977、1508–1513、444–450；核对日期 2026-11-18
+> **本节是上游自己写的适配器→shift 对照表，权威性高于任何社区表格与本实验室的经验对照。**
+
+### 13.1 官方表（逐字转录）
+
+| entry | partition | steps | shifts (v/a) | trained at |
+|---|---|---|---|---|
+| `Turbo few-step v4-600 EMA` (larryvrh) | FL2VA | 4–8 | 12 / 3 | — |
+| `Turbo few-step v1-850 EMA` (larryvrh) | FL2VA | 4 | 12 / 3 | — |
+| `Turbo 4-step v1.0 768p` (lightx2v) | FL2VA | 4 | **6** / 3 | 1344×768 |
+| `Turbo 4-step v1.2 768p` (lightx2v) | FL2VA | 4 | **6** / 3 | 1344×768 |
+| `Turbo 8-step v1.0 544p` (lightx2v) | FL2VA | 8 or 4 | 12 / 3 | 544p |
+| `Turbo 8-step v1.0 768p` (lightx2v) | FL2VA | 8 | **6** / 3 | 1344×768 |
+| `Turbo 4-step v0.1` (lightx2v) | **Ref2VA** | 4 | **12** / 3 | 544p |
+| `Turbo 8-step v1.0 768p` (lightx2v) | **Ref2VA** | 8 | **6** / 3 | 1344×768 |
+
+### 13.2 三条必须记住的规则
+
+1. **「The shifts are part of the adapter, not a preference.」**
+   lightx2v 的 768p 检查点是**在 video shift = 6 上蒸馏的**，而模型默认（以及所有非 768p 训练的适配器）是 12。
+   蒸馏是拟合到它训练时的 σ 网格上的，**跑在错的网格上不是风格差异，是另一条 schedule，而且没有任何东西会报告它**。
+2. **Ref2VA + 768p 必须用 `video_shift: 6.0`** —— 上游原话：
+   「The Ref2VA adapter is the only one here that needs `video_shift: 6.0`.」
+   上游官方长视频链（`docs/MINIMAX-H3.md:1511`）的 parts 2–4 也明确写 `video_shift: 6.0`。
+3. **Ref2VA + 4 步 v0.1 是 544p 的变体，用 12 / 3**（不是 6）——「the one on the checkpoint's own shifts」。
+
+### 13.3 ★ 「换 shift = 换场景」：shift 对照实验的方法学陷阱（新增，第 3 轮实测）
+
+- 社区实测（AICU，2026-08-18）：「The same seed does not give you the same shot. The sigma shift changes the path
+  from noise to image, so the same seed and the same prompt produce a **different scene** — not a lower-quality version
+  of the same scene.」
+- **本实验室第 3 轮独立验证**：只改 `video_shift`（其余全同：参考图、提示词、seed 42、8 步、1344×768）
+  → **首帧 SSIM 仅 0.46–0.58**（Ref2VA A(6.0) vs B(12.0) = **0.5213**；FL2VA 768p shift6 vs shift12 = **0.4618**）。
+- 即使换成「静态参考图 + 完全静止提示词」，首帧 SSIM 仍只有 **0.5062** →
+  **vpipe 里无法用「同一场景」来对照 shift**，因为 σ 网格决定了整条去噪轨迹。
+- ⇒ **纪律：跨 shift 比较时，结论只能表述为「两条不同 σ 网格的对比」，不能表述为「同一模型渲染得更锐/更好」。**
+  要控制场景，只能用**首帧锚定（FL2VA）**把第 0 帧钉死。
+- 社区 5090 实测同样强调：「把 8 步配方硬拉到 768p，或者把 shift 交叉用，就是在跟自己较劲」。
+
+### 13.4 ★★ `sigmas` 字段：可以手写 ComfyUI 的 σ 网格（上游 issue #55 的请求已被满足）
+
+`minimax-h3-model-config` 阶段有 `sigmas` 字段（源码 `stages/minimax-h3-model-config-stage.cc:69`）：
+
+- 「the VIDEO's sigmas **AS RUN**, in place of the grid `steps` and the shifts make -- comma-separated, terminal 0
+  included, strictly falling from at most 1」
+- **上游文档给的示例串正是 ComfyUI `er_sde` 的 σ 表**：
+  `"1, 0.9844, 0.9627, 0.9304, 0.878, 0.7579, 0.5527, 0.2369, 0"`
+  （与上游 issue #55 正文里贴的 `ComfyUI er_sde sigmas 1, .9844, .9627, .9304, .878, .7579, .5527, .2369, 0` **逐位相同**）
+- 「One forward per sigma but the last, so the list sets the step count and `generate-video`'s `steps` is not used.」
+  （9 个 σ → 8 次前向；`steps` 与之不一致时**阶段会告警**）
+- 「Wins over an adapter's own grid (a flow map, a sampling contract)」——对普通 LoRA 适配器直接生效。
+- 音频的 σ 由 `video_shift` / `audio_shift` 映射得出（`video_shift` 仍然决定音频落在哪）。
+- ⚠️ 「A distillation was fitted to the grid it was trained on, so a few-step adapter on another grid is **off its training**.」
+  → 用 `sigmas` 换网格会让 Turbo 适配器离开它的训练网格，**画质变化不能全部归因于网格**。
+
+### 13.5 `-split` 优于 `-comfyui`（上游明确推荐）
+
+- 上游：「**`-split` is the diffusers copy, and it is the better file.** … Prefer the split one」
+  理由：「a published fusion is **silently wrong on one of the two weight releases** and a split file is right on both」。
+- 完整 `model_variant` 名（上游 `docs/MINIMAX-H3.md:2005-2016`）：
+
+| variant | what |
+|---|---|
+| `lightx2v/Minimax-h3-Turbo-4step-768p` | FL2VA 4-step, shift 6 |
+| `lightx2v/Minimax-h3-Turbo-8step` | FL2VA 8-step, 544p, shift 12 |
+| `lightx2v/Minimax-h3-Turbo-8step-768p` | FL2VA 8-step, shift 6 |
+| `lightx2v/Minimax-h3-Turbo-8step-768p-split` | the same, **split** — prefer this |
+| `lightx2v/Minimax-h3-Turbo-4step-768p-v1.2` | FL2VA 4-step **v1.2**, shift 6, **split** — prefer this |
+| `lightx2v/Minimax-h3-Turbo-4step-768p-v1.2-comfyui` | the same, fused |
+| `lightx2v/Minimax-h3-Turbo-ref2va-4step` | Ref2VA 4-step, 544p, shift 12 |
+| `lightx2v/Minimax-h3-Turbo-ref2va-4step-split` | the same, **split** — prefer this |
+| `lightx2v/Minimax-h3-Turbo-ref2va-8step-768p` | Ref2VA 8-step, shift 6, **split** — prefer this |
+| `lightx2v/Minimax-h3-Turbo-ref2va-8step-768p-comfyui` | the same, fused |
+
+- 本机装的是 `minimax_h3_ref2v_turbo_8step_v1.0_768p_bf16.safetensors`（1.38 GB，**bf16 即 split 版**）→ **选对了**。

@@ -43,11 +43,17 @@ log "当前 HEAD：$(git -C "$REPO" log -1 --format='%h %ad %s' --date=short)"
 log "复制技能包 / 脚本 / 流水线 / 报告 ..."
 
 # 2.1 技能包（以实验室副本为准，实验室副本 = 安装版）
+# ⚠️ 2026-11-18 第 3 轮修正：BSD 的 `cp -R src/ dst/` 是「把 src 的**内容**铺到 dst」，
+#    而 src 带了尾斜杠 → 旧写法 `cp -R "$d" "$REPO/skills/"` 会把每个技能的内容
+#    **平铺**到仓库的 skills/ 顶层（skills/SKILL.md、skills/references/、skills/assets/…），
+#    正确定位的 skills/<name>/… 从此再也不被刷新（实测陈旧了两轮：21 603 B vs 源 36 163 B），
+#    而且 skills/SKILL.md 会被最后一个技能覆盖（实测 = vpipe-text-to-image），在 public 仓库里误导。
+#    → 必须显式指定目标目录：cp -R "$d" "$REPO/skills/$name/"
 for d in "$LAB"/skills/*/; do
   name=$(basename "$d")
   [ -d "$d" ] || continue
   mkdir -p "$REPO/skills/$name"
-  cp -R "$d" "$REPO/skills/" 2>/dev/null || fail "复制技能包失败：$name"
+  cp -R "$d" "$REPO/skills/$name/" 2>/dev/null || fail "复制技能包失败：$name"
 done
 
 # 2.2 脚本与流水线

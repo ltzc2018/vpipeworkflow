@@ -111,3 +111,32 @@ load-video  ┬→ video-to-rgb → image-resample(WxH) → temporal-stack   →
 4. **768p 的 shift 规则与 FL2VA 相反**：Ref2VA 768p 实测 **12.0 更锐**（主体纹理 178.7 vs 153.1），
    FL2VA 768p 仍是 6.0 更锐。详见 `vpipe-model-prepare/references/768p-adapters.md` 第 9 节。
 
+
+---
+
+## ★ 2026-11-18 补充：Ref2VA 的 shift 取值与「换 shift = 换场景」陷阱
+
+### 1. Ref2VA 768p 的正确 shift 是 6.0（上游官方文档）
+
+上游 `docs/MINIMAX-H3.md:1955` 与 `:1511` 明确：
+
+> `Turbo 8-step v1.0 768p` (lightx2v) | **Ref2VA** | 8 | **6** / 3 |
+> 「the only Ref2VA adapter that needs `video_shift: 6.0`」
+
+即 `lightx2v/Minimax-h3-Turbo-ref2va-8step-768p` 配 **`video_shift: 6.0`**、**`audio_shift: 3.0`**。
+（Ref2VA 的 4 步 v0.1 是 **544p** 变体，用 **12 / 3**。）
+
+### 2. ⚠️ 跨 shift 对照天然带「换场景」混淆项
+
+第 3 轮实测（只改 `video_shift`，其余全同）：
+
+| 对照 | 首帧 SSIM |
+|---|---|
+| Ref2VA 768p shift 6.0 vs 12.0（第 9 节 A vs B） | **0.5213** |
+| FL2VA 768p shift 6.0 vs 12.0（第 8 节） | **0.4618** |
+| 静态参考图 + 完全静止提示词，shift 6.0 vs 12.0 | **0.5062** |
+
+- 社区实测同样如此（AICU, 2026-08-18）：「The same seed does not give you the same shot … the same seed and
+  the same prompt produce a **different scene**」。
+- ⇒ 读 shift 对照结果时，**只能说是「两条不同 σ 网格」**，不能说「同一场景渲染得更锐」。
+- ⇒ 真正想比「同一场景的清晰度」，必须用**首帧锚定**把第 0 帧钉死，或用**静态夹具**把运动压到最低。
