@@ -643,3 +643,64 @@ adapter 元数据带 `pdd_config`（`nfe=4, grid_size=256`）→ 调度器建 25
 | `lightx2v/Minimax-h3-Turbo-ref2va-8step-768p-comfyui` | the same, fused |
 
 - 本机装的是 `minimax_h3_ref2v_turbo_8step_v1.0_768p_bf16.safetensors`（1.38 GB，**bf16 即 split 版**）→ **选对了**。
+
+---
+
+## 14. lightx2v 官方 Model Specs 表（2026-11-18 读 `github.com/ModelTC/Minimax-H3-Turbo`）
+
+> 这是**厂商自己的表**，与上游 vpipe 文档的适配器→shift 对照表**逐行一致** → 可交叉印证。
+
+| Model | partition | 训练分辨率 | 训练 shift (v/a) | 蒸馏 NFE | 推荐推理 NFE |
+|---|---|---|---|---|---|
+| FL2VA Turbo 4-step v0.1 | FL2VA/T2VA | 544p 混合 | 12/3 | 4 | 4 |
+| FL2VA Turbo 8-step v1.0 | FL2VA/T2VA | 544p 混合 | 12/3 | 8 | 8 / 4 |
+| FL2VA Turbo 4-step v1.0 768p | FL2VA/T2VA | 1344×768 | **6/3** | 4 | 4 |
+| FL2VA Turbo 8-step v1.0 768p | FL2VA/T2VA | 1344×768 | **6/3** | 8 | 8 |
+| Ref2VA Turbo 4-step v0.1 | Ref2VA | 544p 混合 | **12/3** | 4 | 4 |
+
+- **官方表里没有 Ref2VA 8-step 768p 这一行** → 上游 vpipe 给它的 `video_shift: 6.0`
+  是**从 768p 家族继承的推断**（上游自己也这么标注）→ 引用时要写成「推断」。
+- 官方 Studio 用的是 **FL2VA Turbo 8-step v1.0 768p**，推荐 **8 NFE / video shift 6 / audio shift 3**。
+- 官方 README 把 **v1.2（8 步 FL2VA）** 标为 ⭐ 新推荐（比 v1.1 更好，更接近 29 步 base）。
+
+## 15. ModelScope 上的新变体（上游 catalog 尚未收录）
+
+ModelScope `lightx2v/Minimax-h3-Turbo` 现有 **31 个文件 / 27 个 safetensors**，
+而上游 vpipe catalog 只注册了 **12 个**。差集（**上游未收录 = 可上报的实质增量**）：
+
+| 文件名 | 大小 | 备注 |
+|---|---|---|
+| `minimax_h3_fl2v_turbo_4step_v1.3_768p_bf16.safetensors` | 1.32 GB | ★ **v1.3 是最新一代 4 步 768p** |
+| `minimax_h3_fl2v_turbo_4step_v1.3_768p_comfyui_bf16.safetensors` | 1.87 GB | 同上，ComfyUI 融合版 |
+| `minimax_h3_fl2v_turbo_8step_v1.2_768p_bf16.safetensors` | 1.47 GB | 官方 README 的 ⭐ 推荐 |
+| `minimax_h3_fl2v_turbo_8step_v1.2_768p_comfyui_bf16.safetensors` | 2.02 GB | 同上，融合版 |
+| `minimax_h3_fl2v_turbo_8step_v1.1_768p_bf16.safetensors` | 1.32 GB | 8 步 v1.1 |
+| `minimax_h3_ref2v_turbo_4step_v1.0_768p_bf16.safetensors` | 1.32 GB | ★ **Ref2VA 4 步 768p**（第 3 轮 P11b 想测的） |
+| `minimax_h3_ref2v_turbo_8step_v1.1_768p_bf16.safetensors` | 1.32 GB | Ref2VA 8 步 v1.1 |
+| `minimax_h3_fl2v_turbo_4step_v1.1_768p_fp8.safetensors` | **32.4 GB** | fp8 版（异常大，注意磁盘） |
+
+- lightx2v 每个适配器**发布两次**：ComfyUI 融合版 + split（`to_q`/`to_k`/`to_v`）版
+  → **优先 split**（上游文档：融合版在其中一个权重发布上会静默出错）。
+- 本机已装：`minimax_h3_ref2v_turbo_8step_v1.0_768p_bf16`（1.38 GB，bf16 即 split 版）。
+
+## 16. 参考图缩放：官方三策略 + vpipe 的 `fit` 枚举
+
+**lightx2v 官方**（`--reference-resize-mode`，蒸馏训练用 `match`，推理也推荐 `match`）：
+
+| 模式 | 行为 | 缩放系数 |
+|---|---|---|
+| `match`（**推荐**） | 面积对齐目标画布、保比例、**不上采样** | `min(1, sqrt(target_area / ref_area))` |
+| `max` | 保比例，只把短边 > 2048 的缩小 | `min(1, 2048 / ref_short_edge)` |
+| `diffusers` | 保比例，短边强制 2048 | `2048 / ref_short_edge` |
+
+**vpipe 侧对应物**：`image-resample` 的 `fit` 枚举为
+`pad`（保长边+填充）/ `crop`（保短边+中心裁）/ **`stretch`（改长宽比）** / `manual` /
+`pad_to_grid` / `crop_to_grid` / `crop_to_area`。
+
+> ⚠️ **`stretch` 是唯一破坏长宽比的模式**。参考图非正方形时不要用。
+> `pad` ≈ 官方 `match` 的保比例版本（本实验室的 `minimax-h3-reference-subject.jpg` 是 1024×1024 正方形，
+> 所以 `stretch` 在那个夹具上零形变 —— **不能推广到其他参考图**）。
+
+`reference_image_short_edge` 默认值：**2048（Ref2VA）/ 768（FL2VA）**。
+2048 → 单张静图 **121 个 VAE tile**（最多 9 张）；1024 → **25 个**。
+上游自己的示例用 `image-resample` + `reference_image_short_edge: 1024`。

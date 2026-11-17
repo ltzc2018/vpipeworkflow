@@ -1,0 +1,132 @@
+# H3 σ 网格 · 公式、换算与工具
+
+> 最后更新：**2026-11-18 03:07**（第 3 轮续作 P15）
+> 权威来源：① 上游 vpipe `docs/MINIMAX-H3.md`（源码树自带，`33cda00`）
+> ② lightx2v / ModelTC 官方 `ModelTC/Minimax-H3-Turbo` README
+> 两者逐位互验（33 个数值全对），本文给出的是**推导后的闭式公式**，不是抄来的表。
+
+---
+
+## 1. 一句话结论
+
+**H3 的 σ 网格由「步数 N」和「两个 shift」完全决定，可以自己算出来，不必抄表。**
+
+```
+q_i        = (N - i) / N                       i = 0..N   （N+1 点，末点 q=0）
+σ_video(q) = shift_v · q / (1 + (shift_v - 1) · q)
+σ_audio(q) = shift_a · q / (1 + (shift_a - 1) · q)
+```
+
+- 视频与音频**共用同一个无偏移网格 q**，各自过一次自己的 shift；
+- 末点 q = 0 → σ = 0，即「干净端点」，**不算一次前向**；
+- `steps: N` = **N 次前向** over **N+1 个 σ**。
+
+---
+
+## 2. 两个一手来源的原文
+
+### A. 上游 vpipe `docs/MINIMAX-H3.md`
+
+> By default a clip runs `steps` forwards over `linspace(1, 0, steps + 1)`,
+> pushed through each modality's shift, and every step is an Euler step.
+
+> The **audio's** sigmas follow the way ComfyUI's H3 model derives them:
+> each video sigma is taken back to the shared unshifted grid through
+> `video_shift`, then out through `audio_shift`. So the two shifts still
+> matter with a list of your own: they decide where the audio sits.
+> The list for the example above, at shifts 12 / 3, puts the audio at
+> 1, 0.940, 0.866, 0.770, 0.643, 0.439, 0.236, 0.072, 0.
+
+> The 8-step grid at shift 12 starts it at 0.632; at shift 6, 0.462;
+> at shift 12, 16 steps start it at 0.444.
+
+### B. lightx2v / ModelTC 官方 README
+
+> For `NFE = N`, define the N transformer evaluation points on the unshifted
+> grid as `q_i = (N - i) / N`, where `i = 0, 1, ..., N - 1`.
+> For example, with `NFE = 4`, `video shift = 12`, and `audio shift = 3`,
+> the shared grid is `q = [1, 0.75, 0.5, 0.25]`, giving video sigma
+> `[1, 0.9730, 0.9231, 0.8000] -> 0` and audio sigma
+> `[1, 0.9000, 0.7500, 0.5000] -> 0`; each list therefore uses exactly
+> four NFEs.
+
+---
+
+## 3. 工具：`scripts/p15_sigma_grid.py`
+
+```bash
+# 默认网格：8 步、video_shift 6、audio_shift 3
+python3 p15_sigma_grid.py --steps 8 --video-shift 6 --audio-shift 3
+
+# 自定义视频 σ 串（ComfyUI 的 er_sde 表）→ 反解共享网格 q + 音频 σ 串
+python3 p15_sigma_grid.py --sigmas "1, 0.9844, 0.9627, 0.9304, 0.878, 0.7579, 0.5527, 0.2369, 0" \
+                           --video-shift 12 --audio-shift 3
+```
+
+**脚本每次运行都会自检 6 组共 33 个数值**（与 A、B 两个来源逐位比对），任何一条不符即退出码 2。
+
+已核对的锚点：
+
+| 场景 | 结果 | 来源 |
+|---|---|---|
+| N=4, 12/3 | video `1, 0.9730, 0.9231, 0.8000, 0`；audio `1, 0.9000, 0.7500, 0.5000, 0` | ModelTC |
+| N=8, shift 12 | 最后一步起点 **0.632** | vpipe |
+| N=8, shift 6 | 最后一步起点 **0.462** | vpipe |
+| N=16, shift 12 | 最后一步起点 **0.444** | vpipe |
+| er_sde 串 @12/3 | audio `1, 0.940, 0.866, 0.770, 0.643, 0.439, 0.236, 0.072, 0` | vpipe |
+
+---
+
+## 4. 自定义 σ 串时，音频怎么跟着走
+
+给了自己的**视频** σ 串（如 ComfyUI 的 `er_sde`），音频 σ **不是**直接拿同一串去过 audio_shift，
+而是要**先反解 q、再过 audio_shift**：
+
+```
+q         = σ_v / (shift_v − σ_v · (shift_v − 1))
+σ_audio   = shift_a · q / (1 + (shift_a − 1) · q)
+```
+
+例：er_sde 串在 `video_shift 12 / audio_shift 3` 下
+
+```
+video : 1, 0.9844, 0.9627, 0.9304, 0.878, 0.7579, 0.5527, 0.2369, 0
+q     : 1, 0.840219, 0.682621, 0.526960, 0.374893, 0.206901, 0.093357, 0.025218, 0
+audio : 1, 0.940390, 0.865815, 0.769689, 0.642753, 0.439031, 0.236005, 0.072021, 0
+```
+
+→ **换 `video_shift` 会连带改变音频落点**，即使视频 σ 串是手写的。
+
+---
+
+## 5. 步数语义（别再混）
+
+| 写法 | 含义 |
+|---|---|
+| vpipe `steps: N` | **N 次前向**（over N+1 个 σ） |
+| diffusers `num_inference_steps: N` | 网格点数（含端点）→ 实际 **N−1 次前向** |
+| 换算 | vpipe `steps: N` ≡ diffusers `num_inference_steps: N + 1` |
+
+上游明确选了 ComfyUI/diffusers 这一侧，理由两条：
+1. **步数会「旅行」** —— 从 ComfyUI 工作流、模型卡、别人的设置里抄来的步数都是「前向次数」；
+   按参考实现的读法抄，每次都会少一次前向（20 步 → 19 步）。
+2. **适配器是按前向次数命名的** —— 「4 步」「8 步」蒸馏就是拟合到那个次数、那个网格；
+   少一次前向就是另一个网格，而且**没有任何地方会告诉你**。
+
+---
+
+## 6. 三条会让结论翻车的纪律
+
+1. **「最后一步」只有自定义 σ 串才能改变。**
+   `steps` + shift 达不到；用 `sigmas` 时，末点 q = 0 那个 σ 之前的**倒数第二个 σ**决定了
+   最后一步从多高落到干净（8 步 shift 12 → 0.632；shift 6 → 0.462；16 步 shift 12 → 0.444）。
+   → **比较两条不同 σ 网格时，最后一步的落差是混淆项。**
+
+2. **few-step 适配器是拟合在某个特定网格上的。**
+   Turbo LoRA 蒸馏在「自己 shift 上的 shifted linspace 网格」；HyperFlow 与 Pika H3 Flex 在各自的网格上。
+   换自己的 σ 串 = 让它们脱离训练网格 → 上游原话：「it may look better on one shot and worse on the next」。
+   → **用 `sigmas` 测适配器时，结论不能外推到默认网格。**
+
+3. **`sigmas` 与 `steps` 不一致时 stage 会 warn，但 `sigmas` 赢。**
+   「One forward runs per sigma but the last, so this list is eight steps, whatever
+   `generate-video`'s `steps` says (the stage warns when the two disagree).」

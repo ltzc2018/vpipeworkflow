@@ -2914,3 +2914,400 @@ prompt produce a **different scene**」。
 - **已修**：`cp -R "$d" "$REPO/skills/$name/"`，并删除顶层扁平副本（逐文件核对 0 个独有文件）。
   修后仓库 **464 个文件**（原 522），真人文件 **0**，技能副本与实验室源**逐字节一致**。
 - **新增验收口径**：同步后必须逐个比对仓库与实验室的技能副本字节数，**不能只看树里有没有这个文件**。
+
+#### 18.3.9 2026-11-18 03:07 —— 第 3 轮续作：★★★ bit-for-bit 可复现性（`autotune: false`）+ σ 网格闭式公式 + H3 sampler spec 能力清单
+
+> **本小节是第 3 轮（02:30）的续作**，未占用新的轮次编号 —— 下一轮（04:30）仍按计数器取 **第 4 轮 / 18.4**。
+> 续作起因：第 3 轮 18.3.7 建议的第 1 项「P15 · 可复现性基线（最高优先）」。
+> 本小节**含一条对第 3 轮结论的修订**（见 18.3.9.3），按纪律单独标注，不改写 18.3 正文。
+
+##### 18.3.9.1 本轮检索范围与来源清单
+
+| # | 来源 | URL / 路径 | 日期 | 本轮拿到什么 |
+|---|---|---|---|---|
+| 1 | 上游 GitHub commits API | `api.github.com/repos/tgo-app-dev/vpipe/commits?per_page=8` | 2026-11-18 | **HEAD 仍是 `4dc36b7`（2026-11-16）→ 上游零增量** |
+| 2 | 上游 issue #55 本体 + 评论 API | `api.github.com/repos/tgo-app-dev/vpipe/issues/55` | 2026-11-18 | **state=open，评论 0 条，最后更新 2026-10-21 → 上游对纹理沸腾零回应（已开放 28 天）** |
+| 3 | 上游 issue 全表（34 条） | `api.github.com/repos/tgo-app-dev/vpipe/issues?state=all` | 2026-11-18 | #55 open / #59 open / #56 open / #47 closed / #57 closed；本实验室那 5 条提案**尚未提交上游**（`vpipe-upstream-issues.md` 待人工提交）→ 其上游状态无从变化 |
+| 4 | 上游 commit `e6972ac` 全文 | `github.com/tgo-app-dev/vpipe/commit/e6972ac` | 2026-11-06 | ★ **bit-for-bit 的真正机制**：`autotune: false` + 钉死 `ane_rows` |
+| 5 | 上游 `docs/MINIMAX-H3.md`（本地源码树自带，33cda00） | `repo/vpipe/docs/MINIMAX-H3.md` | 2026-11-13 | ★ **σ 网格构造 + 音频 σ 推导 + sampler spec 端口表 + `sigmas` 优先级** |
+| 6 | 上游 `docs/PLUGINS.md` 的 `autotune` 章节 | `repo/vpipe/docs/PLUGINS.md:994` | 2026-11-13 | ★ **「竞速 agree to rounding, not to the bit」的权威机理** |
+| 7 | 上游源码 `generate-video-stage.cc` / `diffusion-sampler-select-stage.cc` / `video-ref-encoder-stage.cc` | `repo/vpipe/stages/` | 2026-11-13 | 配置键逐一定位（`autotune` / `ane_rows` / `sampler` iport 3 / `reference_image_short_edge`） |
+| 8 | lightx2v / ModelTC 官方 README | `github.com/ModelTC/Minimax-H3-Turbo` | 2026-11-17 读 | ★★ **σ 网格闭式公式 + Model Specs 表 + 参考图缩放三策略** |
+| 9 | ModelScope `lightx2v/Minimax-h3-Turbo` 文件清单 API | `modelscope.cn/api/v1/models/lightx2v/Minimax-h3-Turbo/repo/files` | 2026-11-18 | **31 个文件 / 27 个 safetensors**，含 **v1.3**、FL2VA 8步 v1.1/v1.2、Ref2VA 4步 v1.0 768p、Ref2VA 8步 v1.1 768p、32.4 GB 的 fp8 版 |
+| 10 | ModelScope `lightx2v/Minimax-h3-Turbo` README（raw） | `modelscope.cn/models/lightx2v/Minimax-h3-Turbo/resolve/master/README.md` | 2026-11-18 | **v1.2（8 步）被官方标为 ⭐ 推荐**，对比 v1.1 / Pika LoRA / 29 步 base |
+| 11 | MiniMax 官方 release notes | `minimax.io/platform/document/release_notes_model` | 2026-11-10 | **MiniMax H3-Image 开源**（33.1B 稠密 DiT / 6 步 / CFG=1 / 16 张参考图 / 4096×4096 <10 s） |
+| 12 | 社区：ComfyUI-SelfLift / H3 Temporal State Transport | `mybj123.com/32280.html` | 2026-11-18 | 专门治「帧间闪烁、纹理与形态漂移」的 MODEL 补丁节点（tau 默认 0.2） |
+| 13 | 社区：`mo-akkakk/ComfyUI-MiniMaxH3-TemporalWindow-SpatialTiles` 文档 | `comfy.icu/extension/...` | 2026-11-18 | ★ **「micro-boiling 来自 model + sampler（尤其少步 LoRA），不是来自 tiling」** |
+| 14 | 社区：H3 Image 三条 ComfyUI 设置 | `webhill.net/en/telegram/post/three-comfyui-settings-...` | 2026-11-18 | `SamplerLCM` + Simple + 6 步 + **`s_noise` 1.10→0.90 压微噪** |
+| 15 | 社区：H3 本地部署五个坑 | `blog.gitcode.com/19c7fe91...` / `f459d04f...` | 2026-11-18 | **17n+5 帧公式被独立印证**；**时空网格错位 → 帧间抖动**；本地 BF16 5 秒 1344×768 ≈ 348.8 s |
+| 16 | stable-diffusion.cpp 仓库 | `github.com/leejet/stable-diffusion.cpp` | 2026-11-18 | 采样器列表含 **ER-SDE**；H3 支持日期仍为 2026/08/04 → **生态侧无增量** |
+| 17 | ModelScope `Efficient-Large-Model/Open-H3-Regenerate-2K` | `modelscope.cn/models/...` | 2026-11-18 | NVIDIA 的 2K 精修三适配器合并方案（r=384+128+64），三步 Euler @ sigmas [0.909375, 0.857143, 0.666667, 0] |
+
+检索源数：**17 类**（GitHub API × 3 + commit 全文 × 1 + 上游文档 × 2 + 上游源码 × 1 + ModelScope × 3 + 官方公告 × 1 + 社区 × 5 + 第三方仓库 × 1）。
+
+##### 18.3.9.2 新增知识
+
+**K9 ★★★ bit-for-bit 不是一个「版本特性」，是一个需要显式打开的开关**
+
+上游 `e6972ac` 全文：
+
+> `autotune` false asks for a repeatable generation. A kernel tuner chooses between candidates
+> that agree to rounding but not to the bit, and it chooses by racing them, so two identical
+> runs could differ. With the key off each tuner times nothing, reads no answer the session
+> kept, and takes the route believed fastest on that GPU. … `ane_rows` is read as a fraction
+> now, so a share below one no longer falls to nothing; **pin it too and a generation repeats exactly.**
+
+`docs/PLUGINS.md:994` 给出机理：
+
+> A family that picks a kernel, a tile, a route or a split by timing its candidates — at load,
+> or at a first forward — picks by a race, and **the candidates agree to rounding, not to the bit**:
+> two runs whose races land differently produce different pictures from the same seed.
+> False means time nothing, read nothing the session kept (`find_tuned`…), and take one fixed
+> choice per GPU. … **An automatic ANE share is balanced by timing too: a run that must repeat
+> also pins `ane_rows`.**
+
+- 源码定位：`autotune` 是 **9 个 stage** 都支持的键
+  （`generate-video` / `vae-decode` / `vae-encode` / `video-ref-encoder` /
+  `diffusion-conditioner` / `generate-audio` / `generate-image` / `latent-upscale` / `text-to-speech`）；
+- `ane_rows` 在 `generate-video` 上是 **Real（分数）** 类型；但本机 `ane_ffn` 默认 **false**
+  （`generate-video-stage.cc:255` `.def_bool = false`）→ **ANE 本就关闭，`ane_rows` 在本机是惰性的**。
+
+**K10 ★★ H3 的 σ 网格有闭式公式，不必抄表**
+
+上游 `docs/MINIMAX-H3.md`：
+
+> By default a clip runs `steps` forwards over `linspace(1, 0, steps + 1)`, pushed through each
+> modality's shift, and every step is an Euler step. … each video sigma is taken back to the
+> shared unshifted grid through `video_shift`, then out through `audio_shift`.
+
+lightx2v 官方 README：
+
+> For `NFE = N`, define the N transformer evaluation points on the unshifted grid as `q_i = (N − i) / N`…
+> with `NFE = 4`, `video shift = 12`, and `audio shift = 3`, the shared grid is `q = [1, 0.75, 0.5, 0.25]`,
+> giving video sigma `[1, 0.9730, 0.9231, 0.8000] -> 0` and audio sigma `[1, 0.9000, 0.7500, 0.5000] -> 0`.
+
+**两源联合推导出的闭式公式（已逐位互验 33 个数值）**：
+
+```
+q_i        = (N − i) / N                        i = 0..N     （N+1 点，末点 q=0）
+σ_video(q) = shift_v · q / (1 + (shift_v − 1) · q)
+σ_audio(q) = shift_a · q / (1 + (shift_a − 1) · q)
+```
+
+自写 σ 串时音频必须**先反解 q 再过 audio_shift**：
+
+```
+q = σ_v / (shift_v − σ_v · (shift_v − 1))
+```
+
+**K11 ★★ 上游官方文档的「最后一步」数值可用来核对网格**
+
+> The 8-step grid at shift 12 starts it at 0.632; at shift 6, 0.462; at shift 12, 16 steps start it at 0.444.
+
+三条全部与上式吻合（0.63158 / 0.46154 / 0.44444）→ **公式正确性的三重独立验证**。
+
+**K12 ★★ H3 的 sampler spec：端口 3，只认三个 method**
+
+- `generate-video` 的 iport 顺序（**从 0 数**）：
+  `0 conditioning` / `1 neg_conditioning` / `2 model` / **`3 sampler`** / `4 scheduler` /
+  `5 ref_latent0` / `6 ref_latent1` / `7 ref_latent2` / `8 ref_audio` / `9 model_config`；
+- `diffusion-sampler-select` 是 0 入 1 出，选器支持
+  `euler / heun / dpmpp_2m / dpmpp_sde / dmd / res_multistep`；
+- **H3 只映射三个**：`euler`（默认，确定性）、`dmd`（**每步重注噪**）、`res_multistep`（ComfyUI 的二阶）；
+- **`heun` / `dpmpp_2m` / `dpmpp_sde` 对 H3 不提供 → 只 warn 并回落默认**；
+  `eta` / `s_noise` 是 `dpmpp_sde` 的，H3 **不读**。
+
+**K13 ★★ `dmd` 就是 issue #55 讨论的「每步受控重注噪」，且本地 build 已支持、零下载**
+
+```
+x0     = x + σ · v
+x_next = (1 − σ') · x0 + σ' · n          n 为 fresh noise
+```
+
+- 噪声默认取 **clip 自己的 seed**（选器另设 `seed` 时用选器的；`seed: 0` = clip 的 seed）→ **确定性**；
+- → **issue #55 的第 1 条请求（让 H3 读 sampler spec iport）上游已经做了；但它想要的 `dpmpp_sde` 仍被排除。**
+  可用的替代是 `dmd`（同样每步重注噪）和 `res_multistep`。
+
+**K14 ★ `sigmas` 与 sampler spec 的优先级（上游逐条写明）**
+
+- HyperFlow 的 flow map 网格、Pika H3 Flex 的 sampling contract 网格 → **被 `sigmas` 替换**（会 warn）；
+- **Pika contract 自带的 re-noising 随它走，除非 sampler port 指定 `dmd`**；
+- flow map 之下**只跑 `euler`**；
+- refine（Open-H3-Regenerate-2K）上 `sigmas` **就是**它的 σ 串，第一个 σ 是重注噪到的 level；
+- **TaoMate-H3 的流式方法两者都不取**。
+
+**K15 ★★ lightx2v 官方 Model Specs 表（与上游 vpipe 文档一致，可交叉印证）**
+
+| Model | partition | 训练分辨率 | 训练 shift (v/a) | 蒸馏 NFE | 推荐推理 NFE |
+|---|---|---|---|---|---|
+| FL2VA Turbo 4-step v0.1 | FL2VA/T2VA | 544p 混合 | 12/3 | 4 | 4 |
+| FL2VA Turbo 8-step v1.0 | FL2VA/T2VA | 544p 混合 | 12/3 | 8 | 8 / 4 |
+| FL2VA Turbo 4-step v1.0 768p | FL2VA/T2VA | 1344×768 | **6/3** | 4 | 4 |
+| FL2VA Turbo 8-step v1.0 768p | FL2VA/T2VA | 1344×768 | **6/3** | 8 | 8 |
+| Ref2VA Turbo 4-step v0.1 | Ref2VA | 544p 混合 | **12/3** | 4 | 4 |
+
+→ **官方表里没有 Ref2VA 8-step 768p 这一行** → 上游 vpipe 文档给它的 6.0 是**从 768p 家族继承的推断**
+（上游自己也这么标注）→ **第 3 轮 18.3.3 的处理方式（标为假设 + 要求复核）是对的**。
+
+**K16 ★ ModelScope 已有 27 个 safetensors，上游 catalog 只注册 12 个 —— 差集里有新变体**
+
+ModelScope 有、**上游 catalog 尚未收录**：`minimax_h3_fl2v_turbo_4step_v1.3_768p_bf16`(+comfyui)、
+`minimax_h3_fl2v_turbo_8step_v1.1_768p_bf16`、`minimax_h3_fl2v_turbo_8step_v1.2_768p_bf16`(+comfyui)、
+`minimax_h3_ref2v_turbo_4step_v1.0_768p_bf16`、`minimax_h3_ref2v_turbo_8step_v1.1_768p_bf16`、
+`minimax_h3_fl2v_turbo_4step_v1.1_768p_fp8`（**32.4 GB**）。
+官方 README 把 **v1.2（8 步 FL2VA）** 标为 ⭐ 新推荐（比 v1.1 更好，更接近 29 步 base）。
+→ **上游 catalog 落后于 lightx2v 仓库**，且 `v1.3` 无人登记。
+
+**K17 ★ 参考图缩放：官方三策略 `match` / `max` / `diffusers`，推荐 `match`**
+
+| 模式 | 行为 | 缩放系数 |
+|---|---|---|
+| `match` | 参考面积对齐目标画布、保比例、**不上采样** | `min(1, sqrt(target_area / ref_area))` |
+| `max` | 保比例，只把短边 > 2048 的缩小 | `min(1, 2048 / ref_short_edge)` |
+| `diffusers` | 保比例，短边强制 2048 | `2048 / ref_short_edge` |
+
+官方原文：「For our distilled models, **we recommend selecting `match`** so inference uses the same
+resizing policy as training.」
+vpipe 侧对应物：`image-resample` 的 `fit` 枚举为
+`pad`（保长边+填充）/ `crop`（保短边+中心裁）/ **`stretch`（改长宽比）** / `manual` / `pad_to_grid` / `crop_to_grid` / `crop_to_area`
+→ **`stretch` 是唯一破坏长宽比的模式**。
+vpipe 的 `reference_image_short_edge` 默认 **2048（Ref2VA）/ 768（FL2VA）**，
+「at 2048 a single still is 121 VAE tiles … at 1024 it is 25」→ 上游自己的示例就用 `image-resample` + `reference_image_short_edge: 1024`。
+
+**K18 ★ 三条本实验室完全未测的新能力（全部零下载即可评估，磁盘受限也能试）**
+
+| 能力 | 出处 | 规格 | 本机阻塞 |
+|---|---|---|---|
+| **TaoMate-H3** | `TaoLiveAIGC/TaoMate-H3`（2.5 GB） | 3 步流式；`"taomate": "auto"`；**自带网格，不取 `sigmas` 也不取 sampler** | 仅 2.5 GB → 可下 |
+| **Open-H3-Regenerate-2K**（NVIDIA） | `Efficient-Large-Model/Open-H3-Regenerate-2K` | 2K 精修；三适配器合并（Open-H3 refiner r=384 + LightX2V FL2VA Turbo v1.2 r=128 + LMS Sharp v1.0 r=64）；三步 Euler @ `sigmas [0.909375, 0.857143, 0.666667, 0]`；另有 `-fast-vae` 与 `-IC`（上下文版） | 需评估体积 |
+| **MiniMax H3-Image** | `MiniMaxAI/MiniMax-H3-Image`（2026-11-10 开源） | 33.1B 稠密 DiT / 50 层 / **去音频分支** / Qwen3-VL 编码器 / Image VAE / **6 步 / CFG=1 / 无负提示词** / 最多 **16 张参考图** / 4096×4096 16 MP <10 s / 21:9 = 6272×2688 | ⛔ **模型包 68.65 GB + 66.7 GB 编码器 → 本机磁盘（5.1 GiB）阻塞** |
+
+**K19 ★ 社区侧对纹理沸腾的独立判断（第三方印证第 3 轮结论）**
+
+- `mo-akkakk` 节点文档：**「Fine texture flickering ("micro-boiling") at high resolution comes
+  mostly from the model and sampler (few-step LoRAs especially), not from tiling.」**
+  → **独立印证第 3 轮的结论**（沸腾来自模型 + 采样器，不是拼接/分块伪影）。
+- ComfyUI-SelfLift 的 **H3 Temporal State Transport（TST）** 节点直接针对
+  「帧间闪烁、纹理或文字形态漂移、人物身份和服装细节不稳定」→ **社区已经在做同类问题**，
+  是 ComfyUI 侧的替代解法（vpipe 侧对应物待查）。
+- H3 Image 侧用 **`s_noise` 1.10 → 0.90** 压微噪（`SamplerLCM` + Simple + 6 步）→
+  **`s_noise` 是抑制微噪的旋钮**，但 H3 **不读** `s_noise`（它是 `dpmpp_sde` 的）→ 该招在 vpipe/H3 上无效。
+
+**K20 ★ 上游 issue #55 至今零回应（28 天）**
+
+`state=open`、`comments=0`、`updated_at=2026-10-21`。→ **#55 的第 1 条请求已由上游「部分实现」
+（sampler spec iport 接上了）但 `dpmpp_sde` 仍被排除**；**第 2 条请求（`sigmas` 直接给 σ 串）已完全实现。**
+
+##### 18.3.9.3 与既有结论的印证 / 冲突
+
+| # | 既有结论 | 本轮关系 | 依据 |
+|---|---|---|---|
+| 1 | 第 3 轮：「**已装 App 不是 seed 可复现的**」，归因为「上游 bit-for-bit 修复 `e6972ac`（2026-11-06）晚于已装 App（`9db5dd7`，2026-11-01）」 | ❌ **冲突 → 归因错误，本轮实测推翻** | **App(9db5dd7) 与本地 build(33cda00) 同配置输出逐位完全相同**（framemd5 同、音频 md5 同、SSIM 1.000000、PSNR inf、字节 244 535 = 244 535）→ **版本新旧不是原因**。真正原因是**内核竞速**（`autotune` 默认 true），而本地 build 同样默认 true → **本地 build 也不可复现**。详见 18.3.9.4 |
+| 2 | 第 3 轮：漂移基线 sharpness 8.7% / HF jitter 18.4% / frame diff 22.4% / static_hf_jitter 13.5% | ✅ **印证（本轮独立复现）** | 本轮 at1 vs at2：sharpness **+9.1%** / HF jitter **+20.3%** / frame diff **+25.2%** / static_hf_jitter **+14.5%** → 四项全部落在第 3 轮基线的 ±2 个百分点内 |
+| 3 | 第 3 轮：shift 12.0 的 sharpness **+16.8%** 明确超过漂移 8.7% | ⚠️ **需降级为「边缘」** | 本轮实测 sharpness 漂移 **9.1%**（不是 8.7%）→ +16.8% 仍在其上，但余量从 1.93× 降到 1.84×；**在拿到确定性复现能力后应重测**（下轮用 `autotune: false`） |
+| 4 | 第 3 轮：`er_sde` σ 网格的 −16% HF jitter 落在漂移带内 → 不可下结论 | ✅ **印证** | 本轮 HF jitter 漂移 20.3%，−16% 确实在带内 |
+| 5 | 第 3 轮：「换 shift = 换场景」（首帧 SSIM 0.46–0.56） | ✅ **印证，且补一条边界** | 本轮 at1 vs at2（**只差竞速**）**是同一场景**（人工目检：同一姿态、同一窗户、同一光斑；LFM3-VL 也判为同一场景）→ **竞速漂移只改细节、不改场景** → 「换 shift 换场景」与「换竞速不换场景」是两种不同机制，**不可混用** |
+| 6 | 第 3 轮：issue #55 的 `dpmpp_sde` 请求仍未解决 | ✅ **印证，且要细化** | 上游文档明写 `heun`/`dpmpp_2m`/`dpmpp_sde` **对 H3 不提供**；但 **sampler spec iport 本身已实现**（端口 3），可用 `dmd` / `res_multistep` |
+| 7 | 第 17.4.1 节：「Ref2VA 768p 12.0 更锐」（细节 +16.7%） | ⚠️ **待重测** | +16.7% 与本轮实测的漂移量级（9.1% sharpness / 20.3% HF jitter）**同一量级** → 建议用 `autotune: false` 重跑 P9 的四组 |
+| 8 | 第 3 轮修订：Ref2VA 768p 生产建议用 `video_shift: 6.0` | ✅ **印证** | lightx2v 官方 Model Specs 表独立给出「768p 家族 = 6/3」，与上游 vpipe 文档一致 |
+| 9 | 硬知识：「引导长度必须 17n+5 帧」 | ✅ **第三方独立印证** | 社区博文：「随手填 100 帧报错、改 102 帧又报错，最后发现公式是 17n+5」 |
+| 10 | 硬知识：「接缝/抖动的机理是时空网格错位」 | ✅ **第三方印证（新增机理表述）** | 社区：「引导的潜在帧与输出占据相同的时空网格；一旦输出分辨率/帧数与源不一致，时空网格错位，画面就会在帧间抖动」 |
+| 11 | 上游「shift 告警只覆盖 HyperFlow 与带 sampling contract 的适配器」 | ✅ **印证并扩展** | `generate-video-stage.cc:3728` 的 warn 分支确实只在 `_h3_dit->sampling_contract()` 存在时进入；lightx2v 适配器无 contract → **零告警** |
+| 12 | 第 3 轮：「`sigmas` 被已装 App 静默忽略」 | ✅ **印证（App 早于该特性）** | App 与本地 build 的输出逐位相同 → App 确实没有 `sigmas` 能力（否则同 seed 同网格也不会相同…**注**：本轮未复跑 `sigmas` 臂，App 侧 `sigmas` 静默仍按第 3 轮结论保留） |
+
+> **⚠️ 第 3 轮修订 R3-1（单独标注，不改写 18.3 正文）**：
+> 第 3 轮 18.3.x 中「**已装 App 不是 seed 可复现的 —— 因为上游 bit-for-bit 修复晚于 App**」这一**归因**，
+> 经本轮 P15 实测**判定为错误**，应改读作：
+> **「H3 生成默认不可复现，原因是内核竞速（`autotune` 默认 true），与 vpipe 版本新旧无关；
+> 用 `autotune: false` 即可达成 bit-for-bit 复现（实测 SSIM 1.000000 / PSNR inf）。」**
+> 第 3 轮记录的**现象**（0/22 帧逐位相同、整段 SSIM 0.750072）与**漂移基线**（8.7%/18.4%/22.4%/13.5%）**依然成立**，
+> 只有**归因**被推翻。相关表述在 18.3.9.4 与本修订处为准。
+
+##### 18.3.9.4 本轮实验：P15 · 可复现性基线（bit-for-bit）
+
+**为什么做**：第 3 轮 18.3.7 第 1 项（最高优先）。若不可复现，则本实验室**所有同 seed 对照的误差棒都是虚的**。
+
+**设计**（4 次生成，严格串行，全部本地 build `33cda00`，`VPIPE_BIN=/tmp/vp13/Helpers/vpipe`）：
+
+| 臂 | build | `autotune` | 说明 |
+|---|---|---|---|
+| **at1** | `33cda00` | 开（默认 true） | 对照组：本地 build 是否也有漂移 |
+| **at2** | `33cda00` | 开（默认 true） | 与 at1 **完全同配置**，仅进程重启 |
+| **af1** | `33cda00` | **关（false）** | `generate-video` + `vae-decode` + `video-ref-encoder` 三处都写 `autotune: false` |
+| **af2** | `33cda00` | **关（false）** | 与 af1 完全同配置，仅进程重启 |
+
+其余**全部冻结**（与 P13 的 shift6 静态夹具**逐项一致**，已用脚本断言校验）：
+参考图 `refs/minimax-h3-reference-subject.jpg`（1024×1024）/ 同一段静态提示词（逐字相同）/
+22 帧 / 1344×768 / 8 步 / **seed 42** / `video_shift 6.0` / `audio_shift 3.0` /
+`lightx2v/Minimax-h3-Turbo-ref2va-8step-768p` / `i8_gemm: true` /
+`generate-video` 的 **10 个 iport 与 P13 模板逐项一致**。
+
+**量化口径**（两套并列，不混用）：
+
+- **口径 A（整段视频流直接比）**：`[0:v][1:v]ssim` —— 比**全部 22 帧**；
+- **口径 B（落盘 PNG 再比）**：各抽**首帧** → PNG → 再 `ssim` —— 只比**首帧**；
+- **逐位判据**：`framemd5`（**仅视频流**，22 行；全流 51 行 = 22 视频帧 + 29 音频包）+ **音频轨解码后 md5**；
+  **不用 mp4 文件哈希**（容器含时间戳，字节必不同）。
+
+**结果**：
+
+| 对照 | 逐帧 md5 | 音频 md5 | SSIM 口径A（整段） | SSIM 口径B（首帧） | PSNR | 文件大小 |
+|---|---|---|---|---|---|---|
+| **App(9db5dd7) vs 本地 build(33cda00)**，竞速开 | ★ **相同** | ★ **相同** | **1.000000** | **1.000000** | **inf** | 244 535 = 244 535 |
+| **A1 vs A2**（竞速开，两次进程） | **不同** | **不同** | **0.750072** | **0.609360** | **19.137765** | 244 535 / 245 549 |
+| **B1 vs B2**（★ **竞速关**，两次进程） | ★ **相同** | ★ **相同** | ★ **1.000000** | ★ **1.000000** | ★ **inf** | 244 535 = 244 535 |
+| A1 vs B1（同一 build，仅竞速不同） | 相同 | 相同 | 1.000000 | 1.000000 | inf | 244 535 = 244 535 |
+
+逐帧 md5（仅视频流，22 行清单）：
+
+```
+at1 = af1 = af2 = 46bcb2641c3082e57b8ff744f3d7c91f
+at2            = 1ae6466ff37060150f155061c569ccc9
+```
+
+音频轨 md5：
+
+```
+at1 = af1 = af2 = 9bc160085ae1cf9dbc80381279adc38e
+at2            = 155d2b8f1fbe5f524f2db2bdc2024bb2
+```
+
+**纹理 / 锐度指标**（P13 三指标 + 补充指标，同一 384 宽灰度解码口径）：
+
+| 文件 | hf_jitter | frame_diff | sharpness | static_hf_jitter |
+|---|---|---|---|---|
+| at1 / af1 / af2 / p13(App) | **0.1075** | **0.003669** | **559.73** | **0.1010** |
+| at2（竞速开，第二次） | 0.1293 | 0.004595 | 610.45 | 0.1156 |
+| **相对漂移** | **+20.3%** | **+25.2%** | **+9.1%** | **+14.5%** |
+
+→ **与第 3 轮在 App 上测到的漂移基线（18.4% / 22.4% / 8.7% / 13.5%）四项全部吻合（±2 个百分点）** →
+**漂移基线可跨 build、跨机器状态复用**。
+
+**耗时对照（竞速开关是加速还是减速）**：
+
+| 臂 | 竞速 | 耗时 |
+|---|---|---|
+| at1 | 开 | **225 s**（3 m 45 s） |
+| at2 | 开 | **227 s**（3 m 47 s） |
+| af1 | **关** | **220 s**（3 m 40 s） |
+| af2 | **关** | **220 s**（3 m 40 s） |
+
+→ **关掉竞速反而快 5 秒（−2.2%）**。原因在日志里写得很清楚：
+`[h3-dit] first forward at 9294 rows: 4710 ms before block 0 (scratch 0, residency+wire 59, **gemm autotune 4635**, rope/temb/attn setup 15)`
+→ **首帧前向的 4710 ms 里有 4635 ms（98.4%）花在内核竞速上**；
+关掉竞速省掉这笔开销，且「believed fastest」的固定路径在本机上不比竞速选出的慢。
+
+**第三方复核（LFM3-VL-2B，只问粗粒度可观察问题）**：
+
+- 四臂首帧：**同一只橘猫 + 深蓝外套 + 窗户背景 + 同一坐姿**，
+  **无一出现全黑/全白/崩坏/块状或网格状伪影** → 固定内核路径没有产出退化结果；
+- 五行抽帧图：第 2–5 行**行内均无位置移动或姿态变化** → 静态夹具依然成立；
+- af1 与 af2 的差异图：**整体全黑**（591 B 的纯色图）→ 逐帧完全一致。
+
+**人工目检（印相 `deliverables/images/p15-contact-sheet.png`，5 行 × 4 列）**：
+
+- 第 1 行 = 静态参考图（猫特写，深色背景）；
+- 第 2–5 行 = 四次生成（猫坐木窗台，窗外暖色虚化景深）；
+- **每行内部 4 帧姿态与背景不变**；
+- **第 2 行（at1）与第 3 行（at2）是同一场景**（同一姿态、同一窗框、同一光斑），仅细节微差
+  → **竞速漂移只改像素细节，不改场景语义**；
+- 无崩坏、无黑屏、无严重伪影。
+
+**结论（4 条）**：
+
+1. **★★ `autotune: false` 让 H3 生成达到 bit-for-bit 可复现**（逐帧 md5 相同、音频 md5 相同、SSIM 1.000000、PSNR inf）；
+2. **★★ 不可复现的根因是内核竞速，与 vpipe 版本新旧无关** —— App 与本地 build 输出逐位相同；
+3. **★ 关竞速还更快（−2.2%）**，因为本机 98.4% 的首帧前向时间花在竞速上；
+4. **★ 竞速漂移是「纯细节噪声」**（同场景、同语义，只有细节差），幅度 sharpness 9.1% / HF jitter 20.3% /
+   frame diff 25.2% / static_hf_jitter 14.5%。
+
+**对历史结论的影响（必须重估的清单）**：
+
+| 历史结论 | 幅度 | vs 本轮漂移 | 处置 |
+|---|---|---|---|
+| P9：Ref2VA 768p shift 12.0 细节 +16.7% | 16.7% | 与 9.1%/20.3% 同量级 | **建议重测**（用 `autotune: false`） |
+| P13：shift 12.0 sharpness +16.8% | 16.8% | 1.84× 漂移 | 边缘，**建议重测** |
+| P13：`er_sde` −16% HF jitter | −16% | 0.79× 漂移 | 不可下结论（维持原判） |
+| P3：768p 值 3.09× 时间换 3.33× 细节 | 3.33× | 远超漂移 | **维持** |
+| P9：768p 多参考画质 −17% | −17% | 1.87× 漂移 | 边缘，**建议重测** |
+| P9：shift 12.0 vs 6.0 裁切纹理 +16.7% | 16.7% | 同上 | 建议重测 |
+
+##### 18.3.9.5 对技能包 / 脚本 / 流水线的修改
+
+**新增脚本（4 个）**
+
+| 文件 | 作用 |
+|---|---|
+| `scripts/make_p15_pipelines.py` | 生成 4 条 P15 流水线（at1/at2/af1/af2），**断言 iports 与提示词与 P13 模板逐项一致** |
+| `scripts/p15_runner.sh` | 调度器（`.done` 幂等 + PID 续接 + 内存门限 30% + `detach_run.py` 脱离进程组），支持 `VPIPE_BIN` 覆盖 |
+| `scripts/p15_repro_check.py` | 判决脚本：`framemd5`（视频流/全流分列）+ 音频轨 md5 + SSIM 双口径 + PSNR + 耗时对照 + P13 三指标 |
+| `scripts/p15_sigma_grid.py` | ★ **σ 网格计算器**：由 (steps, shift) 生成视频/音频 σ 串；由自定义视频 σ 串反解共享网格 q 与音频 σ 串；**每次运行自检 6 组共 33 个数值** |
+| `scripts/p15_contact.sh` / `scripts/vqa-p15.sh` | 印相（5×4 抽帧 + 四臂首帧 + af1−af2 差异图）与 LFM3-VL 复核 |
+
+**新增流水线（4 条）**：`p15-repro-{at1,at2,af1,af2}.vpipeline`
+
+**新增技能参考文档（2 个）**
+
+| 文件 | 内容 |
+|---|---|
+| `vpipe-model-prepare/references/sigma-grid.md` | ★ σ 网格闭式公式 + 两个一手来源原文 + 音频反解 + 步数语义 + 三条翻车纪律 |
+| `vpipe-model-prepare/references/sampler-spec.md` | ★ H3 sampler spec 能力清单（端口 3、三个 method、`dmd` 公式、`sigmas` 优先级、实测建议） |
+
+**追加到既有技能参考文档**
+
+- `vpipe-model-prepare/references/texture-boiling.md` → 追加「**可复现性**」与「**σ 网格 / sampler spec**」两节
+  （bit-for-bit 的真正开关、漂移基线表、竞速=纯细节噪声、σ 网格公式、`dmd` 作为 #55 的本机候选解法）；
+- `vpipe-model-prepare/references/768p-adapters.md` → 追加「**lightx2v 官方 Model Specs 表**」、
+  「**ModelScope 新变体（上游 catalog 未收录）**」、「**参考图缩放三策略 + `image-resample` 的 `fit` 枚举**」三节。
+
+##### 18.3.9.6 本轮踩的坑与结论
+
+1. **★★ 「已装 App 旧所以不可复现」是错误归因** → 实测 App 与本地 build 逐位相同；
+   **根因是 `autotune` 默认 true 的内核竞速**。**教训：不要用「版本旧」解释不可复现，
+   要去上游 commit 全文里找开关**（`e6972ac` 的正文就写着 `autotune` false asks for a repeatable generation）。
+2. **★★ 关掉竞速不是「牺牲性能换确定性」，反而更快**（本机 −2.2%）：
+   首帧前向 4710 ms 里 **4635 ms 在竞速**（98.4%）。
+3. **★ `framemd5` 全流会混进音频包**：本片 51 行 = 22 视频帧 + 29 音频包
+   → 做逐帧判据**必须 `-map 0:v`** 只取视频流，否则帧数口径会被误读。
+4. **★ 「用 mp4 文件哈希判断两次生成是否一致」错**（第 3 轮已记，本轮再次验证）：
+   at1 与 af1 **字节数完全相同**（244 535）但竞速开/关本身不改变结果；
+   而 at1 与 at2 **字节数不同**（244 535 vs 245 549）→ 只能靠 `framemd5` + 音频 md5 判定。
+5. **★ `autotune` 要在三个 stage 都关**：`generate-video`（DiT）+ `vae-decode`（VAE）
+   + `video-ref-encoder`（**文本编码器 LM 与视频条件器**）→ 只关一个会漏。
+6. **★ `ane_rows` 在本机是惰性的**：`ane_ffn` 默认 false（M5 上 ANE 无收益）→ 本机不需钉它；
+   但在 **M4 Pro** 上必须钉（上游明写「a run that must repeat also pins `ane_rows`」）。
+7. **★ 本地源码树是 squash 过的**（只有 1 个 commit `33cda00`）→ **无法用 `git log` 找 `e6972ac`**，
+   只能用日期推断 + 上游 API + commit 全文。**教训：squash 的源码树里，日期是唯一可靠的时间线。**
+8. **★ `image-resample` 的 `fit: stretch` 是唯一破坏长宽比的模式**；
+   本轮夹具的参考图恰为 1024×1024 正方形 → **零形变**（`match` 策略会给 0.9922 缩放，实质相同）
+   → 但**不能推广到非正方形参考图**。另：`reference_image_short_edge` 默认 2048（Ref2VA）
+   → **121 个 VAE tile**，降到 1024 → 25 个，上游自己的示例就是 1024。
+9. **★ 上游 issue #55 已开放 28 天、0 条评论** → 本实验室的自查能力（逐位判据 + σ 网格公式）
+   仍然值得继续，但**不要指望上游回应**；可考虑把本轮的 `dmd` 方案作为 issue 补充材料。
+10. **★ 上游 catalog 落后于 lightx2v 仓库**（12 vs 27 个 safetensors，差集含 **v1.3**）→
+    这是一条**可提交上游的实质增量**（第 6 条 issue 提案的候选）。
+11. **工程**：`ffmpeg -f framemd5` 的输出行第三列是 packet 序号/大小，可据此区分视频帧与音频包；
+    `p15_repro_check.py` 里的 `ssim_png` 只比**首帧**（与 P13 的 `frame0_ssim` 同口径），
+    **不要**把它当成整段指标来和口径 A 并列解读。
+
+##### 18.3.9.7 下一轮建议
+
+1. **★★ P15b · 用 `autotune: false` 重跑历史关键对照**（最高优先）
+   → 重跑 P9 的四组 shift 对照（**第 17.4.1 节的「Ref2VA 768p 12.0 更锐」**）与 P13 的 shift12 臂；
+   现在有了确定性复现能力，**同 seed 换 shift 就是纯粹的一条新轨迹**，不再混入竞速噪声。
+2. **★ P18 · `dmd` sampler 对纹理沸腾的作用**（#55 的本机候选解法，**零下载**）
+   → `diffusion-sampler-select{method: dmd}` 接 `generate-video` 的 **iport 3**，
+   在同一静态夹具上跑 `euler` vs `dmd`，用 P13 的 `hf_jitter` / `static_hf_jitter` 判定；
+   **注意 `dmd` 与 `er_sde` 同时改了「网格 + 更新式」两个因子，必须拆开测**。
+3. **★ P13b · `sigmas` 网格对照（≥3 次）** → 用 `p15_sigma_grid.py` 生成任意网格，
+   对照 ComfyUI `er_sde` 表；在 `autotune: false` 下漂移≈0，**3 次即可给出干净方差**。
+4. **★ P19 · 参考图缩放策略** → 用 `fit: pad`（保比例）vs `fit: stretch` 对照一张**非正方形**参考图，
+   量化长宽比对身份/构图锁的影响；并对照 lightx2v 的 `match`（面积匹配、不上采样）。
+5. **P16 · hf-mirror 作为第三模型源** → 本机 HF 直连不通，值得试 `81cd674` 新加的源。
+6. **P11b · Ref2VA 4 步 v1.0 768p**（`minimax_h3_ref2v_turbo_4step_v1.0_768p_bf16`，1.32 GB）
+   → 配合官方 Model Specs 表的 12/3（544p v0.1）与 6/3（768p v1.0）两条线做 shift 对照。
+7. **P10 · TaoMate-H3**（2.5 GB，可下）→ 3 步流式，自带网格。
+8. **生产链建议（源自本轮）**：
+   **所有需要同 seed 对照的生产/实验流水线，一律加 `autotune: false`（三处 stage）** →
+   既拿到 bit-for-bit 可复现，又省 2.2% 时间；**且从此同 seed 换 shift = 纯粹换 σ 网格**，
+   「换 shift = 换场景」这个混淆项可以正式拆开了。

@@ -1,0 +1,27 @@
+[runner] vpipe = /tmp/vp13/Helpers/vpipe
+0.1 (33cda00*0)
+[START] p15-repro-at1.vpipeline  03:07:02  产物=out/p15-repro-at1.mp4
+  内存就绪：可用 77%
+scripts/p15_runner.sh: line 49: 57209 Terminated: 15          ( while true; do
+    echo "ts=$(date +%s) free_pct=$(mem_free)" >> "$mem"; sleep 5;
+done )
+[DONE] p15-repro-at1 rc=0 用时 3 分 45 秒
+[START] p15-repro-at2.vpipeline  03:10:55  产物=out/p15-repro-at2.mp4
+  内存就绪：可用 76%
+scripts/p15_runner.sh: line 49: 58169 Terminated: 15          ( while true; do
+    echo "ts=$(date +%s) free_pct=$(mem_free)" >> "$mem"; sleep 5;
+done )
+[DONE] p15-repro-at2 rc=0 用时 3 分 47 秒
+[START] p15-repro-af1.vpipeline  03:14:50  产物=out/p15-repro-af1.mp4
+  内存就绪：可用 77%
+scripts/p15_runner.sh: line 49: 58986 Terminated: 15          ( while true; do
+    echo "ts=$(date +%s) free_pct=$(mem_free)" >> "$mem"; sleep 5;
+done )
+[DONE] p15-repro-af1 rc=0 用时 3 分 40 秒
+[START] p15-repro-af2.vpipeline  03:18:38  产物=out/p15-repro-af2.mp4
+  内存就绪：可用 77%
+scripts/p15_runner.sh: line 49: 59707 Terminated: 15          ( while true; do
+    echo "ts=$(date +%s) free_pct=$(mem_free)" >> "$mem"; sleep 5;
+done )
+[DONE] p15-repro-af2 rc=0 用时 3 分 40 秒
+########## P15 调度器结束 03:22:26 ##########

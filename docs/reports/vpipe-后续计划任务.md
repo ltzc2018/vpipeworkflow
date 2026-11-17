@@ -1,16 +1,17 @@
 # vpipe 后续计划任务清单
 
 > 基于 GitHub `tgo-app-dev/vpipe`（`main` @ `4dc36b7`，**2026-11-16**；**已装 App `0.1 (9db5dd7*0)` 落后 12 个 commit，但本地源码树 `33cda00` 只落后 2 个** —— 见第 2 轮修订）、官方 `docs/MINIMAX-H3-zh-cn.md`（+ 英文版 `docs/MINIMAX-H3.md` 249 KB）、官方 release、issue（**至少 59 条**），以及 YouTube/社区实测资料整理
-> 生成时间：2026-11-14 · **最近更新：2026-11-18 02:30（第 3 轮夜间自动知识同步）**
+> 生成时间：2026-11-14 · **最近更新：2026-11-18 03:07（第 3 轮续作 · P15 可复现性基线）**
 > 机器：Mac mini M5 Pro / 24 GB / 15 核 / macOS 27.2
 
 ---
 
-## 状态看板（2026-11-18 02:30 更新）
+## 状态看板（2026-11-18 03:07 更新）
 
 | 任务 | 状态 | 结果 |
 |---|---|---|
-| **第 3 轮 · 2026-11-18 02:30 夜间知识同步** | ✅ **完成（P13 纹理沸腾复现 + 一条方法学结论）** | 检索 6 类源（GitHub releases/commits/issues/compare API + **上游官方文档 `docs/MINIMAX-H3.md`** + 上游源码 + ModelScope + sdnext + AICU/VibingTalk/note.com/掘金类社区实测）。上游 **零新增**（HEAD 仍 `4dc36b7`、release 仍 v0.1.110、issue 状态全未变、ModelScope 28 文件零变化）。**★★ 四个关键增量**：① **上游官方文档自带适配器→shift 对照表**：`Ref2VA 8-step 768p → shift 6.0`（「the only Ref2VA adapter that needs `video_shift: 6.0`」）、`Ref2VA 4-step v0.1 → 12/3`（544p）——**与第 17.4.1 节「Ref2VA 768p 12.0 更锐」冲突，已加前提修订**；② **上游 `sigmas` 字段 = ComfyUI `er_sde` 的 σ 表逐位相同 → issue #55 的第 2 条请求上游已经做了**；③ **换 shift = 换场景**：只改 shift 时首帧 SSIM 仅 **0.46–0.56**（vpipe 里不存在「同一场景的 shift 对照」）；④ **★★ 已装 App 不是 seed 可复现的**：同配置连跑两次 **0/22 帧逐位相同、整段 SSIM 仅 0.750072**（上游 bit-for-bit 修复 `e6972ac` 晚于 App）→ **本机漂移基线 8.7%（sharpness）/ 18.4%（HF jitter）**。**实验（P13，3 臂 + 1 次重复运行，每臂 3m55s）**：静态夹具 22 帧，HF jitter **0.0010（地板）→ 0.0995~0.1293（模型生成，107–129×）**，94–98% 像素静止 → **纹理沸腾独立复现成功**；`er_sde` σ 网格的 −16% 落在漂移带内 → **不可下结论**；只有 shift 12.0 的 sharpness **+16.8%** 明确超过漂移 8.7%。详见报告第 **18.3** 节 |
+| **第 3 轮续作 · 2026-11-18 03:07 · P15 可复现性基线** | ✅ **完成（★★★ 推翻第 3 轮的一条归因 + 拿到确定性复现能力）** | 检索 **17 类源**（GitHub commits/issues API × 3 + commit `e6972ac` 全文 + 上游 `docs/MINIMAX-H3.md` 与 `docs/PLUGINS.md` + 上游源码 × 3 + ModelScope 文件清单/README + ModelTC 官方 README + MiniMax 官方 release notes + 社区 × 5 + sd.cpp 仓库 + NVIDIA 2K 项目）。**上游仍零增量（HEAD `4dc36b7`）；issue #55 至今 0 评论、开放 28 天**。**★★ 最重要的一条：第 3 轮「已装 App 旧 → 不可复现」的归因被实测推翻** —— **App(9db5dd7) 与本地 build(33cda00) 同配置输出逐位完全相同**（framemd5 同 / 音频 md5 同 / SSIM **1.000000** / PSNR inf / 字节 244 535 = 244 535）；**真因是 `autotune` 默认 true 的内核竞速**（上游 `e6972ac` 原文：「`autotune` false asks for a repeatable generation」）。**实验（P15，4 臂串行，每臂 220–227 s）**：`autotune: false` 关在 `generate-video` + `vae-decode` + `video-ref-encoder` 三处 → **B1 vs B2 逐位完全相同**（SSIM **1.000000** / PSNR **inf**）；**关竞速反而快 5 s（−2.2%）**（首帧前向 4710 ms 里 **4635 ms 在竞速**，98.4%）；竞速漂移 = **纯细节噪声**（at1 vs at2 同场景同语义，sharpness +9.1% / HF jitter +20.3% / frame diff +25.2% / static_hf_jitter +14.5%，与第 3 轮基线四项吻合）。**另三条硬知识**：① **σ 网格闭式公式**（`q_i=(N−i)/N`，`σ=shift·q/(1+(shift−1)q)`，视频/音频共用 q）—— 与上游 vpipe 文档 + ModelTC 官方表**逐位互验 33 个数值**，已固化为 `scripts/p15_sigma_grid.py`；② **H3 的 sampler spec 在 iport 3**，只认 `euler`/`dmd`/`res_multistep`，**`dpmpp_sde` 仍被排除** → **`dmd`（每步重注噪、seed 取自 clip）是 #55 的本机候选解法，零下载**；③ lightx2v 官方 Model Specs 表 + ModelScope **27 个 safetensors vs 上游 catalog 12 个**（差集含 **v1.3**）→ **上游 catalog 落后，是可上报的实质增量**。详见报告第 **18.3.9** 节 |
+| **第 3 轮 · 2026-11-18 02:30 夜间知识同步** | ✅ **完成（P13 纹理沸腾复现 + 一条方法学结论）** | 检索 6 类源（GitHub releases/commits/issues/compare API + **上游官方文档 `docs/MINIMAX-H3.md`** + 上游源码 + ModelScope + sdnext + AICU/VibingTalk/note.com/掘金类社区实测）。上游 **零新增**（HEAD 仍 `4dc36b7`、release 仍 v0.1.110、issue 状态全未变、ModelScope 28 文件零变化）。**★★ 四个关键增量**：① **上游官方文档自带适配器→shift 对照表**：`Ref2VA 8-step 768p → shift 6.0`（「the only Ref2VA adapter that needs `video_shift: 6.0`」）、`Ref2VA 4-step v0.1 → 12/3`（544p）——**与第 17.4.1 节「Ref2VA 768p 12.0 更锐」冲突，已加前提修订**；② **上游 `sigmas` 字段 = ComfyUI `er_sde` 的 σ 表逐位相同 → issue #55 的第 2 条请求上游已经做了**；③ **换 shift = 换场景**：只改 shift 时首帧 SSIM 仅 **0.46–0.56**（vpipe 里不存在「同一场景的 shift 对照」）；④ **★★ 已装 App 不是 seed 可复现的**：同配置连跑两次 **0/22 帧逐位相同、整段 SSIM 仅 0.750072**（上游 bit-for-bit 修复 `e6972ac` 晚于 App）→ **本机漂移基线 8.7%（sharpness）/ 18.4%（HF jitter）**。**实验（P13，3 臂 + 1 次重复运行，每臂 3m55s）**：静态夹具 22 帧，HF jitter **0.0010（地板）→ 0.0995~0.1293（模型生成，107–129×）**，94–98% 像素静止 → **纹理沸腾独立复现成功**；`er_sde` σ 网格的 −16% 落在漂移带内 → **不可下结论**；只有 shift 12.0 的 sharpness **+16.8%** 明确超过漂移 8.7%。**⚠️ 其中「不可复现的归因」已被第 3 轮续作（P15）推翻，见 18.3.9.3 修订 R3-1**。详见报告第 **18.3** 节 |
 | **第 2 轮 · 2026-11-18 00:31 夜间知识同步** | ✅ **完成（P11 收口）** | 检索 6 类源（GitHub releases/commits/issues/compare API + 本地源码 + ModelScope 全量文件清单 + HF 模型页 + 社区实测 + 本机 issue 追踪）。**★ P11 收口，那 0.03 的差是测量伪影不是编码开销**：三段消融（25.7 s，**无模型、不占 GPU**）证明 ① 口径 B（落盘 PNG 再比）**≡** 口径 C（强制 gbrp 域直比），`|B−C| = 0.000000`；② 口径 A（默认协商）的读数**随被测视频像素格式漂移 0.1752**，而 B/C 极差仅 **0.0003** —— 因为 ffmpeg 会把**参考图 auto_scale 到视频格式**才比较（`rgb24/pc → yuv420p/tv` 或 `→ yuv444p/bt709/pc`）；③ 真值基准（全部 ffv1 无损编码器）测出 **4:2:0 只丢 0.0046 SSIM**，真正吃掉 0.015 的是 `limited+bt601+h264` 叠加。**④ 报告内部方向性矛盾已判定**：口径 A **恒高于** B（+0.17~0.19），第 17.3/18.1 节表述正确，**第 15.4.2 节括号那句写反了**。**⑤ 历史表安全性已复核**：第 16/17 节全部关键表被测文件同为 `yuv420p(tv,smpte170m)` → **历史结论不受影响**。另订正两条框架：已装 App **本就支持** `yuv444p/full/bt709/ffv1`（无需升级）；**「落后 12 commit」只对已装 App 成立**，本地源码树只落后 2 个 → **P12 大幅降价**。新增 ModelScope 适配器全量盘点（28 文件，本机只有 4 个）→ 登记 P11b/P11c/P10/P14 四个待验证任务。详见报告第 **18.2** 节 |
 | **第 1 轮 · 2026-11-17 20:31 夜间知识同步** | ✅ **完成（首轮，自动化链路验证）** | 检索 6 类源（GitHub releases / issues / compare / commits / docs 目录 + 网络），**新增 14 条知识**（K1–K14，见 `vpipe-daily-knowledge.md`）。**四个关键增量**：① **本机落后上游 12 个 commit**（`9db5dd7` → `4dc36b7`）；② 上游新增 **YUV BT.601/709 + FFV1 4:2:2/4:4:4** → 我们的 SSIM 两口径差 0.03 **不是固有开销，可消解**；③ 上游新增**续接光照自适应** → 直指 P3 四段式续接 Δ亮度 1.1→13.3；④ 上游 **#47+#55 确认 `video_shift` 能到 denoiser 但日志恒印 12.0/3.0** → 印证「shift 写错完全静默」且**日志不可作证据**。另发现全新模型 **HyperFlow H3 Flash**（13.7B，GGUF Q4_K_M **仅 9.1 GB**，6 步，124–362 帧）与 **H3 Image VAE 出图**新路线。**本轮无实验**（验证自动化链路本身）；发现并修复 3 个工程问题（调度器不支持多值 BYHOUR / 失败的 update 有副作用 / 全量 clone 212 MB 被打死） |
 | **P9 Ref2VA @ 768p（多参考 + shift 规则）** | ✅ **完成** | **768p 适配器家族最后一块空白补完**（`lightx2v/Minimax-h3-Turbo-ref2va-8step-768p`）。四组：A(1图 shift 6.0) / D(1图 shift 8.0) / B(1图 shift 12.0) / C(1图+动作视频+音轨 shift 6.0)，1344×768 / 124 帧 / 8 步 / seed 42。单图参考 **27 分 32 秒**（39 865 前向行），多参考 **1 小时 40 分 36 秒**（83 695 行，×2.10）。**★ shift 规则按适配器分叉**：Ref2VA 768p 实测 **12.0 更锐**（主体裁切纹理 178.7 vs 153.1 = **+16.7%**，颗粒几乎不变 1.102 vs 1.097，纹理/噪点 162.1 vs 139.5），与 FL2VA 768p（6.0 更锐）**方向相反** → 「768p = 6.0」这条推广被推翻；且 shift 响应是**台阶不是斜坡**（6.0 与 8.0 几乎等价：运动曲线 r **0.9817**、全片细节 102.5 vs 103.0；12.0 才跳变 +33.5%）。**768p 多参考部分成立**：身份锁 ✅（四组全是橘猫+牛仔外套）、音轨锁 ✅（谱形 r **+0.420**，无音频参考的对照组是 −0.146/−0.204/−0.199）、**运镜锁 ❌**（净横移 **−1 px** vs 参考 +334 px；480p 是 +160 px）、无串味 ✅；代价：耗时 **×3.64**、**画质掉 17%**（细节 102.5 → 85.6）、对比 −6.5%、色调转冷。结论见报告第 **17 节** |
@@ -118,9 +119,9 @@
 
 | 任务 | 一句话 | 优先级 |
 |---|---|---|
-| **P15 · 可复现性基线** | 用本地 build `33cda00` 连跑同 seed 两次，验证 bit-for-bit 是否生效；**若生效，历史所有同 seed 对照都需按新基线重估误差棒** | 🔴 **最高** |
-| **P13b · `sigmas` 网格对照** | ComfyUI `er_sde` σ 网格对 HF jitter 的真实影响（本轮 −16% 落在 18.4% 漂移带内）→ 需 **≥3 次重复**取均值方差 | 🔴 高（能力已具备） |
-| **P13c · `dpmpp_sde`** | issue #55 的第 1 条请求（让 minimax-h3 读 sampler spec iport）**仍未解决**，需上游支持 | 📄 备查 |
+| **P15 · 可复现性基线**（✅ **2026-11-18 03:07 完成**） | 用本地 build `33cda00` 连跑同 seed 两次，验证 bit-for-bit 是否生效；**若生效，历史所有同 seed 对照都需按新基线重估误差棒** | 🔴 **最高** → **已完成：`autotune: false` 达成 bit-for-bit（SSIM 1.000000 / PSNR inf）；且归因被改写为「内核竞速」而非「版本旧」。实测漂移：sharpness 9.1% / HF jitter 20.3% / frame diff 25.2% / static_hf_jitter 14.5%** |
+| **P13b · `sigmas` 网格对照** | ComfyUI `er_sde` σ 网格对 HF jitter 的真实影响（本轮 −16% 落在 18.4% 漂移带内）→ 需 **≥3 次重复**取均值方差 | 🔴 高（能力已具备）→ **续作后降级为「≥3 次，但漂移≈0」** |
+| **P13c · `dpmpp_sde`** | issue #55 的第 1 条请求（让 minimax-h3 读 sampler spec iport）**仍未解决**，需上游支持 | 📄 备查 → **续作订正：sampler spec iport 上游已实现（端口 3），但 `dpmpp_sde` 被明确排除；可用替代为 `dmd` / `res_multistep`（见 P18）** |
 | **P16 · hf-mirror 第三模型源** | 上游 `81cd674` 新加 `hf-mirror.com`；本机 HF 直连不通，值得试 | 🟡 中 |
 | **P17 · 续接色调补偿** | `MiniMaxH3ToneCompensate` 的 `gain_bias` 思路可在 vpipe 侧实现，对照第 16 节 Δ亮度 1.1→13.3 | 🟡 中 |
 | **P11b（订正）· Ref2VA 4 步** | **Ref2VA 4 步 v0.1 = 544p → shift 12/3**（上游已定）；要测 6.0 须下 `ref2v_turbo_4step_v1.0_768p_bf16`（1.38 GB） | 🟡 中 |
@@ -142,6 +143,76 @@
 - **symlink farm 配方**：不碰已装 App 也能跑本地 build（`/tmp/vp13`）→ `VPIPE_BIN=/tmp/vp13/Helpers/vpipe`
 
 ---
+
+## 每日知识增量（2026-11-18 03:07 · 第 3 轮续作 · P15）
+
+> 本节由夜间自动任务累积写入（**只追加**）。完整版见 `vpipe-daily-knowledge.md`；主报告对应第 18.3.9 节。
+> **本节未占用新轮次编号** —— 下一轮（04:30）仍取 **第 4 轮 / 18.4**。
+
+### 本轮一句话
+
+**「不可复现」不是版本问题，是内核竞速 —— 加上 `autotune: false` 就拿到 bit-for-bit 复现，而且更快 2.2%。**
+顺带用两个一手来源**推导出了 H3 的 σ 网格闭式公式**（与上游文档 + ModelTC 官方表逐位互验 33 个数值），
+并查明 **H3 的 sampler spec 端口是 iport 3、`dmd` 就是 issue #55 想要的「每步重注噪」**。
+
+### 本轮的一条修订（推翻第 3 轮的**归因**，不改写其现象）
+
+| # | 修订对象 | 第 3 轮原表述 | 第 3 轮续作实测结论 |
+|---|---|---|---|
+| **R3-1** | 18.3 节的「**已装 App 不是 seed 可复现的**」 | 归因：「上游 bit-for-bit 修复 `e6972ac`（2026-11-06）**晚于**已装 App（`9db5dd7`，2026-11-01）」 | ❌ **归因错误**。实测 **App(9db5dd7) 与本地 build(33cda00) 同配置输出逐位完全相同**（framemd5 同 / 音频 md5 同 / SSIM **1.000000** / PSNR inf / 字节 244 535 = 244 535）→ **版本新旧无关**。真因是 **`autotune` 默认 true 的内核竞速**（上游 commit 原文：「`autotune` false asks for a repeatable generation」；`PLUGINS.md`：「the candidates agree to rounding, **not to the bit**」）。**本地 build 同样默认 true → 同样不可复现**。第 3 轮的**现象**（0/22 帧逐位相同、SSIM 0.750072）与**漂移基线**（8.7%/18.4%/22.4%/13.5%）**依然成立**，只有归因被推翻 |
+
+### 关键量化结果（本轮实验，P15 · 可复现性基线）
+
+4 臂串行（22 帧 / 1344×768 / 8 步 / seed 42 / shift 6.0 / Ref2VA 8步768p，其余与 P13 静态夹具逐项一致）：
+
+| 对照 | 逐帧 md5 | 音频 md5 | SSIM 口径A（整段） | SSIM 口径B（首帧） | PSNR | 字节 |
+|---|---|---|---|---|---|---|
+| App vs 本地 build（竞速开） | ★ 同 | ★ 同 | **1.000000** | **1.000000** | **inf** | 244 535 = 244 535 |
+| **A1 vs A2**（竞速开，两次进程） | 不同 | 不同 | **0.750072** | **0.609360** | 19.1378 | 244 535 / 245 549 |
+| **★ B1 vs B2**（**竞速关**，两次进程） | ★ **同** | ★ **同** | ★ **1.000000** | ★ **1.000000** | ★ **inf** | 244 535 = 244 535 |
+
+| 指标 | 本轮漂移（at1 vs at2） | 第 3 轮基线（App） | 吻合 |
+|---|---:|---:|---|
+| sharpness | **+9.1%** | 8.7% | ✔ |
+| HF jitter | **+20.3%** | 18.4% | ✔ |
+| frame diff | **+25.2%** | 22.4% | ✔ |
+| static_hf_jitter | **+14.5%** | 13.5% | ✔ |
+
+| 臂 | 竞速 | 耗时 |
+|---|---|---|
+| at1 / at2 | 开 | **225 s / 227 s** |
+| af1 / af2 | **关** | **220 s / 220 s** → **关竞速快 5 s（−2.2%）** |
+
+- **关竞速三处都要关**：`generate-video`（DiT）+ `vae-decode`（VAE）+ `video-ref-encoder`（文本编码器 LM + 视频条件器）。
+- **本机 `ane_rows` 惰性**（`ane_ffn` 默认 false，M5 上 ANE 无收益）→ 本机不需钉；**M4 Pro 必须钉**。
+- **竞速漂移 = 纯细节噪声**：at1 与 at2 **是同一场景**（人工目检：同一姿态/同一窗框/同一光斑）→ 与「换 shift = 换场景」是两种机制，**不可混用**。
+
+### 新增待验证任务（本轮登记）
+
+| 任务 | 一句话 | 优先级 |
+|---|---|---|
+| **P15b · 用 `autotune: false` 重跑历史关键对照** | 重跑 P9 四组 shift 对照（**第 17.4.1 节「Ref2VA 768p 12.0 更锐」+16.7%**）与 P13 shift12 臂（+16.8%）→ 现在同 seed 换 shift = **纯粹换 σ 网格**，不再混入竞速噪声 | 🔴 **最高** |
+| **P18 · `dmd` sampler 对纹理沸腾的作用** | `diffusion-sampler-select{method: dmd}` → `generate-video` 的 **iport 3**；`dmd` = 每步重注噪（`x0=x+σ·v` → `(1−σ')·x0+σ'·n`，噪声取自 clip 自己的 seed）→ **#55 的本机候选解法，零下载**。⚠️ `dmd` 同时改了「网格 + 更新式」两个因子，**必须拆开测** | 🔴 高 |
+| **P13b · `sigmas` 网格对照（≥3 次）** | 用 `scripts/p15_sigma_grid.py` 生成任意网格；在 `autotune: false` 下漂移≈0 → **3 次即可给出干净方差** | 🔴 高 |
+| **P19 · 参考图缩放策略** | `fit: pad`（保比例）vs `fit: stretch`（**唯一改长宽比的模式**）对照**非正方形**参考图；并对照 lightx2v 的 `match`（面积匹配、不上采样） | 🟡 中 |
+| **P10 · TaoMate-H3** | `TaoLiveAIGC/TaoMate-H3`（**2.5 GB，可下**）→ 3 步流式；`"taomate": "auto"`；**自带网格，不取 `sigmas` 也不取 sampler** | 🟡 中 |
+| **P11b · Ref2VA 4 步 v1.0 768p** | `minimax_h3_ref2v_turbo_4step_v1.0_768p_bf16`（1.32 GB）；配合官方 Model Specs 表的 12/3（544p v0.1）与 6/3（768p v1.0）两条线 | 🟡 中 |
+| **P20 · 上游 catalog 落后于 lightx2v** | ModelScope **27** 个 safetensors vs 上游 catalog **12** 个，差集含 **`v1.3`**（4步 FL2VA 768p）→ **可作第 6 条 issue 提案** | 📄 备查 |
+| **P21 · MiniMax H3-Image** | 33.1B 稠密 DiT / 6 步 / CFG=1 / 16 张参考图 / 4096×4096 <10 s；⛔ **模型包 68.65 GB + 66.7 GB 编码器 → 本机磁盘阻塞** | ⛔ 阻塞 |
+
+### 本轮新增的可复用资产
+
+- **技能包**：`vpipe-model-prepare/references/sigma-grid.md`（★ σ 网格闭式公式 + 两源原文 + 音频反解 + 步数语义 + 三条翻车纪律）
+- **技能包**：`vpipe-model-prepare/references/sampler-spec.md`（★ H3 sampler spec 能力清单：端口 3、三个 method、`dmd` 公式、`sigmas` 优先级、实测建议）
+- **脚本**：`scripts/p15_sigma_grid.py`（**σ 网格计算器，每次运行自检 6 组 33 个数值**）、`scripts/make_p15_pipelines.py`、`scripts/p15_runner.sh`、`scripts/p15_repro_check.py`、`scripts/p15_contact.sh`、`scripts/vqa-p15.sh`
+- **流水线**：`pipelines/p15-repro-{at1,at2,af1,af2}.vpipeline`
+- **交付物**：`deliverables/videos/p15-repro-{at1,at2,af1,af2}.mp4`、`deliverables/images/p15-{contact-sheet,first-frame-4arms,af1-af2-diff}.png`
+
+### 生产链建议（源自本轮，优先级最高）
+
+**所有需要同 seed 对照的流水线，一律在 `generate-video` + `vae-decode` + `video-ref-encoder` 三处加 `autotune: false`** →
+既拿到 bit-for-bit 可复现，又省 2.2% 时间；**且从此「同 seed 换 shift」= 纯粹换 σ 网格**，
+第 3 轮那个「换 shift = 换场景」的混淆项可以正式拆开。
 
 ## 每日知识增量（2026-11-18 00:31 · 第 2 轮）
 

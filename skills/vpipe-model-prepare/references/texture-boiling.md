@@ -211,3 +211,74 @@ DYLD_LIBRARY_PATH="$APP/Frameworks" /tmp/vp13/Helpers/vpipe --version
    → 改流水线时**照抄模板的 iports 列表，不要凭印象重排**。
 7. **`setsid` 在 macOS 上不存在** → 本机的脱离进程组由 `scripts/detach_run.py`
    （`os.setsid()`）完成，调度脚本本身用 Bash 工具的 `run_in_background` 托管即可。
+
+---
+
+## 8. ★★★ 可复现性（2026-11-18 03:07 P15 实测，修订第 3 轮的归因）
+
+### 8.1 开关不是「版本」，是 `autotune: false`
+
+上游 `e6972ac` 原文：`autotune` false asks for a repeatable generation. A kernel tuner chooses
+between candidates that agree to rounding but not to the bit, and it chooses by racing them…
+**pin it (`ane_rows`) too and a generation repeats exactly.**
+
+`docs/PLUGINS.md`：two runs whose races land differently produce different pictures from the same seed.
+
+**本机实测（4 臂，各 22 帧 / 1344×768 / 8 步 / seed 42 / shift 6.0）**：
+
+| 对照 | 逐帧 md5 | 音频 md5 | SSIM(整段) | PSNR | 字节 |
+|---|---|---|---|---|---|
+| App(9db5dd7) vs 本地 build(33cda00) | ★ 同 | ★ 同 | **1.000000** | inf | 244535 = 244535 |
+| 竞速开，第 1 次 vs 第 2 次 | 不同 | 不同 | **0.750072** | 19.14 | 244535 / 245549 |
+| ★ **竞速关，第 1 次 vs 第 2 次** | ★ **同** | ★ **同** | ★ **1.000000** | ★ **inf** | 244535 = 244535 |
+
+**结论**：
+1. **`autotune: false` → bit-for-bit 可复现**；
+2. **不可复现与 vpipe 版本新旧无关**（第 3 轮「App 旧所以不可复现」的归因**错误**）；
+3. **关竞速更快**：220 s vs 225 s（**−2.2%**）——
+   日志 `gemm autotune 4635`（首帧前向 4710 ms 的 98.4%）就是那笔钱。
+
+### 8.2 怎么关（三个 stage 都要）
+
+```json
+"generate-video":      { "config": { "autotune": false, ... } },
+"vae-decode":          { "config": { "autotune": false } },
+"video-ref-encoder":   { "config": { "autotune": false } }
+```
+
+- `video-ref-encoder` 一处同时管住**文本编码器(LM)**与**视频条件器**，漏了它文本侧仍可能竞速；
+- `ane_rows` 在 **M5** 上是惰性的（`ane_ffn` 默认 false）；**M4 Pro 上必须钉**。
+
+### 8.3 漂移基线（竞速开时的噪声幅度，可跨 build 复用）
+
+| 指标 | 本地 build(33cda00) | 已装 App(9db5dd7) |
+|---|---:|---:|
+| sharpness | **+9.1%** | 8.7% |
+| HF jitter | **+20.3%** | 18.4% |
+| frame diff | **+25.2%** | 22.4% |
+| static_hf_jitter | **+14.5%** | 13.5% |
+
+→ **漂移是本机硬件/模型的属性，与二进制版本无关。**
+
+### 8.4 竞速漂移 = 纯细节噪声（与「换 shift = 换场景」是两种机制）
+
+只差竞速的两次运行：**同一场景、同一语义**（人工目检：同一姿态、同一窗框、同一光斑），
+只有像素细节不同。→ **做 shift 对照前先关竞速**，否则两个混淆项混在一起。
+
+### 8.5 逐位判据的完整组合
+
+`framemd5`（**必须 `-map 0:v`**，全流会混进音频包）+ 音频轨解码后 md5 + SSIM 双口径 + PSNR。
+**绝不能用 mp4 文件哈希**（容器含时间戳）。
+
+### 8.6 纹理沸腾的本机候选解法：`dmd` sampler（零下载）
+
+上游 #55 说 ComfyUI 的 `er_sde` 每步重注噪 → 误差重新随机化 → 沸腾被压制。
+**H3 内置的 `dmd` 就是这个机制**（见 `sampler-spec.md`）：
+`x0 = x + σ·v` → `x_next = (1−σ')·x0 + σ'·n`，噪声取自 clip 自己的 seed。
+接法：`diffusion-sampler-select{method: dmd}` → `generate-video` 的 **iport 3**。
+
+> ⚠️ `dpmpp_sde` 对 H3 **不被支持**（上游明确排除）→ 这是 #55 的第 1 条请求至今未满足的部分。
+
+### 8.7 σ 网格
+
+见同目录 `sigma-grid.md`（闭式公式，已与上游文档 + ModelTC 官方表逐位互验 33 个数值）。
