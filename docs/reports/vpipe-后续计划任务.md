@@ -78,6 +78,69 @@
 
 ---
 
+## 每日知识增量（2026-11-18 04:30 · 第 4 轮）
+
+> 本节由夜间自动任务累积写入（**只追加**）。完整版见 `vpipe-daily-knowledge.md` 第 4 轮；主报告对应第 **18.4** 节。
+
+### 本轮一句话
+
+**上游依然零增量（HEAD 仍 `4dc36b7`、PR 数 0、#55 仍开放 28 天零评论），
+本轮的价值全部来自「回读上游官方文档 + 源码 + 生态」**——
+① 发现 **vpipe 上游自带原生 Metal 视频超分**（RelayVSR 4× / FlashVSR+ 4×）；
+② **实测判决 `dmd` 采样器把纹理沸腾压低 12.8%、同时更锐 10.3%、零额外耗时**（issue #55 的本机首个「有解」结果）；
+③ **独立验证了社区断言**（ComfyUI `lcm` ≡ vpipe `dmd`，重注噪采样器消除高频纹理病理）。
+
+### 本轮的四条关键增量
+
+| # | 增量 | 要点 |
+|---|---|---|
+| 1 | ★★★ **vpipe 原生 Metal 超分** | 上游 `main` 有 41 个 relayvsr/flashvsr 源码文件 + 379 行新文档 `docs/RELAYVSR.md`。**内存账可直接判定本机可行性**：480×270→1920×1080 = **11.7 GB** ✅；960×540→3840×2160 = **21.8 GB** ✅紧；1344×768→5376×3072 = **32 GB** ❌。⇒ **本实验室 768p 的 4× 装不下**，但 **544p→4K** 与 **480p→1080p** 在本机可行 → 给第 16 节「768p 值 3.09× 时间换 3.33× 细节」补了**第三条路** |
+| 2 | ★★★ **更正：本地 build 已有 FlashVSR** | 实测本地 `33cda00` **有** `flashvsr-model-config` / `flashvsr-src-encoder` stage + Metal kernel + **3 条官方流水线**；**只有 RelayVSR 本体没有**（随 `81cd674` / 2026-11-14）。⇒ **不升 main 也能做超分实验**（本轮差点把零成本路线误判成高成本） |
+| 3 | ★★★ **P18 实验判决** | `dmd`（每步取 x0 再重注噪到下一个 σ）vs `euler`，静态夹具 22 帧 / 1344×768 / 8 步 / seed 42 / **三处 `autotune:false`（漂移=0）**：**HF jitter 0.1075 → 0.0937 = −12.82%**、frame diff **−9.40%**、**sharpness +10.27%**、static_hf_jitter **−11.68%**、**用时 0%**；**两条确定性判决**：接端口+euler 与不接端口**跨轮次逐位相同**（端口透明）、**`dmd` 跑两次逐位相同**（重注噪路径确定）；**首帧 SSIM 0.440051 → 「换采样器 = 换场景」** |
+| 4 | ★★ **社区结论被独立验证** | HF `Comfy-Org/MiniMax-H3-Image` 讨论区断言「ComfyUI `lcm` 每步取端点预测再重注噪 → 消除纹理麻点；`euler` 会累积；**病理在采样器侧不在权重侧**」。**`lcm` ≡ `dmd` = 同一机制** → 本机实测 **−12.82%** 证实 |
+
+### 关键量化结果（本轮实验，P18 · `dmd` vs `euler`）
+
+| 判据 | 结果 |
+|---|---|
+| **A（接端口+euler）vs 参照（不接端口，第 3 轮产物）** | ★ **framemd5 同**（`0d77d033…`）、**音频 md5 同**（`9bc16008…`）、**SSIM 口径A 1.000000**、**PSNR inf**、字节 **244 535 = 244 535** → **sampler 端口透明 + 跨轮次 bit-for-bit 复现** |
+| **B vs B2（`dmd` 两次）** | ★ **framemd5 同**（`4db48192…`）、**音频 md5 同**（`782be4e6…`）、**SSIM 1.000000**、**PSNR inf**、字节 **241 997 = 241 997** → **重注噪路径也是确定性的** |
+| **A vs B** | 整段 SSIM 口径A **0.635965** / PSNR **15.267388** / **首帧 SSIM 0.440051** → **换采样器 = 换场景** |
+| **HF jitter** | euler **0.1075** → dmd **0.0937** = **−12.82%** |
+| **frame diff** | 0.003669 → 0.003324 = **−9.40%** |
+| **sharpness** | 559.73 → **617.19** = **+10.27%** |
+| **static_hf_jitter** | 0.1010 → 0.0892 = **−11.68%** |
+| **用时** | 219 s / 219 s / 220 s → **重注噪零额外耗时** |
+| ⚠️ **与地板比** | 静态夹具地板 **0.0010** → `dmd` 的 0.0937 **仍是地板的 94×** → **压低 13%，不是根治** |
+
+**日志里的显式回显（机制是打印出来的，不是推断）**：
+`[INFO] h3-denoise: 8 steps RE-NOISED (x0 at each sigma, then fresh noise to the next), as the sampler asks`
+→ **`dmd` 在 H3 上确实被实现了**（第 3 轮担心的「被排除后回落默认」没有发生）。
+
+### 新增待验证任务（本轮登记）
+
+| 任务 | 一句话 | 优先级 |
+|---|---|---|
+| **P13b** | `sigmas`（ComfyUI `er_sde` σ 表）网格对照，**≥3 次**；第 3 轮那个 **−16%** 当时落在 18.4% 漂移带内 → **现在漂移=0，重跑即可直采**（并与 P18 的 −12.82% 形成「网格效应 vs 更新式效应」对照） | 🔴 **最高（由 🔴 高上调）** |
+| **P22 · ★ FlashVSR / FlashVSR+ 超分** | **本地 build 已有** stage + Metal kernel + 3 条官方流水线 → **不升 main 就能跑**；权重 ModelScope **`kuohao/FlashVSR-v1.1` 6.48 GB**（含 companion `posi_prompt.pth`）或 **`mlx-community/FlashVSR-v1.1-bf16` 3.27 GB**（Apple 原生 MLX） | 🔴 高（⛔ 磁盘 5.6 GiB；**3.27 GB 那档可试**） |
+| **P23 · ★ RelayVSR 4×** | 上游文档已完整；**本地 build 无此 stage** → **需升 main + 重编**；权重 10.2 GB；**本机上限已判定**（1080p ✅ / 4K 紧 / 768p 的 4× ❌） | 🟡 中（磁盘 + 重编双阻塞） |
+| **P24 · ★ 超分接缝的 15 帧周期判据** | 关键帧间隔 = `window−1` = **15** 帧；社区预言「detail 以 15 帧节奏脉动 = 接缝」→ 算 HF jitter 的**周期性**：有 15 帧周期 = 超分接缝伪影；无周期 = 生成端沸腾 | 🟡 中 |
+| **P25 · ★ HF Space 零下载预判** | `Upsampler/relayvsr` 免费档、≤10 秒片段 → **磁盘紧张时的唯一廉价入口**：先判「超分到底补不补细节」 | 🟡 中 |
+| **P18b · `dmd` / `er_sde` 正交拆解** | 一个改「更新式」、一个改「σ 网格」→ 混着比会同时引入两个混淆项 | 🟡 中 |
+| **P26 · `res_multistep`** | 官方 NPU 路径明确列出；本轮只测了 `dmd` | 🟡 中 |
+
+### 本轮新增的可复用资产
+
+- **流水线**：`p18-euler` / `p18-dmd` / `p18-dmd2`（三臂，`generate-video` 的 **iport 3** 接 `diffusion-sampler-select`）
+- **脚本**：`make_p18_pipelines.py`（含 iport 自检）/ `p18_runner.sh`（幂等 + PID 续接 + 内存门限 + 脱离进程组）/
+  `p18_analysis.py`（`-map 0:v` 逐帧判据 + 双口径 SSIM + 效应量）/ `p18_contact.sh`（印相）/` `vqa-p18.sh`（LFM3-VL）
+- **技能包**：★ 新增 **`vpipe-model-prepare/references/relayvsr-flashvsr.md`**（原生 Metal 超分手册，12 节）；
+  `sampler-spec.md` 追加第 7 节（P18 判决）；`texture-boiling.md` 追加第 9 节（`dmd` 压低沸腾 13%）
+- **产物**：`deliverables/videos/p18-{euler,dmd,dmd2}.mp4`；`deliverables/images/p18-{contact-sheet,first-frame-2arms,first-last-2arms}.png`
+- **判据 JSON**：`logs/p18-analysis.json`
+
+---
+
 ## 每日知识增量（2026-11-18 02:30 · 第 3 轮）
 
 > 本节由夜间自动任务累积写入（**只追加**）。完整版见 `vpipe-daily-knowledge.md`；主报告对应第 18.3 节。
@@ -142,69 +205,6 @@
 - 流水线 `p13-static-shift6` / `p13-static-shift12` / `p13-static-shifter-sde`（22 帧静态夹具）
 - 技能包 `vpipe-model-prepare/references/texture-boiling.md`（**新增**）+ `768p-adapters.md` 第 13 节 + `multi-ref.md` 补充
 - **symlink farm 配方**：不碰已装 App 也能跑本地 build（`/tmp/vp13`）→ `VPIPE_BIN=/tmp/vp13/Helpers/vpipe`
-
----
-
-## 每日知识增量（2026-11-18 04:30 · 第 4 轮）
-
-> 本节由夜间自动任务累积写入（**只追加**）。完整版见 `vpipe-daily-knowledge.md` 第 4 轮；主报告对应第 **18.4** 节。
-
-### 本轮一句话
-
-**上游依然零增量（HEAD 仍 `4dc36b7`、PR 数 0、#55 仍开放 28 天零评论），
-本轮的价值全部来自「回读上游官方文档 + 源码 + 生态」**——
-① 发现 **vpipe 上游自带原生 Metal 视频超分**（RelayVSR 4× / FlashVSR+ 4×）；
-② **实测判决 `dmd` 采样器把纹理沸腾压低 12.8%、同时更锐 10.3%、零额外耗时**（issue #55 的本机首个「有解」结果）；
-③ **独立验证了社区断言**（ComfyUI `lcm` ≡ vpipe `dmd`，重注噪采样器消除高频纹理病理）。
-
-### 本轮的四条关键增量
-
-| # | 增量 | 要点 |
-|---|---|---|
-| 1 | ★★★ **vpipe 原生 Metal 超分** | 上游 `main` 有 41 个 relayvsr/flashvsr 源码文件 + 379 行新文档 `docs/RELAYVSR.md`。**内存账可直接判定本机可行性**：480×270→1920×1080 = **11.7 GB** ✅；960×540→3840×2160 = **21.8 GB** ✅紧；1344×768→5376×3072 = **32 GB** ❌。⇒ **本实验室 768p 的 4× 装不下**，但 **544p→4K** 与 **480p→1080p** 在本机可行 → 给第 16 节「768p 值 3.09× 时间换 3.33× 细节」补了**第三条路** |
-| 2 | ★★★ **更正：本地 build 已有 FlashVSR** | 实测本地 `33cda00` **有** `flashvsr-model-config` / `flashvsr-src-encoder` stage + Metal kernel + **3 条官方流水线**；**只有 RelayVSR 本体没有**（随 `81cd674` / 2026-11-14）。⇒ **不升 main 也能做超分实验**（本轮差点把零成本路线误判成高成本） |
-| 3 | ★★★ **P18 实验判决** | `dmd`（每步取 x0 再重注噪到下一个 σ）vs `euler`，静态夹具 22 帧 / 1344×768 / 8 步 / seed 42 / **三处 `autotune:false`（漂移=0）**：**HF jitter 0.1075 → 0.0937 = −12.82%**、frame diff **−9.40%**、**sharpness +10.27%**、static_hf_jitter **−11.68%**、**用时 0%**；**两条确定性判决**：接端口+euler 与不接端口**跨轮次逐位相同**（端口透明）、**`dmd` 跑两次逐位相同**（重注噪路径确定）；**首帧 SSIM 0.440051 → 「换采样器 = 换场景」** |
-| 4 | ★★ **社区结论被独立验证** | HF `Comfy-Org/MiniMax-H3-Image` 讨论区断言「ComfyUI `lcm` 每步取端点预测再重注噪 → 消除纹理麻点；`euler` 会累积；**病理在采样器侧不在权重侧**」。**`lcm` ≡ `dmd` = 同一机制** → 本机实测 **−12.82%** 证实 |
-
-### 关键量化结果（本轮实验，P18 · `dmd` vs `euler`）
-
-| 判据 | 结果 |
-|---|---|
-| **A（接端口+euler）vs 参照（不接端口，第 3 轮产物）** | ★ **framemd5 同**（`0d77d033…`）、**音频 md5 同**（`9bc16008…`）、**SSIM 口径A 1.000000**、**PSNR inf**、字节 **244 535 = 244 535** → **sampler 端口透明 + 跨轮次 bit-for-bit 复现** |
-| **B vs B2（`dmd` 两次）** | ★ **framemd5 同**（`4db48192…`）、**音频 md5 同**（`782be4e6…`）、**SSIM 1.000000**、**PSNR inf**、字节 **241 997 = 241 997** → **重注噪路径也是确定性的** |
-| **A vs B** | 整段 SSIM 口径A **0.635965** / PSNR **15.267388** / **首帧 SSIM 0.440051** → **换采样器 = 换场景** |
-| **HF jitter** | euler **0.1075** → dmd **0.0937** = **−12.82%** |
-| **frame diff** | 0.003669 → 0.003324 = **−9.40%** |
-| **sharpness** | 559.73 → **617.19** = **+10.27%** |
-| **static_hf_jitter** | 0.1010 → 0.0892 = **−11.68%** |
-| **用时** | 219 s / 219 s / 220 s → **重注噪零额外耗时** |
-| ⚠️ **与地板比** | 静态夹具地板 **0.0010** → `dmd` 的 0.0937 **仍是地板的 94×** → **压低 13%，不是根治** |
-
-**日志里的显式回显（机制是打印出来的，不是推断）**：
-`[INFO] h3-denoise: 8 steps RE-NOISED (x0 at each sigma, then fresh noise to the next), as the sampler asks`
-→ **`dmd` 在 H3 上确实被实现了**（第 3 轮担心的「被排除后回落默认」没有发生）。
-
-### 新增待验证任务（本轮登记）
-
-| 任务 | 一句话 | 优先级 |
-|---|---|---|
-| **P13b** | `sigmas`（ComfyUI `er_sde` σ 表）网格对照，**≥3 次**；第 3 轮那个 **−16%** 当时落在 18.4% 漂移带内 → **现在漂移=0，重跑即可直采**（并与 P18 的 −12.82% 形成「网格效应 vs 更新式效应」对照） | 🔴 **最高（由 🔴 高上调）** |
-| **P22 · ★ FlashVSR / FlashVSR+ 超分** | **本地 build 已有** stage + Metal kernel + 3 条官方流水线 → **不升 main 就能跑**；权重 ModelScope **`kuohao/FlashVSR-v1.1` 6.48 GB**（含 companion `posi_prompt.pth`）或 **`mlx-community/FlashVSR-v1.1-bf16` 3.27 GB**（Apple 原生 MLX） | 🔴 高（⛔ 磁盘 5.6 GiB；**3.27 GB 那档可试**） |
-| **P23 · ★ RelayVSR 4×** | 上游文档已完整；**本地 build 无此 stage** → **需升 main + 重编**；权重 10.2 GB；**本机上限已判定**（1080p ✅ / 4K 紧 / 768p 的 4× ❌） | 🟡 中（磁盘 + 重编双阻塞） |
-| **P24 · ★ 超分接缝的 15 帧周期判据** | 关键帧间隔 = `window−1` = **15** 帧；社区预言「detail 以 15 帧节奏脉动 = 接缝」→ 算 HF jitter 的**周期性**：有 15 帧周期 = 超分接缝伪影；无周期 = 生成端沸腾 | 🟡 中 |
-| **P25 · ★ HF Space 零下载预判** | `Upsampler/relayvsr` 免费档、≤10 秒片段 → **磁盘紧张时的唯一廉价入口**：先判「超分到底补不补细节」 | 🟡 中 |
-| **P18b · `dmd` / `er_sde` 正交拆解** | 一个改「更新式」、一个改「σ 网格」→ 混着比会同时引入两个混淆项 | 🟡 中 |
-| **P26 · `res_multistep`** | 官方 NPU 路径明确列出；本轮只测了 `dmd` | 🟡 中 |
-
-### 本轮新增的可复用资产
-
-- **流水线**：`p18-euler` / `p18-dmd` / `p18-dmd2`（三臂，`generate-video` 的 **iport 3** 接 `diffusion-sampler-select`）
-- **脚本**：`make_p18_pipelines.py`（含 iport 自检）/ `p18_runner.sh`（幂等 + PID 续接 + 内存门限 + 脱离进程组）/
-  `p18_analysis.py`（`-map 0:v` 逐帧判据 + 双口径 SSIM + 效应量）/ `p18_contact.sh`（印相）/` `vqa-p18.sh`（LFM3-VL）
-- **技能包**：★ 新增 **`vpipe-model-prepare/references/relayvsr-flashvsr.md`**（原生 Metal 超分手册，12 节）；
-  `sampler-spec.md` 追加第 7 节（P18 判决）；`texture-boiling.md` 追加第 9 节（`dmd` 压低沸腾 13%）
-- **产物**：`deliverables/videos/p18-{euler,dmd,dmd2}.mp4`；`deliverables/images/p18-{contact-sheet,first-frame-2arms,first-last-2arms}.png`
-- **判据 JSON**：`logs/p18-analysis.json`
 
 ---
 
