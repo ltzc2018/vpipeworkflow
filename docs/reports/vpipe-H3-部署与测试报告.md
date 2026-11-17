@@ -2630,3 +2630,275 @@ HyperFlow H3 Flash 完整部署参数（ComfyUI 0.43+ @ c1eece6、`city96/ComfyU
 5. **P13 · 复现 #55 纹理沸腾** → 量化 768p Ref2VA 的 HF jitter
 6. **生产链建议（源自本轮）**：交付片建议用 `yuv444p + full + bt709 + ffv1`（或至少 `full + bt709`），
    相对默认链可回收约 0.011 SSIM
+
+### 18.3 2026-11-18 02:30 —— ★★ 上游权威 shift 规则表 + 纹理沸腾（#55）复现 + **已装 App 不是 seed 可复现的**
+
+> 本轮触发时段 02:30（第 3 轮）。上一轮 00:31。
+> 本轮有两处会**修订第 17.4.1 节**（不推翻，加前提），并给出**一条本实验室迄今最重要的方法学结论**。
+
+#### 18.3.1 本轮检索范围与来源清单
+
+| # | 源 | 地址 | 日期 | 结果 |
+|---|---|---|---|---|
+| 1 | GitHub Releases | `api.github.com/repos/tgo-app-dev/vpipe/releases?per_page=8` | 2026-11-18 | **最新仍是 v0.1.110（2026-11-01），零新增** |
+| 2 | GitHub Commits | `api.github.com/repos/tgo-app-dev/vpipe/commits?per_page=20` | 2026-11-18 | HEAD 仍 `4dc36b7`（2026-11-16），**零新增** |
+| 3 | GitHub Issues | `api.github.com/repos/tgo-app-dev/vpipe/issues?state=all&sort=updated` | 2026-11-18 | 最新 20 条 **状态全部未变**；#55 仍 Open、0 回复 |
+| 4 | GitHub issue #55 全文 | `api.github.com/repos/tgo-app-dev/vpipe/issues/55` | 2026-11-18 | ★ **拿到 HF jitter 的精确公式** → 本轮实验的直接依据 |
+| 5 | GitHub compare | `api.github.com/repos/tgo-app-dev/vpipe/compare/33cda00...main` | 2026-11-18 | 本地源码树落后 2 个 commit，内容见 18.3.2 |
+| 6 | **上游官方文档**（本地源码树自带） | `vpipe-lab/repo/vpipe/docs/MINIMAX-H3.md` | `33cda00` | ★★★ **官方适配器→shift 对照表**（18.3.3） |
+| 7 | 上游源码 | `stages/minimax-h3-model-config-stage.cc:69` | `33cda00` | ★★★ **`sigmas` 字段语义**（18.3.4） |
+| 8 | sdnext 文档 | `vladmandic.github.io/sdnext-docs/MiniMax` | 2026-11-18 | 社区版 shift 表，与上游官方表**逐行一致** |
+| 9 | AICU 实测 | `aicu.ai/comfy/blog/2026-08-18-h3-turbo-lora` | 2026-08-18 | ★「**同 seed 换 shift → 不同场景**」 |
+| 10 | VibingTalk | `vibingtalk.com/...minimax.1938817` | 2026-11-06~08 | 「MMH3 pushes brightness, contrast, desaturates, and amplifies fine detail」 |
+| 11 | note.com 实测 | `note.com/j_alpha_lab/n/n2661aa9a31cd` | 2026-11 | ★ 续接变暗的第三方量化；接缝 12 px 垂直位移 |
+| 12 | ModelScope 文件清单 | `modelscope.cn/api/v1/models/lightx2v/Minimax-h3-Turbo/repo/files` | 2026-11-18 | **28 个文件，与第 2 轮完全一致，零新增变体** |
+| 13 | 社区 5090 实测 | `jxxy.net/ai/articles/minimax-h3-local-5090-comfyui-benchmark` | 2026-11 | 「768p 用 4 步 shift 6/3」「shift 交叉用就是跟自己较劲」 |
+| 14 | 4 步 Turbo 教程 | `blog.gitcode.com/d00bf628...` | 2026-11 | lightx2v 官方卡：8step v1.0 → 12/3；4step v1.0 768p → 6/3 |
+| 15 | 微信 / seedance 续接文 | `mp.weixin.qq.com/...2247486977`、`seedance.tv/blog/...` | 2026-11 | 「H3 每去噪一次画面就暗一点点」；`MiniMaxH3ToneCompensate` 节点 |
+
+#### 18.3.2 新增知识
+
+##### K1 ★★ 上游这 2 个 commit 的实际内容（把「升级收益」重排）
+
+| commit | 日期 | 内容 | 单机 Mac 价值 |
+|---|---|---|---|
+| `81cd674` | 2026-11-14 | RelayVSR 4x 流式超分；**`hf-mirror.com` 成为第三个模型源**；`generate-video` 的 `keep_loaded` | **中** —— hf-mirror 是本机 HF 直连不通的新通道 |
+| `4dc36b7` | 2026-11-16 | 图像模型 `tensor_parallel`；**MiniMax-H3 长提示词分带、长片段逐行寻址**；修「>150 000 行 int 溢出 → 1440p 15 秒参考片从第 136 帧起变噪声」 | **低** —— tensor-parallel 是双机；长提示词/长片段用不上 |
+
+⇒ **P12 的价值重定位**：第 1 轮以为「升级能拿到 MotionCache / swap allowance / 续接光照修复」，
+第 2 轮已证伪（**已装 App 就支持**）；真正的升级收益是 **① `sigmas` 字段 ② hf-mirror 模型源 ③ bit-for-bit 可复现**。
+
+##### K2 ★★★ 上游官方文档的适配器→shift 对照表（**权威性最高**）
+
+`docs/MINIMAX-H3.md:1946-1977` 与 `:1508-1513`（本地源码树自带）：
+
+| entry | partition | steps | shifts (v/a) | trained at |
+|---|---|---|---|---|
+| `Turbo few-step v4-600 EMA` (larryvrh) | FL2VA | 4–8 | 12 / 3 | — |
+| `Turbo few-step v1-850 EMA` (larryvrh) | FL2VA | 4 | 12 / 3 | — |
+| `Turbo 4-step v1.0 768p` (lightx2v) | FL2VA | 4 | **6** / 3 | 1344×768 |
+| `Turbo 4-step v1.2 768p` (lightx2v) | FL2VA | 4 | **6** / 3 | 1344×768 |
+| `Turbo 8-step v1.0 544p` (lightx2v) | FL2VA | 8 or 4 | 12 / 3 | 544p |
+| `Turbo 8-step v1.0 768p` (lightx2v) | FL2VA | 8 | **6** / 3 | 1344×768 |
+| `Turbo 4-step v0.1` (lightx2v) | **Ref2VA** | 4 | **12** / 3 | **544p** |
+| `Turbo 8-step v1.0 768p` (lightx2v) | **Ref2VA** | 8 | **6** / 3 | 1344×768 |
+
+上游原话三条：
+
+1. **「The shifts are part of the adapter, not a preference.」** lightx2v 的 768p 检查点是**在 video shift = 6 上蒸馏的**，
+   而模型默认（及所有非 768p 训练的适配器）是 12。「A distillation is fit to the sigma grid it was trained on,
+   so running it on the wrong one is not a style difference; **it is a different schedule, and nothing will report it**.」
+2. **「The Ref2VA adapter is the only one here that needs `video_shift: 6.0`.」**
+   上游官方长视频链（`:1511`）的 parts 2–4 也明确写 `video_shift: 6.0`。
+3. **Ref2VA 的 4 步 v0.1 是 544p 变体 → 用 12 / 3**（不是 6）。
+
+- ⚠️ **上游自己标注了这条的不确定性**（`:1964-1969`）：对 **v1.2** 与 **Ref2VA 8-step 768p**，
+  除 shift 外全部字段都是从文件名读的，而 shift 是**从 768p 家族继承来的推断**——
+  「That inheritance is the assumption worth re-checking … a wrong shift is a wrong sigma grid, and nothing reports it.」
+- **交叉印证**：sdnext 的表独立写着 `lightx2v 8step v1.0 (768p) → 6`、`4step v1.1/v1.2 (768p) → 6`、
+  `4step v0.1 (544p) → 12` —— 与上游官方表**逐行一致**；社区 5090 实测也是「768p 用 4 步 shift 6/3」。
+- **订正第 2 轮登记的 P11b**：第 2 轮把 P11b 写成「测 shift 到底是 6.0 还是 12.0」——
+  **上游文档已给出答案：Ref2VA 4 步 v0.1（544p）→ 12/3**；要测 6.0 的是 **Ref2VA 4 步 v1.0 768p**。
+
+##### K3 ★★★ `sigmas` 字段：**上游 issue #55 的请求已被满足**
+
+- `minimax-h3-model-config` 有 `sigmas` 键（源码 `:69`）：**「the VIDEO's sigmas AS RUN, in place of the grid
+  `steps` and the shifts make」**；**上游文档给的示例串正是 ComfyUI `er_sde` 的 σ 表**
+  `"1, 0.9844, 0.9627, 0.9304, 0.878, 0.7579, 0.5527, 0.2369, 0"` —— 与 issue #55 正文里贴的 ComfyUI 那一行**逐位相同**。
+- 「One forward per sigma but the last, so the list sets the step count and `generate-video`'s `steps` is not used.」
+- 「Wins over an adapter's own grid (a flow map, a sampling contract)」→ 对普通 LoRA 适配器直接生效。
+- ⚠️「A distillation was fitted to the grid it was trained on, so a few-step adapter on another grid is **off its training**.」
+- ⇒ **issue #55 请求列表的第 2 条（explicit `sigmas`）上游已经做了**，作者与维护者都没注意到；
+  **第 1 条（让 minimax-h3 读 sampler spec iport、`dpmpp_sde`/`s_noise`）仍未解决**。
+
+##### K4 ★★ 换 shift = 换场景（本轮实测，方法学陷阱）
+
+| 对照（只改 `video_shift`，其余全同） | 首帧 SSIM |
+|---|---|
+| Ref2VA 768p shift 6.0 vs 12.0（第 9 节 A vs B） | **0.5213** |
+| FL2VA 768p shift 6.0 vs 12.0（第 8 节） | **0.4618** |
+| **静态参考图 + 完全静止提示词，shift 6.0 vs 12.0（本轮新做）** | **0.5062** |
+| 静态参考图，shift 6.0 vs ComfyUI er_sde σ 网格（本轮新做） | **0.5627** |
+
+社区实测同向（AICU, 2026-08-18）：「The same seed does not give you the same shot … the same seed and the same
+prompt produce a **different scene**」。
+⇒ 即便把参考换成静图、提示词改成「完全静止」，**σ 网格仍然决定整个场景** →
+**vpipe 里不存在「同一场景的 shift 对照」**。
+
+##### K5 ★★★ 已装 App **不是** seed 可复现的（本轮最重要的方法学发现）
+
+同一个流水线、同一个 seed、同一台机器，**连跑两次**：
+
+- 22 帧里 **0/22 帧逐位相同**；整段 **SSIM 只有 0.750072**；文件大小都不同（245 549 B vs 244 535 B）。
+- 原因：上游 commit `e6972ac`（2026-11-06）"A generation that repeats bit for bit" **晚于**已装 App（`9db5dd7`，2026-11-01）；
+  本地源码树 `33cda00`（2026-11-13）已包含该修复。
+- ⇒ **纪律**：所有「同 seed 对照」必须先测**漂移基线**，组间差异要显著大于该基线才可采信。
+  （第 15 节「端口路线 ≡ 文件列表路线、逐字节相同」是**同一次运行的两个等价表达**之间的比较，不受影响。）
+
+##### K6 ★★ 旧 build 会**静默丢弃**新字段
+
+在已装 App 上给 `minimax-h3-model-config` 写 `sigmas`：**零报错、零告警、零日志回显，
+输出与不写该字段逐位相同**（视频帧 `framemd5` 一致、音频 md5 一致）。
+换成本地 build `33cda00` 后日志立刻出现
+`shifts 6.0/3.0, the video's 8 steps on sigmas [1, 0.9844, 0.9627, 0.9304, 0.878, 0.7579, 0.5527, 0.2369, 0]`，
+生成也随之改变。
+⇒ **这是「shift 写错完全静默」的升级版：字段根本不存在时也是静默的。写完新字段务必去日志里找它自己的回显。**
+
+##### K7 ★ 不碰已装 App 也能跑本地 build（symlink farm）
+
+已装 App 的 helper 只依赖 `@rpath/libvpipe.0.dylib`，rpath = `@executable_path/../Frameworks`；
+**`DYLD_LIBRARY_PATH` 对 `@rpath` 无效**（第 2 轮那条结论要改）。正确做法见 18.3.6 坑 2。
+
+##### K8 生态增量（弱相关，登记备查）
+
+- **续接变暗的第三方量化**：接缝处 RGB 差 —— 暗图 −8.3/−11.0/−9.1、亮图 −13.7/−12.6/−10.7、亮图+音频 −16.1/−12.3/−9.1
+  → **三段不同亮度素材同向变暗**，是连接方式本身的属性；与我们第 16 节 Δ亮度 1.1→13.3 **同向**。
+- **接缝几何位移的第三方量化**：相位相关测得 **+7 ~ −12 px**（480 高 → 2.5%）—— 与我们四段式的 +76/−86 px 同现象（我们链更深）。
+- **续接社区共识**：传 latent 不传解码帧；每段对齐到首段锚帧而非上一段末帧；在流外做调色省内存；
+  「MMH3 会推亮度、提对比、降饱和、**放大细节**」（与纹理沸腾同源）。
+- **`MiniMaxH3ToneCompensate` 节点**（ComfyUI 侧）：`frame_first` / `gain_bias` / `lut` 三模式，纯算法无额外模型。
+- **H3 Image VAE 往返**：1024×1024 整图 12 s / PSNR 34.9 dB / 色偏 <0.5 级；42 MP 峰值 6.1 GB、约 6 min。
+
+#### 18.3.3 与既有结论的印证 / 冲突
+
+| 既有结论（节） | 关系 | 说明 |
+|---|---|---|
+| **17.4.1「Ref2VA 768p 实测 12.0 更锐（裁切纹理 178.7 vs 153.1 = +16.7%）」** | **★ 冲突（口径需限定）** | ① 上游官方表说这个适配器应当用 **6.0**（K2）；② 本轮测得两臂**首帧 SSIM 仅 0.52** → 不是同一场景（K4）；③ 但本轮静态场景独立复现里 shift 12.0 的 sharpness 仍高 **+16.8%**，而漂移基线只有 **8.7%** → **效应是漂移的约 2 倍，方向可信、幅度需复测**。<br>**⇒ 第 3 轮修订**：该结论改述为「**shift 12.0 在 Ref2VA 768p 上产出更高的细节/锐度（效应 ≈ 2× 漂移基线），但这是另一条 σ 网格（上游未文档化，属继承推断），不是同一场景下的渲染差异；生产默认仍应 6.0（上游官方值），12.0 视作可 A/B 的备选调度。**」** |
+| 17.4.1「shift 响应是台阶不是斜坡（6.0 与 8.0 几乎等价，r 0.9817）」 | 不冲突，但**解读要加限定** | 同受「换场景」混淆项影响；且 8.7% 的漂移基线意味着小差异不可靠 |
+| 16/17 节「FL2VA 768p = 6.0」 | **印证** | 上游官方表：FL2VA 8-step 768p → **6/3** |
+| 17 节「768p 多参考画质 −17%」 | **印证（旁证）** | 本轮多参考臂静止抖动 0.1740 > 单参考臂 0.1307；与 #55「参考越多越不稳」同向 |
+| 8 节「4 步适配器必须同时改 steps」 | **印证** | 本轮 4 步片 HF jitter **0.3493** > 8 步 **0.3272**；与 #55「4 步 → 0.0914（unusable）」同向 |
+| 18.2「已装 App 就支持 YUV 4:4:4 / swap allowance」 | 不冲突，**但补一条** | **`sigmas` 已装 App 不支持**（K6）→ 「App 有 = 源码里有」这条推断不成立，得逐字段验 |
+| 18.2「P12 升级很便宜，只差 2 个 commit」 | **印证但要重排收益** | 收益不是 MotionCache/swap/续接光照（App 已有），而是 `sigmas` + hf-mirror + **可复现性** |
+| 15 节「端口路线 ≡ 文件列表路线，逐字节相同」 | **不受影响** | 那是**同一次运行的两个等价表达**，不是两次运行 |
+
+#### 18.3.4 本轮实验：**P13 · 纹理沸腾（HF jitter）量化**（唯一实验，3 臂 + 1 次重复运行）
+
+**设计（严格照 issue #55 的方法学）**
+
+- 度量公式**逐字照抄** #55：`HF(t) = gray(t) − GaussianBlur(gray(t), σ=2.0)`；
+  `HF jitter = mean_t |HF(t+1) − HF(t)| / mean_t |HF(t)|`；`frame diff = mean_t |gray(t+1) − gray(t)| / 255`；
+  `sharpness = mean_t Var(Laplacian(gray(t)))`。测量域：**384 宽灰度解码**。
+- 脚本 `vpipe-lab/scripts/p13_hf_jitter.py`（numpy 2.5.4，无 scipy，高斯/拉普拉斯自实现）。
+- **静态夹具**：一张静图 → 22 帧静止片，编码参数与出片完全一致（`h264 High / yuv420p(tv, smpte170m) / 24 fps`）
+  → 测得的 HF jitter 就是**编码器 + 口径的地板**。
+- **出片**：Ref2VA 768p 8 步 / seed 42 / **22 帧（= 17×1+5，与 #55 夹具一致）** / 1344×768；
+  提示词强制「完全静止 / 锁定机位 / 无眨眼无呼吸」；参考图 = 同一张静图。
+- **三臂只差一个变量**：`shift 6.0` / `shift 12.0` / `sigmas` = ComfyUI `er_sde` 的 σ 表（需新 build，见 18.3.5）。
+- 外加**一次同配置重复运行**（shift 6.0 跑两遍）→ 量化本机漂移基线。
+
+**结果**
+
+| 变体 | HF jitter | frame diff | sharpness | static_hf_jitter | 静止像素占比 | 首帧SSIM(vs shift6) |
+|---|---:|---:|---:|---:|---:|---:|
+| **静态参考（编码地板）** | **0.0010** | 0.000010 | 353.66 | 0.0010 | 1.000 | — |
+| shift 6.0（第 1 次） | **0.1293** | 0.004595 | 610.45 | 0.1156 | 0.955 | — |
+| shift 6.0（第 2 次，同配置） | **0.1075** | 0.003669 | 559.73 | 0.1010 | 0.979 | — |
+| shift 12.0 | **0.1182** | 0.004662 | 683.39 | 0.1045 | 0.941 | 0.5079 |
+| ComfyUI `er_sde` σ 网格 | **0.0995** | 0.003433 | 544.30 | 0.0944 | 0.981 | 0.5627 |
+
+**结论 1 · 纹理沸腾独立复现成功**：模型生成片的 HF jitter 是**静态地板的 107–129 倍**（0.0995–0.1293 vs 0.0010），
+且 **94–98% 的像素是静止的** → **沸腾是真的，不是运动假象**。
+上游 8 步墙片是 0.0502，本实验室静态场景 8 步是 0.1075–0.1293；绝对值不可直接比
+（分辨率 1344×768 vs 1024×576、检查点 stock `Ref2VA-8bit` vs Singularity v1.3、画面内容不同），
+但「远高于地板」这个结论**在另一台机器、另一个检查点、另一套分辨率上独立复现**。
+
+**结论 2 · ★★ 已装 App 的漂移基线吞掉了大部分效应**
+
+| 指标 | 同配置两次运行 | 相对漂移 | shift12 效应 | er-sde 效应 |
+|---|---:|---:|---:|---:|
+| HF jitter | 0.1293 → 0.1075 | **18.4 %** | −0.2 %（✘ 落在漂移内） | −16.0 %（✘ 落在漂移内） |
+| frame diff | 0.004595 → 0.003669 | **22.4 %** | — | — |
+| sharpness | 610.45 → 559.73 | **8.7 %** | **+16.8 %（✔ 超过漂移）** | −7.0 %（✘ 落在漂移内） |
+| static_hf_jitter | 0.1156 → 0.1010 | **13.5 %** | −3.5 %（✘） | −12.8 %（✘） |
+
+- ⇒ **「ComfyUI er_sde σ 网格让沸腾下降 16%」这个观察，落在 18.4% 的漂移带内 → 不能下结论**，
+  必须在可复现的新 build 上重复 ≥3 次才能定论（登记 P13b）。
+- ⇒ **「shift 12.0 更锐」是唯一明确超过漂移的效应（+16.8% vs 漂移 8.7%）**，方向可信。
+- ⇒ **本实验室迄今所有「同 seed 对照」都应视为带 ±8–22% 噪声的测量**（已装 App 9db5dd7），
+  这是本轮最重要的一条方法学结论。
+
+**结论 3 · 与上游 #55 的方向性对照**
+
+| 变量 | 上游 #55 | 本实验室 | 方向 |
+|---|---|---|---|
+| 步数 8 → 4（4 步 LoRA） | 0.0502 → **0.0914** | 8 步 0.3272 → 4 步 **0.3493**（FL2VA 768p） | ✅ 一致 |
+| 参考图数量 | 3 张 → 1 张：0.4749 → 0.3620（少参考更稳） | 多参考 0.1740 > 单参考 0.1307（**多参考更不稳**） | ✅ 一致 |
+| `video_shift` 12 → 6 | 0.0512 → 0.0436（降 shift 更好） | 0.1182 → 0.1293（**升 shift 更好**，但效应 0.2% ≪ 漂移 18.4%） | ⚠️ **不可比**（效应在噪声内） |
+
+**结论 4 · LFM3-VL-2B 第三方复核**（`scripts/vqa-p13.sh`）
+
+| 问题 | LFM3-VL-2B 回答 |
+|---|---|
+| 第 2/3/4 行（三个模型输出）各自行内，主体与背景有没有移动？ | 「**都没有发生位置移动或姿态变化**。猫保持同样坐姿、蓝色外套、面向镜头；背景窗户与室外景色在所有帧中保持一致」→ **静态夹具成立，测量未被运动污染** ✅ |
+| 三臂首帧是不是同一个场景？ | 「**是的，这三张图的场景完全相同**」 |
+| 三臂首帧的差异？ | 「几乎完全一样，但有轻微差异：第一张猫稍微侧身，第二张正对镜头，第三张略微转头；窗户开启方式与背景细节也略有变化」 |
+
+- ⇒ **静态夹具这条关键假设被独立模型确认**（Q1）。
+- ⚠️ **但 Q2 与量化结论冲突**：定量首帧 SSIM 只有 0.51–0.56，而 2B 模型说「完全相同」。
+  → **这是 LFM3-VL-2B 的第 4 个缺陷：它按语义层（主体/背景/光线）判断「是否同一场景」，
+  对像素级场景差异不敏感 → 不能用来裁决「换场景」这个混淆项，只能靠首帧 SSIM / 相位相关。**
+
+#### 18.3.5 对技能包 / 脚本 / 流水线的修改
+
+**技能包**
+
+- 新增 `~/.workbuddy/skills/vpipe-model-prepare/references/texture-boiling.md`
+  （HF jitter 完整方法学 + 静态夹具做法 + 两个方法学陷阱 + symlink farm 配方 + 本轮 7 个坑）。
+- `~/.workbuddy/skills/vpipe-model-prepare/references/768p-adapters.md` **追加第 13 节**：
+  上游权威 shift 表、三条规则、**「换 shift = 换场景」陷阱**（含首帧 SSIM 表）、`sigmas` 字段语义、`-split` 优先。
+- `~/.workbuddy/skills/vpipe-reference-to-video/references/multi-ref.md` **追加**：
+  Ref2VA 768p 的正确 shift=6.0、跨 shift 对照的首帧 SSIM 表。
+- 实验室副本 `vpipe-lab/skills/` 已同步。
+
+**脚本（新增 4 个）**
+
+- `scripts/p13_hf_jitter.py` —— issue #55 三个指标的严格实现 + `static_hf_jitter` 补充指标 + 首帧 SSIM 对照。
+- `scripts/make_p13_pipelines.py` —— 三臂流水线生成器（含 `sigmas` 臂）。
+- `scripts/p13_runner.sh` —— 调度器（`.done` 幂等 + PID 续接 + 内存门限 + `VPIPE_BIN` 覆盖）。
+- `scripts/p13_contact.sh` / `scripts/vqa-p13.sh` —— 印相拼图与 LFM3-VL 复核。
+
+**流水线（新增 3 条）**：`p13-static-shift6` / `p13-static-shift12` / `p13-static-shifter-sde`（22 帧静态夹具）。
+
+#### 18.3.6 本轮踩的坑与结论
+
+1. **编辑正在运行的 bash 脚本会破坏它的执行** —— bash 按文件偏移增量读脚本，中途改文件 →
+   从错位处继续读 → 本轮把 `p13_runner.sh` 的 `case` 读成了 `*)` 分支 → `exit 2`
+   （**两臂产物不受影响**，因为都在改文件前跑完了）。→ **改调度脚本前先停掉正在跑的实例。**
+2. **`DYLD_LIBRARY_PATH` 管不了 `@rpath`** → 第 2 轮「用 DYLD_LIBRARY_PATH 换 libvpipe」的结论**要改**。
+   正确做法（**不碰已装 App**）：
+   ```bash
+   APP="/Applications/Vpipe Manager.app/Contents"; BLD=<本地源码树>/build
+   rm -rf /tmp/vp13 && mkdir -p /tmp/vp13/Helpers /tmp/vp13/Frameworks
+   cp "$APP/Helpers/vpipe" /tmp/vp13/Helpers/vpipe
+   for f in "$APP/Frameworks/"*; do ln -sf "$f" "/tmp/vp13/Frameworks/$(basename "$f")"; done
+   ln -sf "$BLD/libvpipe.0.dylib" /tmp/vp13/Frameworks/libvpipe.0.dylib
+   chmod +x /tmp/vp13/Helpers/vpipe
+   DYLD_LIBRARY_PATH="$APP/Frameworks" /tmp/vp13/Helpers/vpipe --version   # → 0.1 (33cda00*0)
+   ```
+   之后用 `VPIPE_BIN=/tmp/vp13/Helpers/vpipe` 跑。
+   机制佐证：本地 `libvpipe.0.1.dylib` 有 "steps on sigmas" 字符串，App 的 `libvpipe.0.dylib` **没有**。
+3. **`generate-video` 的 iport 数量必须与模板逐项一致** —— 多一个空 iport 会把 `minimax-h3-model-config`
+   挤到下一槽位，报 `payload type mismatch on edge video-ref-encoder[2] -> generate-video[9]`
+   （producer `TensorBeatPayload` vs consumer `FlexDataPayload`）。→ **照抄模板的 iports 列表，别凭印象重排。**
+4. **`setsid` 在 macOS 上不存在**（`command not found: setsid`）→ 本机脱离进程组由 `scripts/detach_run.py`
+   （`os.setsid()`）完成；调度脚本本身用 Bash 工具的 `run_in_background` 托管即可。
+5. **流水线生成器的标签拼接**：`"p13-static-shift%s" % "s6"` → `p13-static-shifts6`（多一个 s），
+   与 runner 里的文件名对不上 → **生成后立刻 `ls` 校对**。
+6. **不能用 mp4 文件哈希判断两次生成是否一致**（容器含时间戳，字节必不同）→ 要比 **`framemd5`** 与**音频轨 md5**。
+7. **本轮磁盘仅 5.1 GiB**（远低于 SOP 的 15 GiB 下限）→ 本轮实验**刻意选「模型已在本地、只跑短片」**：
+   22 帧 / 1344×768 / 8 步，**每臂 3 分 55 秒、产物仅 240 KB** → 在磁盘约束下完整做完了三臂对照 + 一次重复运行。
+8. **本机无 `ffprobe`**（第 2 轮已记）→ 尺寸探测继续用 `ffmpeg -i` 的 `Stream #0:0 ... WxH`。
+
+#### 18.3.7 下一轮建议
+
+1. **P15 · 可复现性基线**（最高优先）→ 用本地 build `33cda00` 连跑同 seed 两次，验证 `e6972ac` 的 bit-for-bit
+   是否生效；若生效，**历史同 seed 对照都需按新基线重估误差棒**（尤其第 9 节的 shift 与多参考结论）。
+2. **P13b · `sigmas` 网格对照**（需新 build，已具备能力）→ 用 ComfyUI `er_sde` σ 网格跑静态夹具 **≥3 次**，
+   取均值与方差，判定「低噪声尾段细分」对 HF jitter 的真实影响（本轮 −16% 落在噪声内）。
+3. **P13c · `dpmpp_sde`** → issue #55 的第 1 条请求仍未解决，需上游让 minimax-h3 读 sampler spec iport。
+4. **P16 · hf-mirror 作为第三模型源** → 本机 HF 直连不通，值得试 `81cd674` 新加的源。
+5. **P11b（订正）· Ref2VA 4 步** → **Ref2VA 4 步 v0.1 = 544p → shift 12/3**（上游已定）；
+   要测 6.0 须下 `minimax_h3_ref2v_turbo_4step_v1.0_768p_bf16.safetensors`（1.38 GB）。
+6. **生产链建议（源自本轮）**：Ref2VA 768p **默认用 `video_shift: 6.0`**（上游官方值）；
+   12.0 作为可 A/B 的备选（细节更高，但属另一条 σ 网格，且本机漂移 8.7%）。
