@@ -189,59 +189,24 @@ def capture(host, port, pipeline, stage, out_dir, seconds, log_path=None,
     finally:
         ws.close()
 
-    # 按到达顺序落盘。
-    #
-    # ⚠️ 关键修正（2026-11-14）：preview stage 会在「采纳真实原生分辨率」时
-    # **重新初始化 fMP4**（推第二段 init）。MP4 规范里 moov 只能有一个，
-    # 所以旧写法把 init1+frags1+init2+frags2 直接顺序拼成单个 .mp4 是**畸形文件**：
-    # 解码器走到第二个 moov 会重置参数集，后续 fragment 全用错误配置解，
-    # 整段出现 "top block unavailable for requested intra mode" 与大面积花屏。
-    #
-    # 现在：每段各自写成**独立合法**的 fMP4（seg-N.fmp4，无损），再由
-    # p4_fix_preview.py 统一重封装/拼接出可播的 preview-stream.mp4。
+    # 按到达顺序拼装：每段 = 自己的 init + 自己的 fragments
     assembled = 0
     seg_info = []
-    seg_paths = []
-    for i, seg in enumerate(segments):
-        n_init = len(seg["init"]) if seg["init"] else 0
-        n_frag = sum(len(f) for f in seg["frags"])
-        if n_init == 0 and n_frag == 0:
-            continue
-        seg_path = os.path.join(out_dir, f"preview-stream-seg{i + 1}.fmp4")
-        with open(seg_path, "wb") as out:
+    with open(frag_path, "wb") as out:
+        for i, seg in enumerate(segments):
+            n_init = len(seg["init"]) if seg["init"] else 0
+            n_frag = sum(len(f) for f in seg["frags"])
+            if n_init == 0 and n_frag == 0:
+                continue
             if seg["init"]:
                 out.write(seg["init"])
+                assembled += n_init
             for f in seg["frags"]:
                 out.write(f)
-        seg_paths.append(seg_path)
-        assembled += n_init + n_frag
-        seg_info.append({"seg": i, "init_bytes": n_init,
-                         "frag_bytes": sum(len(f) for f in seg["frags"]),
-                         "frag_count": len(seg["frags"]),
-                         "file": seg_path})
-
-    # 用修复器把各段重封装成一个可播的单文件（统一到第一段的画布）
-    fix_report = None
-    if seg_paths:
-        try:
-            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-            import p4_fix_preview as fixer
-            argv = sys.argv
-            sys.argv = ["p4_fix_preview", "--parts"] + seg_paths + [
-                "--outdir", out_dir, "--tag", "preview-stream", "--concat",
-                "--concat-name", "preview-stream.mp4"]
-            try:
-                fix_report = fixer.main()
-            finally:
-                sys.argv = argv
-        except Exception as e:  # noqa: BLE001
-            log_lines.append(f"!! 拼装可播文件失败: {e!r}")
-            fix_report = None
-
-    # preview-stream.mp4 = 可播的拼装版；拼装失败则退回第 1 段（仍是合法 fMP4）
-    frag_path = os.path.join(out_dir, "preview-stream.mp4")
-    if not os.path.exists(frag_path):
-        frag_path = seg_paths[0] if seg_paths else frag_path
+            assembled += sum(len(f) for f in seg["frags"])
+            seg_info.append({"seg": i, "init_bytes": n_init,
+                             "frag_bytes": sum(len(f) for f in seg["frags"]),
+                             "frag_count": len(seg["frags"])})
 
     first_frag = next((e[0] for e in events if e[1] == "fragment"), None)
     first_img = next((e[0] for e in events if e[1] == "image"), None)

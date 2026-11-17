@@ -326,3 +326,93 @@ load-video(oport1) → audio-to-pcm(32000, stereo) → temporal-stack → 编码
 - **768p 目前锁不住相机轨迹**，只能锁「运动强度/节奏」。要精确复刻运镜请留在 480p。
 
 
+
+---
+
+## 11. 上游动态与复核清单（2026-11-17 起，随夜间自动任务滚动更新）
+
+> 本节由「vpipe 后续计划任务·每日 4 轮夜间自动执行」自动追加。**动手前先扫一遍这里**，
+> 上游可能已经修了我们踩过的坑，或改了我们的结论赖以成立的语义。
+
+### 11.1 版本落差（2026-11-17 实测）
+
+- 本机：`vpipe 0.1 (9db5dd7*0)`（源码编译版，工作树带 `*` 即有本地改动）
+- 上游 main：`4dc36b7`（2026-11-16）
+- `git ls-remote` / compare API 都能查；**不要用 `strings` 探二进制**（本机二进制只读得出 157 条字符串，方法无效）
+
+### 11.2 ★ shift 的值不要看日志（上游 issue #47 + #55）
+
+- `video_shift` **确实能到达 denoiser**，但 `GenerateVideoStage` 的日志**恒打印 `12.0/3.0`**（#47 已 Closed 但 #55 复现了）
+- → **报告与实验里禁止引用日志打印的 shift 值作为证据**；只能靠「改 shift → 量化出片 → 比 SSIM/纹理量」判断
+- 这也解释了为什么 shift 写错「完全静默」：没有告警 + 日志还骗你
+
+### 11.3 ★ 步数语义已变（上游 release）
+
+上游把 MiniMax H3 的 `steps` 语义从「跟随 MiniMax 官方的噪声级数」改为**与 ComfyUI / diffusers 对齐**。
+旧语义下有人为 Turbo LoRA 效果把步数 +1，现在可以改回 ComfyUI 口径。
+
+**影响**：第 16 节「4 步适配器必须同时把 pipeline `steps` 改成 4，否则静默劣化」的**语义前提已变**。
+→ 升级到新版后，**必须重测 steps 曲线**（4 / 6 / 8 步的画质-耗时关系），不能直接套用旧数字。
+
+### 11.4 ★ 续接变暗上游已修
+
+上游新增「自动视频续接光照自适应」，修的是 MiniMax H3 VAE + DiT 引入的变暗（release 明说，并指向 `docs/MINIMAX-H3.md` 的 long video guide）。
+
+- 第 16 节四段式续接的 **Δ亮度 1.1 → 8.6 → 13.3** 属于这个症状 → 升级后重跑续接实验
+- **但几何跳变（+76 px / −86 px 垂直重构）是另一个问题，别指望一并解决**
+
+### 11.5 ★ SSIM 口径：FFV1 现在支持 4:2:2 / 4:4:4
+
+上游支持**可选 BT.601 / BT.709 + FFV1 4:2:2 / 4:4:4**。
+
+- 我们长期记录的「视频流直接比 0.9736 vs PNG 落盘再比 0.9445，差 0.03 来自 4:2:0 色度往返」
+  → **这 0.03 不是固有开销**，4:4:4 下应显著变小
+- 做保真度对比时：**优先用 4:4:4 存储**，并在结论里写明像素格式
+- 历史素材多数是 4:2:0 → 旧数字只能标注偏置，不能重算
+
+### 11.6 ANE：在 M5 上关掉
+
+上游原话：ANE 自 v0.1.51 起可用，**推荐 M4 用户**；**「After M5 it barely moves performance (GPU NAX is very fast)」**，
+且要付 ANE 图编译成本，不划算。
+
+→ **本机 M5 Pro：默认关闭 ANE**。若要对比，只在专门测 ANE 收益的那一组里开。
+
+### 11.7 Swap allowance（默认 4 GB）
+
+上游新增：允许 vpipe 把其它 app 的**非 wired** 内存驱入 swap，自己仍用 wired 内存、不抖动。
+默认 4 GB，**解锁部分长视频任务**；设 0 恢复旧行为。
+
+→ 24 GB 机器跑 768p / 241 帧时被内存卡住 → 值得实测开关前后的峰值内存与耗时。
+
+### 11.8 纹理「沸腾」与 4 步适配器构图偏差
+
+| 上游 issue | 内容 | 动作 |
+|---|---|---|
+| **#55**（Open） | 静态表面逐帧重绘；涉及 `minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors`（**我们 768p Ref2VA 用的就是它**）；`video_shift=12` / `audio_shift=3` / `condition_timestep=1.0`。作者测得 HF jitter：静态参考 0.0000 / 4 步 0.0914 / 8 步 0.0502 / 16 步 0.0437 | 加一条**抖动指标**（HF jitter），与「颗粒量 vs 纹理量」交叉验证；**步数越多抖动越小**这条要自己复现 |
+| **#44**（Closed） | Ref2V Turbo 4-step LoRA **持久偏心构图**（768×544、shift 12/3）；Draw Things 同适配器无此问题 | 4 步适配器出图后**检查构图是否偏心**，不要只看清晰度 |
+
+### 11.9 新路线：HyperFlow H3 Flash（GGUF 9.1 GB）
+
+Video Rebirth（非 MiniMax 官方）的 H3 压缩少步版：
+
+- fl2va **13.7B** / ref2va **13.9B**；4/6/8 步（默认 6）；**CFG = 1**；euler + BasicGuider
+- 24 fps、默认 **1344×768**、**5.2–15 秒 = 124–362 帧（17n+5）**、32 kHz 立体声
+- **GGUF Q4_K_M 仅 9.1 GB**（fl2va）/ 9.2 GB（ref2va）；Q8_0 14.9 / 15.2；INT8 convrot ~16 GB
+- 文本编码器与两个 VAE 仍来自上游；**Python 包不下载 62 GB 的原始 transformer**
+- **限制：GGUF / ComfyUI INT8 的 ref2va 只支持图片参考**（混视频 + 音频参考要走 Python INT8 包）
+- 许可：MiniMax H3 Community License（排除美国 / 欧盟 / 英国 / 韩国）
+
+**对本机的意义**：9.1 GB 比 8-bit FL2VA 轻得多 → 24 GB 机器值得试。
+另可参考本机 `locmodel-h3-video` 技能（stable-diffusion.cpp + GGUF Q4 路线）。
+**注意**：它**不是 adapter**，是一条独立模型路线，权重要从 ModelScope 侧确认可达。
+
+### 11.10 其它上游增量（登记备查）
+
+- **MiniMax H3 Image VAE 出图** / **H3-Image 图（DiT 可在 M5 上跑 int8）** → 第三条文生图路线
+- **MiniMax H3 MotionCache** → 大步数生成可能提速
+- **Open-VDN 与上游对齐**，支持类 Ref2VA 参考模式
+- **修复：只有静图、无音频的 H3 Ref2VA 曾被错误拒绝** → 旧 build 上的 Ref2VA 消融结果需复核
+- **Pika H3 Flex 6 步蒸馏权重**、**Open-H3-Regenerate-2K 2560×1440**、**MiniMax H3 L2VA（FL2VA 分区）**
+- **LFM3-VL 可作为带视觉的语言模型**（我们用它做第三方复核，是官方支持的用法）
+- **更广 LoRA 支持**：`.safetensors` 可直装 LoRA 槽（**FP8 暂不支持**）；ComfyUI int8 ConvRot × pruned 权重格式
+- **上游文档扩到 27 个 md**；**英文版 `docs/MINIMAX-H3.md`（249 KB）比中文版多 73 KB** → 长视频指南的权威出处是英文版

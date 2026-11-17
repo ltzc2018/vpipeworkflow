@@ -1,0 +1,88 @@
+#!/bin/bash
+# vpipe 夜间自动任务 · GitHub 同步脚本
+#
+# 用法：nightly_sync.sh <轮次号> "<本轮时间 YYYY-MM-DD HH:MM>" ["<本轮摘要>"]
+#
+# 设计要点（2026-11-17 实测）：
+#   * 仓库 212 MB，全量 clone 会被 SIGTERM 打死 → 用常驻副本 + 增量 pull
+#   * --filter=blob:none 部分克隆不能做 checkout（每个 blob 单独回源）→ 不用
+#   * 仓库路径必须相对化；真人素材一律不推（public 仓库）
+#
+set -uo pipefail
+
+ROUND="${1:-0}"
+STAMP="${2:-$(date '+%Y-%m-%d %H:%M')}"
+SUMMARY="${3:-夜间知识同步}"
+
+LAB="/Users/minichen/WorkBuddy/2026-11-12-21-10-11/vpipe-lab"
+# 常驻工作副本：text-only 稀疏克隆（排除 videos/ 与 images/，避免拉媒体 blob 被杀）
+REPO="${VPIPE_SYNC_REPO:-/Users/minichen/WorkBuddy/2026-11-12-21-10-11/.vpipeworkflow-t}"
+LOG_DIR="$LAB/logs"
+mkdir -p "$LOG_DIR"
+LOG="$LOG_DIR/nightly-sync-r${ROUND}.log"
+
+log() { printf '[%s] %s\n' "$(date '+%H:%M:%S')" "$*" | tee -a "$LOG"; }
+fail() { log "❌ $*"; exit 1; }
+
+log "=== 第 ${ROUND} 轮同步 · ${STAMP} · ${SUMMARY} ==="
+
+# ---------- 0. 前置检查 ----------
+[ -d "$REPO/.git" ] || fail "常驻副本不存在：$REPO（请先跑一次完整 clone，后台执行）"
+
+# ---------- 1. 拉取远端增量 ----------
+log "git pull --ff-only ..."
+if ! git -C "$REPO" pull --ff-only >>"$LOG" 2>&1; then
+  log "⚠️  pull 失败，尝试中止残留 rebase/merge 后重试"
+  git -C "$REPO" rebase --abort 2>/dev/null
+  git -C "$REPO" merge --abort 2>/dev/null
+  git -C "$REPO" pull --ff-only >>"$LOG" 2>&1 || fail "pull 仍失败，见 $LOG"
+fi
+log "当前 HEAD：$(git -C "$REPO" log -1 --format='%h %ad %s' --date=short)"
+
+# ---------- 2. 复制本轮变更 ----------
+log "复制技能包 / 脚本 / 流水线 / 报告 ..."
+
+# 2.1 技能包（以实验室副本为准，实验室副本 = 安装版）
+for d in "$LAB"/skills/*/; do
+  name=$(basename "$d")
+  [ -d "$d" ] || continue
+  mkdir -p "$REPO/skills/$name"
+  cp -R "$d" "$REPO/skills/" 2>/dev/null || fail "复制技能包失败：$name"
+done
+
+# 2.2 脚本与流水线
+cp -R "$LAB"/scripts/. "$REPO/scripts/" 2>/dev/null
+cp -R "$LAB"/pipelines/. "$REPO/pipelines/" 2>/dev/null
+
+# 2.3 报告 → docs/reports/（含两份主报告 + SOP + 知识台账 + 轮次状态）
+mkdir -p "$REPO/docs/reports"
+for f in "vpipe-H3-部署与测试报告.md" "vpipe-后续计划任务.md" "vpipe-daily-knowledge.md" \
+         "vpipe-夜间自动任务SOP.md" "vpipe-upstream-issues.md" ".auto-round-state.json"; do
+  [ -f "$LAB/report/$f" ] && cp "$LAB/report/$f" "$REPO/docs/reports/$f"
+done
+[ -d "$LAB/report/issues" ] && cp -R "$LAB/report/issues" "$REPO/docs/reports/" 2>/dev/null
+
+# ---------- 3. 真人素材防火墙 ----------
+log "检查真人素材 ..."
+BAD=$(git -C "$REPO" ls-files | grep -Ei 'refs-real|real-photo|boogu-real|refs_real' || true)
+if [ -n "$BAD" ]; then
+  log "❌ 检测到应排除的真人文件："
+  echo "$BAD" | tee -a "$LOG"
+  git -C "$REPO" rm --cached --quiet $(echo "$BAD" | tr '\n' ' ') 2>/dev/null
+  fail "已从索引移除，请人工确认后重跑"
+fi
+log "✅ 索引中无真人文件"
+
+# ---------- 4. 提交与推送 ----------
+cd "$REPO" || fail "进入仓库失败"
+git add -A
+if git diff --cached --quiet; then
+  log "无变更，无需提交"
+else
+  git commit -q -m "docs: 第 ${ROUND} 轮夜间知识同步（${STAMP}）— ${SUMMARY}" || fail "commit 失败"
+  log "已提交：$(git log -1 --format='%h %s')"
+  git push origin main >>"$LOG" 2>&1 || fail "push 失败，见 $LOG"
+  log "✅ 已推送到 origin/main"
+fi
+
+log "=== 同步完成 ==="
