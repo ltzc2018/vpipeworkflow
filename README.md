@@ -2,8 +2,11 @@
 
 > 本机（Mac mini M5 Pro / 24 GB / macOS 27.2）验证通过的 [vpipe](https://github.com/tgo-app-dev/vpipe) 生成工作流，固化为可复用的技能包。
 >
-> 上游：`tgo-app-dev/vpipe`（`main` @ `33cda00`，本机源码编译版 `0.1 (9db5dd7*0)`）
-> 文档来源：官方 `docs/MINIMAX-H3-zh-cn.md`、26 个 release、30 条 issue，以及 YouTube / 社区实测资料
+> 上游：`tgo-app-dev/vpipe`（`main` @ `4dc36b7`，**2026-11-16**；本机源码编译版 `0.1 (9db5dd7*0)`，**落后 12 个 commit**）
+> 文档来源：官方 `docs/MINIMAX-H3-zh-cn.md` + 英文版 `docs/MINIMAX-H3.md`、官方 release、issue（至少 59 条），以及 YouTube / 社区实测资料
+>
+> **本仓库由夜间自动任务持续维护**：每天 00:30 / 02:30 / 04:30 / 06:30 自动检索上游与网络新知识，
+> 固化进技能包与报告，再回推本仓库。见 [`docs/reports/vpipe-夜间自动任务SOP.md`](docs/reports/vpipe-夜间自动任务SOP.md)。
 
 ---
 
@@ -14,11 +17,11 @@
 | [`skills/`](skills/) | **7 个技能包**，每个含 SKILL.md（中文说明 + 使用教程）、流水线模板、参考资料、脚本 |
 | [`pipelines/`](pipelines/) | 全部可运行的 `.vpipeline` 流水线（**路径已相对化**，可直接跑）|
 | [`refs/`](refs/) | 参考图素材（猫 / 熊猫 / 官方示例图），供流水线直接引用 |
-| [`scripts/`](scripts/) | 保真度量化、预览抓流、VQA 批处理、拼图等辅助脚本 |
+| [`scripts/`](scripts/) | 保真度量化、预览抓流、VQA 批处理、拼图、夜间同步等辅助脚本 |
 | [`images/`](images/) | 实测产物：印相、对照图、文生图/图生图结果 |
 | [`videos/`](videos/) | 实测成片：文生视频、参考生视频、锚定视频、预览流 |
 | [`logs/`](logs/) | 流水线运行日志与第三方模型复核输出 |
-| [`docs/`](docs/) | 部署与测试报告（1096 行）、上游 issue 提案（5 条 + 可提交单文件）、后续计划任务清单 |
+| [`docs/reports/`](docs/reports/) | **主报告**（部署与测试，2388 行）、**后续计划任务清单**、**每日知识增量台账**、**夜间自动任务 SOP**、上游 issue 提案 |
 
 ---
 
