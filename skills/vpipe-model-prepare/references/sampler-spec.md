@@ -184,3 +184,52 @@ HF `Comfy-Org/MiniMax-H3-Image` 讨论区（社区）断言：
   但**「at1 = af1 = af2」这个相等关系成立**，且本轮用**跨轮次**的方式再次独立证实
   （本轮 p18-euler 与第 3 轮 p15-repro-af1 逐位相同）。
   ⇒ **纪律：报哈希时必须同时写清聚合口径，否则数字不可复核。**
+
+---
+
+## 8. ★★★ 2026-11-18 第 5 轮：必须区分「`dmd` 采样器」与「DMD2 蒸馏」
+
+社区里 **`dmd` / `DMD` / `DMD2` / `turbo` / `turbo_student` / `LCM`** 这几个词经常混着写，
+读帖时极易把「蒸馏模型」当成「采样器」。对照表：
+
+| 名称 | 是什么 | 作用层次 | 产物 | 本实验室状态 |
+|---|---|---|---|---|
+| **`dmd`（vpipe 采样器）** | **采样器**：每步重注噪<br>`x0 = x + σ·v` → `(1−σ')·x0 + σ'·n`（**fresh noise**） | **推理期**，不改任何权重 | 同权重换一条 σ 轨迹 | **第 4 轮 P18 已实测**：HF jitter **−12.82%**、sharpness **+10.27%**、用时 **0%** |
+| **DMD2（FastH3 蒸馏）** | **蒸馏出的学生模型**：用 DMD2 loss 从冻结 teacher 学出 4/8 步 | **训练期**，改权重 | 新的 DiT 权重（22.90 GB INT8） | 未测（磁盘阻塞） |
+| `turbo` / `turbo_student` | 上游**别名**，规范化后落到 `dmd` | 同 `dmd` | — | 同 `dmd` |
+| `lcm` | ComfyUI 侧的 LCM 采样器 | 推理期 | — | **社区断言 ≡ `dmd`**（HF `Comfy-Org/MiniMax-H3-Image` #5）；第 5 轮获得跨家族印证 |
+
+**★ 两条易错推论**：
+
+1. **不要把「FastH3 只有 4 步」归因到 `dmd` 采样器。**
+   FastH3 的少步能力来自**模型被 DMD2 蒸馏过**；
+   本实验室测的是**同权重换采样器**。两者是**不同层次的变量**。
+2. **不要把社区的「DMD2 消除了纹理麻点」直接读成本实验室的 `dmd` 结论。**
+   但第 5 轮出现了一个**真正的跨家族印证**（见 §9）。
+
+### 8.1 ★ 第 5 轮：H3-Image 上的独立复现（跨家族印证 P18）
+
+社区在 **MiniMax H3-Image**（图像模型，非视频）上独立发现：
+
+> ComfyUI 官方模板默认 `euler` → 皮肤/细节出现「crunchy grid」（过锐块状纹理）；
+> 换成 **`SamplerLCM` 节点 + `simple` scheduler + 6 步 + `s_noise` 1.10 → 0.90**
+> → 皮肤出现真实毛孔、眼睛干净、牙齿自然。
+
+来源：<https://pixelailabs.com/blog/minimax-h3-image-comfyui-realistic-photos>（2026-11）、
+<https://webhill.net/en/telegram/post/three-comfyui-settings-to-eliminate-artifacts-in-minimax-h3-image>
+
+**★ 交叉结论**：
+
+| | vpipe `dmd`（第 4 轮 P18，本实验室实测） | ComfyUI `SamplerLCM`（H3-Image，社区实测） |
+|---|---|---|
+| 相对 euler | HF jitter **−12.82%**、sharpness **+10.27%** | 「crunchy grid」消失、皮肤变真实 |
+| 机制 | 每步重注噪（fresh noise） | LCM 更新式（社区断言 ≡ `dmd`） |
+| 家族 | H3 **视频** | H3 **图像** |
+
+⇒ **同一条机理（LCM/DMD 更新式 vs euler）在 H3 视频与 H3 图像两个家族上独立出现。**
+P18 的判决从「本机单点观察」升级为「**家族级共识**」。
+
+⚠️ **但都不是根治**：
+- 本实验室：`dmd` 的 HF jitter 仍是静态地板（0.0010）的 **94×**；
+- 社区那条也没说「完全消除」，只说「明显改善」。
+→ **纪律不变（第 4 轮坑 12.4）：任何「效应量」都要同时给出地板值与倍数。**

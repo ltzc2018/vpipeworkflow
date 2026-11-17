@@ -1139,3 +1139,293 @@ HF `Comfy-Org/MiniMax-H3-Image` 讨论区断言：ComfyUI 的 **`lcm`**（每步
   而第 7 节已给出 P18 判决 → 标注「已被第 7 节取代」（提交 `d1ae757`）。
 - **GitHub 末次提交**：`b8d89c5`（第 4 轮共 5 次提交：`2f547a7` / `8857f10` / `a7dff7a` / `d1ae757` / `b8d89c5`）。
 - **磁盘仍 5.4 GiB**（< 15 GiB 下限）→ **下一轮的第一约束是先清盘**，否则 P22 超分类实验无法启动。
+
+---
+
+## 第 5 轮 · 2026-11-18 06:30 —— ★★★ ControlNet Union（生态有 / vpipe 无）+ 上游新项目 `valtz` + 官方 H3 提示词六段式 + **P13b σ 网格重测**
+
+### 5.1 本轮检索范围与来源清单（21 类）
+
+| # | 来源 | URL / 位置 | 日期 | 本轮读到的内容 |
+|---|---|---|---|---|
+| 1 | GitHub API · 上游 HEAD | `api.github.com/repos/tgo-app-dev/vpipe/commits?since=2026-11-16` | 2026-11-16 | **仍 `4dc36b7`，零新增**（自 2026-11-16 起 1 个 commit） |
+| 2 | GitHub API · releases | `.../releases?per_page=8` | 2026-11-01 | **仍 v0.1.110**，零新增 |
+| 3 | GitHub API · issues 全量 | `.../issues?state=all&per_page=100` | 2026-11-18 | **31 条，状态零变化**；**#55 仍 open / 0 评论 / 开放 28 天**；#58 open / 0 评论；#59 open / 0 评论 |
+| 4 | GitHub API · 分支 | `.../branches` | 2026-11-18 | **只有 `main`**（无开发分支） |
+| 5 | ★ GitHub API · **上游组织全部仓库** | `api.github.com/users/tgo-app-dev/repos` | 2026-11-18 | **★ 发现本实验室此前零记录的 `valtz`**：2026-10-03 创建、79 stars、C++、MPL-2.0、"A native macOS app for generative creation and composition, powered by Vpipe"，最后推送 **2026-11-16**；另有 `vpipe-ming-image` / `vpipe-ltx-2.5` / `vpipe-sensenova-u1.5` / `vpipe-supplement` |
+| 6 | ★ GitHub API · 仓库树扫描 | `.../git/trees/main?recursive=1` | 2026-11-18 | **1776 条目**（与第 4 轮同）；**`controlnet` / `control` / `dmd` / `vsa` / `fastvideo` / `pdd` / `singularity` 全部 0 命中**；`vdn` 28 命中 |
+| 7 | ★★ 上游 `relayvsr-upscale-stage.cc` 源码 | `raw.githubusercontent.com/.../stages/audio-video/relayvsr-upscale-stage.cc` | 2026-11-16 | ★ **倍率是硬编码的 4×**：`_plan_w = out_w ? out_w / 4 : kPlanW;`、`_plan_h = out_h ? out_h / 4 : kPlanH;`；**整个 stage 没有任何 `upscale_factor` 配置键** |
+| 8 | ★ 上游 `docs/pipelines/*h3-image*` | 本地树 `docs/pipelines/`（10 个文件） | 2026-11-16 | ★ **vpipe 完整支持 H3-Image**：`minimax-h3-image-text-to-image{,-fast-m5}.vpipeline` / `-edit` / `-round-trip` / `prepare-minimax-h3-image{,-vae}.vpipeline`；**本地树 106 个文件命中 `h3-image`** |
+| 9 | ★ 上游 `prepare-minimax-h3-image.vpipeline` | 同上 | 2026-11-16 | ★ 拉取 `MiniMaxAI/MiniMax-H3-Image`（**BF16 ≈68.65 GB**）+ `MiniMaxAI/MiniMax-H3` 的 text-encoder 变体（**≈66.7 GB**）→ **合计约 135 GB** |
+| 10 | ★ 上游 H3-Image 流水线配置 | `minimax-h3-image-text-to-image-fast-m5.vpipeline` | 2026-11-16 | 复用 `generate-video` + `vae-decode` + `save-image`；**4736×3552（16.8 MP）**；fast-M5 版多 `i8_gemm: true, i8_gemm_tier: "token"` |
+| 11 | ★★ 上游 `docs/MINIMAX-H3.md`（本地 `33cda00`） | 同上，第 1135–1160 行 | 2026-11-16 | ★ **参考标签计数器按类型分开**（`<Picture i>` / `<Video k>` / `<Audio j>` 各从 1 起算）；★★ **「未匹配的标签就是普通文本，什么都不会报告」** |
+| 12 | ★ 上游 `docs/pipelines/pika-h3-flex-reference-to-video.vpipeline` | 本地树 | — | 全树**唯一**还用 `@Image1/@Image2/@Video1` 的官方示例；`<Picture 1>` 命中 20 文件 / `@Image1` 仅 1 文件 |
+| 13 | ★★ `valtz` 官方 H3 提示词技能 | `raw.githubusercontent.com/tgo-app-dev/valtz/main/3rd-party/minimax-h3/skills/h3-prompt-writing/SKILL.md` + `references/{base,ref}-en.txt` | 2026-11-16 | **MiniMax 官方**提示词规范：Base 三段（`integrated_multimodal_description`/`overall_soundscape`/`non_diegetic_music`）、Ref2VA **六段**（`subject_definitions`/`summary`/`retention_analysis`/`detailed_description`/`overall_soundscape`/`non_diegetic_music`）；四种标签语义；时长 4–15 秒 |
+| 14 | ★ `valtz` 的模型技能卡目录 | `core/resources/skills/`（15 个） | 2026-11-16 | ★ 新模型家族地图：`minimax-h3-image-{t2i,edit}.md`、**`flux3-klein-{t2i,edit}.md`**、`qwen-image-{t2i,edit}.md`、`minimax-music3.md`、`moss-tts.md`、`valtz-{agent,chat,procedural}.md` |
+| 15 | ★★ ControlNet Union 三篇社区实测 | stable-diffusion-art / gitcode ×2 | 2026-11 | 8 控制条件（Canny/Depth/HED/MLSD/Pose/Scribble/Layout/Gray）+ 视频 inpaint；**10 层密集控制注入 + guidance 蒸馏**；控制 patch 叠在 Ref2VA 上并**在音频 token 上清零 control skip**；SDPose 133 关键点姿态 |
+| 16 | ★ ModelScope · `Comfy-Org/MiniMax-H3` | `api/v1/models/.../repo/files` | 2026-11-18 | **48 文件**；含 **`minimax_h3_fun_controlnet_union_pruned_int8_convrot` = 2.30 GB** / `_bf16` 4.22 GB / `2.0_pruned_int8` 4.53 GB / `2.0_pruned_bf16` 8.38 GB |
+| 17 | ★ ModelScope · `Kijai/MiniMax-H3-experimental` | 同上 | 2026-11-18 | **34 文件**；★ `MiniMax-H3-Ref2VA-Acc-8Step_pruned_comfy` = **1.73 GB**（PDD 8-NFE）、`singularity_v2_lora_rank_351` 3.30 GB、`open_regenerate_2k_refiner_rank_384` 5.87 GB、`fastvideo_vsa_datafree_1300step_4step_int8` 22.90 GB |
+| 18 | ★ ModelScope · `Comfy-Org/RelayVSR` | 同上 | 2026-11-18 | ★★ **新增 `relayvsr_x2_lightx2v_int8_convrot.safetensors` = 5.16 GB**（与 x4 同体积）；合计 10.58 GB（9 文件）→ **上游 issue #59 现在可操作化** |
+| 19 | ★ ModelScope · `kuohao/FlashVSR-v1.1` / `mlx-community/FlashVSR-v1.1-bf16` | 同上 | 2026-11-18 | ★ **逐文件实测 = 6.95 GB / 3.51 GB**（第 4 轮记的 6.48 / 3.27 **偏小** → SOP 12.7 又一次印证） |
+| 20 | ★ H3-Image 五篇独立报道 | artrealmai / promptlab / vega.chat / sloptvnews / pixelailabs | 2026-11-10～11 | 规格与许可；★ Comfy 模板采样器 `euler, simple, 6 steps, CFG 1, denoise 1`；★★★ **「默认 euler 出 crunchy grid → 换 `SamplerLCM` + `s_noise` 1.10→0.90 就修好」** |
+| 21 | ★ 社区 · H3 全生态资源索引 | `g.itadn.com/repos/wildminder/awesome-minimax-H3`（2026-11-16 快照） | 2026-11-16 | DMD2 σ 阶梯 `[999,749,500,250]`；★ **`Beidouqixing/MiniMax-H3-DMD2-4step` 已 404**；★ `t8star` 的 2×2 空间 HF 补丁只 **+2%**、作者称增益微弱 |
+
+---
+
+### 5.2 新增知识
+
+#### K21 ★★★ MiniMax-H3-Fun-Controlnet-Union（alibaba-pai）—— **生态有能力，vpipe 完全没有**
+
+- 来源：stable-diffusion-art + gitcode ×2（2026-11）+ ModelScope API（2026-11-18 实测）。
+- 一句话结论：**一个 checkpoint 覆盖 8 种结构控制条件 + 视频 inpaint**，通过 **10 个控制块**
+  把控制信号注入主 transformer（guidance 蒸馏），叠在 **Ref2VA** 之上并**在音频 token 上把 control skip 清零**
+  → 运动被驱动视频锁死、音频照常生成。
+- 权重（ModelScope 实测，**vpipe 侧无对应 stage，但体积可下**）：
+
+  | 文件 | 体积 |
+  |---|---:|
+  | `minimax_h3_fun_controlnet_union_pruned_int8_convrot.safetensors` | **2.30 GB** |
+  | `minimax_h3_fun_controlnet_union_pruned_bf16.safetensors` | 4.22 GB |
+  | `minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors` | 4.53 GB |
+  | `minimax_h3_fun_controlnet_union_2.0_pruned_bf16.safetensors` | 8.38 GB |
+
+- ★ **vpipe 支持度 = 0（三重验证）**：上游树 1776 条目 `controlnet`/`control` **0 命中**；
+  本地树 5234 文件 **0 命中**；31 条 issue 无相关项。
+  → **不是「需要升级」，是「没有这个 stage」** → 适合写成第 7 条上游 issue 提案。
+- ⚠️ **体积冲突**：社区博客写「约 13.5 GB」，ModelScope 实测 2.30–8.38 GB（**差 3–6 倍**）
+  → 又是 SOP 12.7：**盘点模型仓库必须按文件逐个看**。
+
+#### K22 ★★★ 上游新项目 `tgo-app-dev/valtz`（本实验室此前零记录）
+
+- 来源：GitHub API `users/tgo-app-dev/repos`（2026-11-18）。
+- 一句话结论：**vpipe 的官方 macOS 前端/创作应用**，C++ / MPL-2.0 / 79 stars，
+  2026-10-03 创建、最后推送 **2026-11-16**（比 vpipe 本体只晚 13 分钟）。
+- ★ **对本实验室最重要的价值：它把 MiniMax 官方的提示词技能直接打包进来了**
+  （`3rd-party/minimax-h3/skills/h3-prompt-writing/`），
+  以及一批模型技能卡（见 K23）。
+- 社区侧已有人推荐：「don't go comfyui, macs need dedicated tools… use vpipe」。
+
+#### K23 ★★★ 官方 H3 提示词结构（六段式 + `<Picture N>`）与「未匹配标签 = 普通文本」
+
+- 来源：valtz 内置的 **MiniMax 官方** `h3-prompt-writing` 技能 + 上游 `docs/MINIMAX-H3.md`。
+- 一句话结论：**H3 有一套与 vpipe 示例不同的官方提示词规范**：
+  - Base 模式（T2VA/I2VA/FL2VA/L2VA）**三段**：
+    `integrated_multimodal_description` → `overall_soundscape` → `non_diegetic_music`；
+  - **Ref2VA 六段**：`subject_definitions` → `summary` → `retention_analysis` →
+    `detailed_description` → `overall_soundscape` → `non_diegetic_music`；
+  - 四种标签：`<Subject N>`（可复用内容）/ `<Picture N>`（关键帧锚点）/
+    `<Video N>`（整段时序来源）/ `<Audio N>`（音频）；
+    **只用图定义人物/风格时不要单开 `<Picture N>`**，要在 `<Subject N>` 里引用它。
+- ★★★ **新坑（同族：静默失效）**：上游原文
+  > Getting this backwards writes a prompt that points at a reference which is not there,
+  > and **nothing reports it: an unmatched tag is ordinary text to the model.**
+  且**计数器按类型分开**（`<Picture i>` / `<Video k>` / `<Audio j>` 各从 1 起算）。
+- ★ **本实验室的夹具正好用的是 `@Image1`**（沿用了上游唯一一个旧示例
+  `pika-h3-flex-reference-to-video.vpipeline`；上游文档主体 20 个文件已改用 `<Picture 1>`）。
+  → 登记 **P27-b**（见 5.4）。
+  ⚠️ **这不影响 P18 / P13b 的内部对照结论**（两臂用同一份提示词），
+  只影响「绝对值能否与上游 #55 的 0.0502 直接比」。
+
+#### K24 ★★ MiniMax H3-Image（2026-11-10/11 发布）—— vpipe **已完整支持**，但本机装不下
+
+- 来源：五篇独立报道 + **上游 `docs/pipelines/minimax-h3-image-*.vpipeline`**（本地树已有 10 个）。
+- 规格：H3 DiT 去音频分支、**33.1B**、50 层、hidden 5376；**6 步蒸馏、CFG 固定 1（无负面提示词）**；
+  原生 **≈16 MP**（4096×4096 … 6272×2688，有效 4–20 MP）；**最多 16 张参考图**；
+  **文本编码器与 H3 视频共用 Qwen3-VL-32B**；Image VAE 16× 下采样 / 24 通道 / 2×2 patch；
+  许可排除美国/欧盟/英国/韩国，年营收 >100 万美元或对外托管需书面授权。
+- ★ **vpipe 侧**（本轮实测，本实验室此前零记录）：
+  - 上游有 **6 条官方流水线**（text-to-image / **text-to-image-fast-m5** / edit / round-trip /
+    prepare / prepare-vae），**本地 build `33cda00` 全都有**（106 个文件命中 `h3-image`）；
+  - 图像模型**直接复用** `generate-video` + `vae-decode` + `save-image`；
+  - fast-M5 版只是多 `i8_gemm: true` + `i8_gemm_tier: "token"`。
+- ★★★ **决定性负面结论（省下 135 GB 下载）**：
+  `prepare-minimax-h3-image.vpipeline` 拉的是
+  **`MiniMaxAI/MiniMax-H3-Image`（BF16 ≈68.65 GB）+ `MiniMaxAI/MiniMax-H3` 的 text-encoder 变体（≈66.7 GB）**
+  → **合计约 135 GB**。
+  ⇒ **vpipe 的 H3-Image 路线在本机（24 GB 统一内存 / 磁盘 5.3 GiB）不可行**，
+  且与 ComfyUI 的 21 GB INT8 路线**不是同一套权重格式**（不能直接复用）。
+  → **P28 改判：从「🔴 待验证」降为「⛔ 本机不可行」**，除非上游出量化/GGUF 版。
+
+#### K25 ★★ H3-Image 上的 `SamplerLCM` 复现「crunchy grid」→ **P18 的跨家族印证**
+
+- 来源：pixelailabs（2026-11）+ webhill（2026-11）。
+- 一句话结论：在 **H3 图像**模型上，默认 `euler` 会出「过锐块状纹理（crunchy grid）」，
+  换成 **`SamplerLCM` + `simple` + 6 步 + `s_noise` 1.10→0.90** 就修好了。
+- ★ **交叉结论**：
+
+  | | vpipe `dmd`（第 4 轮 P18，本机实测） | ComfyUI `SamplerLCM`（H3-Image，社区实测） |
+  |---|---|---|
+  | 相对 euler | HF jitter **−12.82%**、sharpness **+10.27%** | crunchy grid 消失、皮肤出现真实毛孔 |
+  | 家族 | H3 **视频** | H3 **图像** |
+
+  ⇒ **同一条机理在 H3 视频与 H3 图像两个家族上独立出现**
+  → P18 的判决从「本机单点观察」升级为「**家族级共识**」。
+- ⚠️ **仍不是根治**：本实验室 `dmd` 的 HF jitter 仍是静态地板的 **94×**；社区那条也只说「明显改善」。
+
+#### K26 ★★ FastVideo FastH3（DMD2）—— 与我们的 σ 网格工作互相印证
+
+- 一句话结论：**4 次前向 over 5 点 σ**（v1）、**8 次前向 over 9 点 σ**（v2）、base 49 次前向
+  → 与我们的「**N 次前向 over N+1 点**」完全一致
+  → **「N+1 点」不是 vpipe 的怪癖，是 H3 家族的通用约定**（第三方实现印证）。
+- DMD2 σ 阶梯 `[999, 749, 500, 250]`，cfg 1.0，768×1344 @124 帧；
+  VSA 稀疏度 90 %（v1）/ 80 %（v2）；**只有 T2V**（未蒸馏 FL2VA / Ref2VA）。
+- ★★★ **必须区分的两个「DMD」**：
+  `dmd`（vpipe **采样器**，推理期换 σ 轨迹，本实验室已实测）
+  **≠** DMD2（FastH3 **蒸馏模型**，训练期改权重）。
+  → 读社区帖看到「DMD2」**不要**自动映射到我们的 `dmd` 结论。
+- 死链：`Beidouqixing/MiniMax-H3-DMD2-4step` **HF 404**，规范来源是 FastVideo 仓库。
+
+#### K27 ★★ 上游 issue #59 现在可操作化：RelayVSR **2× checkpoint 已上架**
+
+- 来源：ModelScope `Comfy-Org/RelayVSR`（2026-11-18 实测）+ 上游 `relayvsr-upscale-stage.cc` 源码。
+- 一句话结论：**`relayvsr_x2_lightx2v_int8_convrot.safetensors`（5.16 GB）已在 ModelScope**，
+  但上游 stage 的倍率是**硬编码 4×**（`_plan_w = out_w / 4`、`_plan_h = out_h / 4`，
+  **整个 stage 没有任何 `upscale_factor` 配置键**）
+  → **issue #59「support the native 2x checkpoint」现在有了具体可指的文件，不再是空请求。**
+- 这也印证了 LightX2V 官方说明：**2×/4× 权重混用会直接报错**，所以不能靠「拿 4× 模型做 2×」绕过。
+
+#### K28 ★ FlashVSR 权重体积订正（SOP 12.7 的又一次印证）
+
+| 仓库 | 第 4 轮记的 | **本轮逐文件实测** | 差异 |
+|---|---:|---:|---|
+| `kuohao/FlashVSR-v1.1` | 6.48 GB | **6.95 GB**（8 文件：5.68 + 0.58 + 0.51 + 0.19 + …） | **+0.47 GB** |
+| `mlx-community/FlashVSR-v1.1-bf16` | 3.27 GB | **3.51 GB**（8 文件：2.84 + 0.58 + 0.09 + …） | **+0.24 GB** |
+| `Comfy-Org/RelayVSR` | 10.58 GB | 10.58 GB（9 文件） | 一致 |
+
+→ **「总数减法」与博客聚合数都会偏低**；盘点必须按文件逐个累加（与第 4 轮 SOP 12.7 同一结论）。
+
+#### K29 ★ 2K refiner 有了社区补丁（对第 1 轮「2K 未开源」的增量）
+
+- `Kijai/MiniMax-H3-experimental` 的 `minimax_h3_open_regenerate_2k_refiner_rank_384_bf16.safetensors` = **5.87 GB**
+  → MiniMax 官方演示里的「768p → 2K 再生成」阶段**虽未开源，社区已做出 refiner LoRA**。
+- 体积 5.87 GB 在本机磁盘清空后**可下**，但需要 2K 显存预算（≥15 GiB 余量）→ 优先级低于 ControlNet。
+
+#### K30 ★ PDD 8-NFE Ref2VA LoRA：1.73 GB，体积可接受
+
+- `MiniMax-H3-Ref2VA-Acc-8Step_pruned_comfy.safetensors` = **1.73 GB**（阿里 PAI Parallel Decoding Distillation）。
+- 与本实验室已有的 `lightx2v` Turbo LoRA 是**不同家族**的少步方案 → 值得作为 P27 的候选（待验 vpipe 兼容性）。
+
+#### K31 ★ 上游与生态零变化（基线确认）
+
+- 上游 HEAD 仍 `4dc36b7`、release 仍 v0.1.110、issue 31 条状态全未变、**只有 `main` 一个分支**；
+  #55 / #58 / #59 全部 open / **0 评论**。
+- HF Space `Upsampler/relayvsr` **仍在**（lastModified 2026-11-07）→ **P25 零下载预判仍可用**。
+- 社区侧 vpipe 口碑：16 GB Mac mini 用 vpipe 跑 8-bit MiniMax H3 可用（weight streaming）；
+  M5 Pro 做 1366×768 / 10–15 s 需 **2–3 小时**。
+
+#### K32 ★ 生态侧旁证：「改 HF 投影」对纹理沸腾的收益有限
+
+- `t8star` 的 Ref2VA **2×2 空间 HF 补丁**（视频输入投影）只带来 **+2 %** HF 增益，
+  作者明确写「HF agent 增益微弱，且**未确认**能消除『油腻/蜡质』外观」。
+- ⇒ 与本实验室的结论一致：**HF 高频指标不是一把万能钥匙**，
+  第 4 轮 `dmd` 压低 12.82 % 是真效应，但社区侧同路线的天花板也很低。
+
+#### K33 ★★ 闭式 σ 公式被「运行时真值」验证（见 5.3 实验）
+
+- 本轮 P13b 的日志回显给出了**运行时实际使用的音频 σ 串**，
+  与 `scripts/p15_sigma_grid.py` 的闭式公式**逐值吻合**（9/9，4 位小数）
+  → 公式从「文档级双源互验」升级为「**运行时真值**」。
+
+### 5.3 ★★★ 本轮实验（P13b · `sigmas` σ 网格对照）—— **第 3 轮的「−16%」被推翻，符号是反的**
+
+#### 5.3.1 设计
+
+| 臂 | `minimax-h3-model-config.sigmas` | 视频 σ 网格 | 次数 |
+|---|---|---|---|
+| **A** | `1, 0.9844, 0.9627, 0.9304, 0.878, 0.7579, 0.5527, 0.2369, 0` | ComfyUI `er_sde` 表（**与第 3 轮逐字相同**） | **3** |
+| **B** | **不写该字段** | 默认网格（`video_shift 6.0`） | **2** |
+| 跨轮锚点 | 第 4 轮 `p18-euler.mp4` | 默认网格 | 1（历史） |
+
+其余配置**逐字相同**（seed 42 / 22 帧 / 1344×768 / 8 步 / 同 LoRA / 同参考图 / 同提示词 /
+`sampler-select{euler}` 接 `iports[3]` / 三处 `autotune:false`）。
+用时 219/219/220/220/219 s（合计 **18 分 57 秒**），产物 245 333 / 244 535 B。
+
+#### 5.3.2 逐位判据（漂移 = 0 的直接证据）
+
+| 比较 | framemd5（`-map 0:v`） | 音频 md5 | 整段 SSIM（口径 A） | PSNR | 首帧 SSIM（口径 B） | 字节 |
+|---|---|---|---|---|---|---|
+| A1 vs A2 | **相同** `ba301fc2…` | **同** | **1.000000** | **inf** | **1.000000** | 245 333 = 245 333 |
+| A2 vs A3 | **相同** `ba301fc2…` | **同** | **1.000000** | **inf** | **1.000000** | 245 333 = 245 333 |
+| B1 vs B2 | **相同** `0d77d033…` | **同** | **1.000000** | **inf** | **1.000000** | 244 535 = 244 535 |
+| **B1 vs 第 4 轮 `p18-euler`** | **相同** `0d77d033…` | **同** | **1.000000** | **inf** | **1.000000** | 244 535 = 244 535 |
+| **A1 vs B1（处理组）** | **不同** | 不同 | **0.749469** | **18.699585** | **0.604196** | — |
+
+⇒ **漂移 = 0**（逐位证明，不是估算）；
+⇒ **默认网格臂在第 3、4、5 三轮之间逐位相同** → **本实验室迄今最强的可复现性证据**。
+
+#### 5.3.3 ★★★ 主判决
+
+| 变体 | HF jitter | frame diff | sharpness | static_hf_jitter | 静止像素比 |
+|---|---:|---:|---:|---:|---:|
+| 静态参考（编码地板） | **0.0010** | 0.000010 | 353.66 | 0.0010 | 1.000 |
+| **A · `er_sde` σ 网格**（3 次全同） | **0.1205** | 0.004508 | 560.40 | 0.1108 | 0.954 |
+| **B · 默认网格**（2 次 + 第 4 轮锚点全同） | **0.1075** | 0.003669 | 559.73 | 0.1010 | 0.979 |
+
+| 指标 | **第 5 轮效应**（漂移 = 0） | 第 3 轮观察（漂移 18.4 %） | 判决 |
+|---|---:|---:|---|
+| **HF jitter** | **+12.09 %** | **−16.0 %** | ★★★ **符号相反** |
+| frame diff | **+22.87 %** | — | 更大 |
+| sharpness | **+0.12 %** | −7.0 % | 几乎无差异 |
+| static_hf_jitter | **+9.69 %** | −12.8 % | 符号相反 |
+
+**地板倍数**：第 5 轮 A 臂 = **121×** 地板、B 臂 = 108×（第 3 轮 A 臂是 100×）。
+
+⇒ **★★ 核心结论**：**ComfyUI `er_sde` σ 网格在本机上不是解药，而是让纹理沸腾更严重（+12.09 %）。**
+第 3 轮的「−16 %」**完全落在 18.4 % 漂移带内** —— 当时的「不可下结论」是正确判断；
+**本轮在漂移 = 0 下重测，结论反了**。
+> **这是本实验室方法学的核心价值证明：一个「看起来像效应」的数，只有当漂移基线真正压到 0 之后才可采信；压到 0 之后，它可能是反的。**
+
+#### 5.3.4 ★ 与 P18 的正交对照（「更新式」vs「σ 网格」）
+
+| 变量 | 改变什么 | 效应 | 地板倍数 |
+|---|---|---:|---:|
+| **`dmd` 采样器**（第 4 轮 P18） | **更新式**（每步重注噪） | HF jitter **−12.82 %**（利） | 94× |
+| **`er_sde` σ 网格**（本轮 P13b） | **σ 轨迹** | HF jitter **+12.09 %**（害） | 121× |
+
+⇒ **两者方向相反、量级相近** → 第 4 轮 §12.3「更新式与 σ 网格是正交变量」的纪律得到验证；
+⇒ **纹理沸腾的解药目前只有 `dmd` 采样器这一条路**（且只是压低 12.82 %，**仍是地板的 94×**）。
+
+#### 5.3.5 ★★ 顺带：闭式 σ 公式被「运行时真值」验证（K33 展开）
+
+运行时回显的音频 σ 串 `[1.0000, 0.9693, 0.9281, 0.8699, 0.7825, 0.6102, **0.3819**, **0.1344**, 0.0000]`
+与闭式公式算出的 `[1, 0.969279, 0.928083, 0.869858, 0.782531, 0.610176, **0.381884**, **0.134366**, 0]`
+**9/9 逐值吻合（4 位小数）**。第 7、8 两个值最关键 —— 它们必须「先把视频 σ 反解回共享 q、再过 `audio_shift`」才算得出。
+⇒ **公式升级为「运行时真值」级证据**（此前是文档级双源互验）。
+
+顺带证实：① `sigmas` 字段在本地 build `33cda00` 真实生效（且 B 臂日志**无**该行 → 差异确实只来自此字段）；
+② 音频 σ 确实走共享 q 网格；③ `autotune:false` 生效（`gemm autotune 0`，竞速开时是 4635 ms）。
+
+#### 5.3.6 LFM3-VL-2B 复核
+
+- **Q1 场景是静的** → 两行姿态位置都基本不变 ✅ **一致**
+- **Q2 哪行更花** → 「**第 2 行（A 臂）**噪点更细碎、更有『沙沙的颗粒感』」 ✅ **与量化一致**（本轮罕见同向）
+- **Q3 是否同一场景** → 「基本相同，只有窗帘位置略有不同」 ❌ **与量化矛盾**（首帧 SSIM 0.604196）→ **已知缺陷 ④ 再现**
+- **Q4 首末帧纹理累积** → 两段都无显著变化 ✅ 一致
+
+### 5.4 本轮新增待验证任务（登记到状态看板）
+
+| 编号 | 任务 | 依据 | 成本 | 阻塞 |
+|---|---|---|---|---|
+| **P27** | **ControlNet Union 可行性预判** | 生态有 8 条件控制能力（2.30 GB INT8），vpipe **0 命中** | 先 grep 挂载点；若连输入口都没有 → 直接写第 7 条上游 issue，**不做本地实验** | 无（预判本身零成本） |
+| **P27-b** | **提示词结构对纹理沸腾绝对水平的影响** | 官方六段式 + `<Picture N>` vs 本实验室夹具的 `@Image1` | 2 臂 × 22 帧 ≈ 8 分钟（模型全在本地） | 无 |
+| **P27-c** | **PDD 8-NFE Ref2VA LoRA 兼容性** | `MiniMax-H3-Ref2VA-Acc-8Step_pruned_comfy` 1.73 GB | 1 次注册 + 1 次生成 | 磁盘（清到 ≥15 GiB 后可下 1.73 GB） |
+| **P28** | ~~MiniMax H3-Image 落地~~ → **改判 ⛔ 本机不可行** | vpipe 路线需 **≈135 GB** 权重（68.65 + 66.7），与 ComfyUI 的 21 GB INT8 **不是同一套格式** | — | **不可行**（除非上游出量化版） |
+| **P29** | **2K refiner 验证** | `open_regenerate_2k_refiner_rank_384` 5.87 GB | 1 次 768p→2K | 磁盘 + 显存 |
+
+### 5.5 本轮踩的坑与结论
+
+1. ★★★ **「生态有」≠「vpipe 有」≠「本机跑得动」是三道独立的门。**
+   本轮三连命中：ControlNet（生态有 / vpipe 无）、H3-Image（vpipe 有 / 本机装不下）、
+   RelayVSR 2×（生态有 / vpipe 硬编码只吃 4×）。
+2. ★★ **写「本机做不了 X」之前先扫树。** 本轮若只搜社区，会把
+   「H3-Image 需要 135 GB」写成「生态刚出、还没适配」—— 实际**上游早就适配了**，
+   只是本机装不下。
+3. ★★ **模型体积必须逐文件累加**（K28）：第 4 轮的两个 FlashVSR 数字都偏小 0.24–0.47 GB。
+4. ★ **社区博客的聚合体积不可信**（K21：13.5 GB vs 实测 2.30–8.38 GB，差 3–6 倍）。
+5. ★ **同名不同物要单独建条目**（K26：`dmd` 采样器 ≠ DMD2 蒸馏）。
+6. ★ **新静默坑入库**：参考标签写错 → 零报错零告警，参考条件直接失效（K23）。
+   与「shift 写错完全静默」「`autotune` 竞速」「旧 build 丢字段」同族。
+7. ★ **上游 28 天零回应的事实不变**（#55 / #58 / #59 全 0 评论）→
+   本实验室的自查能力（逐位判据 + σ 网格公式 + 运行时真值）要继续自建。
+8. ★ **磁盘 5.3 GiB 仍是第一约束**：P22 / P27-c / P29 全部被它挡住；
+   P13b 之所以能跑，是因为「模型全在本地 + 22 帧短片 + 产物 240 KB」。

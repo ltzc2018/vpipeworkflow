@@ -1,0 +1,212 @@
+{
+  "id": "p13b-ersde",
+  "stages": [
+    {
+      "id": "model-select",
+      "type": "model-select",
+      "iports": [],
+      "config": {
+        "hf_dir": "local/MiniMax-H3-Ref2VA-8bit"
+      }
+    },
+    {
+      "id": "text-prompt",
+      "type": "text-prompt",
+      "iports": [],
+      "config": {
+        "text": "References: @Image1 is the subject sheet. Make a new video of the subject from @Image1. The subject is completely motionless, sitting still on a wooden windowsill in warm late-afternoon sunlight, looking directly at the camera. The camera is locked off, absolutely static. The background is perfectly still. No blinking, no breathing, no movement of any kind, no camera movement, no zoom, no pan, no slow motion. Audio: silence. Normal real-time speed. No text, no captions, no logos."
+      }
+    },
+    {
+      "id": "minimax-h3-model-config",
+      "type": "minimax-h3-model-config",
+      "iports": [],
+      "config": {
+        "video_shift": 6.0,
+        "audio_shift": 3.0,
+        "audio_seconds": 0.0,
+        "lora": "lightx2v/Minimax-h3-Turbo-ref2va-8step-768p",
+        "lora_scale": 1.0,
+        "sigmas": "1, 0.9844, 0.9627, 0.9304, 0.878, 0.7579, 0.5527, 0.2369, 0"
+      }
+    },
+    {
+      "id": "load-subject",
+      "type": "load-image",
+      "iports": [],
+      "config": {
+        "url": "refs/minimax-h3-reference-subject.jpg"
+      }
+    },
+    {
+      "id": "size-subject",
+      "type": "image-resample",
+      "iports": [
+        {
+          "src": "load-subject",
+          "oport": 0
+        }
+      ],
+      "config": {
+        "width": 1024,
+        "height": 1024,
+        "fit": "stretch",
+        "algorithm": "lanczos"
+      }
+    },
+    {
+      "id": "video-ref-encoder",
+      "type": "video-ref-encoder",
+      "iports": [
+        {
+          "src": "text-prompt",
+          "oport": 0
+        },
+        {
+          "src": "model-select",
+          "oport": 0
+        },
+        {
+          "src": "size-subject",
+          "oport": 0
+        }
+      ],
+      "config": {
+        "frames": 22,
+        "reference_image_short_edge": 1024,
+        "unload_when_idle": "auto",
+        "autotune": false
+      }
+    },
+    {
+      "id": "sampler-select",
+      "type": "diffusion-sampler-select",
+      "iports": [],
+      "config": {
+        "method": "euler"
+      }
+    },
+    {
+      "id": "generate-video",
+      "type": "generate-video",
+      "iports": [
+        {
+          "src": "video-ref-encoder",
+          "oport": 0
+        },
+        {
+          "src": "",
+          "oport": 0
+        },
+        {
+          "src": "model-select",
+          "oport": 0
+        },
+        {
+          "src": "sampler-select",
+          "oport": 0
+        },
+        {
+          "src": "",
+          "oport": 0
+        },
+        {
+          "src": "",
+          "oport": 0
+        },
+        {
+          "src": "",
+          "oport": 0
+        },
+        {
+          "src": "video-ref-encoder",
+          "oport": 1
+        },
+        {
+          "src": "video-ref-encoder",
+          "oport": 2
+        },
+        {
+          "src": "minimax-h3-model-config",
+          "oport": 0
+        }
+      ],
+      "config": {
+        "height": 768,
+        "width": 1344,
+        "frames": 22,
+        "fps": 24,
+        "steps": 8,
+        "seed": 42,
+        "i8_gemm": true,
+        "unload_when_idle": "always",
+        "autotune": false
+      }
+    },
+    {
+      "id": "vae-decode",
+      "type": "vae-decode",
+      "iports": [
+        {
+          "src": "generate-video",
+          "oport": 0
+        },
+        {
+          "src": "model-select",
+          "oport": 0
+        }
+      ],
+      "config": {
+        "autotune": false
+      }
+    },
+    {
+      "id": "audio-vae-decode",
+      "type": "audio-vae-decode",
+      "iports": [
+        {
+          "src": "generate-video",
+          "oport": 1
+        },
+        {
+          "src": "model-select",
+          "oport": 0
+        }
+      ],
+      "config": {}
+    },
+    {
+      "id": "rgb-to-video",
+      "type": "rgb-to-video",
+      "iports": [
+        {
+          "src": "vae-decode",
+          "oport": 0
+        }
+      ],
+      "config": {
+        "fps": 24
+      }
+    },
+    {
+      "id": "save-video",
+      "type": "save-video",
+      "iports": [
+        {
+          "src": "rgb-to-video",
+          "oport": 0
+        },
+        {
+          "src": "audio-vae-decode",
+          "oport": 0
+        }
+      ],
+      "config": {
+        "output_url": "out/p13b-ersde-r3.mp4",
+        "enable_video": true,
+        "enable_audio": true
+      }
+    }
+  ],
+  "subpipelines": []
+}
