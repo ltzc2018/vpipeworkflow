@@ -4204,3 +4204,19 @@ p22-armB-flashvsr-1280x768.mp4, p22-armB-flashvsr-r2-1280x768.mp4}` +
 而不是把校验留给 SOP 里的人工条款。
 
 **提交序列**：`4654097`（首推，含嵌套副本）→ `e2b3fff`（修复脚本 + 清理）→ `db982d5`（最终态，0 嵌套）。
+
+#### 18.6.8 [P25] RelayVSR HF Space 状态复核（2026-11-18 19:00 补记）
+
+本轮通过 WebFetch 手动复核了 [Upsampler/relayvsr](https://huggingface.co/spaces/Upsampler/relayvsr) 的状态，由于沙箱直连 API 被拦截，此项作为补充证据：
+
+- **活跃状态**：**Running on Zero**（正常运行中）。
+- **最近更新**：2026-11-09（约 9 天前），已集成 Wan2.2 相关技术。
+- **意义**：该 Space 仍是 RelayVSR 2x 效果预判的可靠廉价通道，下轮可根据其表现决定是否本地部署 RelayVSR。
+
+#### 18.6.9 [P22c] FlashVSR+ Turbo 实验预研（2026-11-18 19:05 启动）
+
+本轮开启了 P22 续作，目标是冲击 **1920×1152**。
+
+- **权重获取**：已确认 FlashVSR+ Turbo 权重（`ruchangyao/FlashVSR_plus`）在 ModelScope 路径不详，已切换至 **hf-mirror.com**。
+- **后台任务**：下载脚本 `p22c_plus_download.sh` 已启动，TCDecoder.ckpt 正在获取中。
+- **技术准备**：已编写 `make_p22c_pipeline.py`（针对 1920 分辨率优化）与 `p22c_runner.sh`（20% 内存门限）。

@@ -104,7 +104,8 @@ cp -R "$LAB"/pipelines/. "$REPO/pipelines/" 2>/dev/null
 # 2.3 报告 → docs/reports/（含两份主报告 + SOP + 知识台账 + 轮次状态）
 mkdir -p "$REPO/docs/reports"
 for f in "vpipe-H3-部署与测试报告.md" "vpipe-后续计划任务.md" "vpipe-daily-knowledge.md" \
-         "vpipe-夜间自动任务SOP.md" "vpipe-upstream-issues.md" ".auto-round-state.json"; do
+         "vpipe-夜间自动任务SOP.md" "vpipe-upstream-issues.md" "vpipe-能力与速度总表.md" \
+         ".auto-round-state.json"; do
   [ -f "$LAB/report/$f" ] && cp "$LAB/report/$f" "$REPO/docs/reports/$f"
 done
 [ -d "$LAB/report/issues" ] && cp -R "$LAB/report/issues" "$REPO/docs/reports/" 2>/dev/null
