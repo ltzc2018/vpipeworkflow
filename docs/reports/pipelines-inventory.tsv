@@ -1,0 +1,78 @@
+file	id	kind	res	steps	frames	shift	lora	model	preview	upscale	seed	out	nstages
+boogu-image-edit.vpipeline	boogu-image-edit	IMG	1024x1024	4			-	Boogu/Boogu-Image-0.1-Edit-Turbo	-	-	42	out/boogu-edit-cat.jpeg	10
+boogu-multi-ref-probe.vpipeline	boogu-multi-ref-probe	IMG	1024x1024	4			-	Boogu/Boogu-Image-0.1-Edit-Turbo	-	-	42	out/boogu-multi-ref-probe.jpeg	12
+boogu-real-photo1-studio.vpipeline	boogu-real-photo1-studio	IMG	576x1024	4			-	Boogu/Boogu-Image-0.1-Edit-Turbo	-	-	42	out/boogu-real-photo1-studio.jpeg	10
+boogu-real-photo3-beach.vpipeline	boogu-real-photo3-beach	IMG	576x1024	4			-	Boogu/Boogu-Image-0.1-Edit-Turbo	-	-	42	out/boogu-real-photo3-beach.jpeg	10
+boogu-real-photo3-single-beach.vpipeline	boogu-real-photo3-single-beach	IMG	384x1024	4			-	Boogu/Boogu-Image-0.1-Edit-Turbo	-	-	42	out/boogu-real-photo3-single-beach.jpeg	10
+fl2va-ref2va-like-ablation.vpipeline	fl2va-ref2va-like-ablation	VID	960x544	6	124	12.0/3.0	larryvrh/MiniMax-H3-Turbo-Lora-v4-600-ema	local/MiniMax-H3-FL2VA-8bit	-	-	42	/Users/minichen/AI-Models/vpipe-workspace/out/fl2va-ref2va-like-ablation.mp4	9
+h3-first-last-vertical.vpipeline	h3-first-last-vertical	VID	544x960	6	72	12.0/3.0	larryvrh/MiniMax-H3-Turbo-Lora-v4-600-ema	local/MiniMax-H3-FL2VA-8bit	-	-	3105	/Users/minichen/WorkBuddy/LAPTOP-72O3GKJR/2026-11-16-10-03-39/assets/video_test/seg5_喜马拉雅期_青藏高原.mp4	15
+h3-first-last.vpipeline	h3-first-last	VID	960x544	6	124	12.0/3.0	larryvrh/MiniMax-H3-Turbo-Lora-v4-600-ema	local/MiniMax-H3-FL2VA-8bit	-	-	7	/Users/minichen/AI-Models/vpipe-workspace/out/h3-first-last.mp4	14
+h3-ref2va-img.vpipeline	h3-ref2va-img	VID	960x544	6	124	12.0/3.0	larryvrh/MiniMax-H3-Turbo-Lora-v4-600-ema	local/MiniMax-H3-Ref2VA-8bit	-	-	11	/Users/minichen/AI-Models/vpipe-workspace/out/h3-ref2va-img.mp4	9
+h3-t2v-turbo.vpipeline	h3-t2v-turbo	VID	960x544	4	120	12.0/3.0	larryvrh/MiniMax-H3-Turbo-Lora-v4-600-ema	local/MiniMax-H3-FL2VA-8bit	-	-	6	/Users/minichen/AI-Models/vpipe-workspace/out/h3-t2v-turbo.mp4	9
+h3-taeh3-preview-abs.vpipeline	h3-taeh3-preview-abs	VID	512x288	4	39	12.0/3.0	larryvrh/MiniMax-H3-Turbo-Lora-v4-600-ema	local/MiniMax-H3-FL2VA-8bit	Y	-	6	/Users/minichen/AI-Models/vpipe-workspace/out/h3-taeh3-preview-abs.mp4	10
+h3-taeh3-preview-dir.vpipeline	h3-taeh3-preview-dir	VID	512x288	4	39	12.0/3.0	larryvrh/MiniMax-H3-Turbo-Lora-v4-600-ema	local/MiniMax-H3-FL2VA-8bit	Y	-	6	/Users/minichen/AI-Models/vpipe-workspace/out/h3-taeh3-preview-dir.mp4	10
+h3-taeh3-preview-frames.vpipeline	h3-taeh3-preview-frames	VID	512x288	4	39	12.0/3.0	larryvrh/MiniMax-H3-Turbo-Lora-v4-600-ema	local/MiniMax-H3-FL2VA-8bit	Y	-	6	/Users/minichen/AI-Models/vpipe-workspace/out/h3-taeh3-preview-frames.mp4	10
+h3-taeh3-preview-relfile.vpipeline	h3-taeh3-preview-relfile	VID	512x288	4	39	12.0/3.0	larryvrh/MiniMax-H3-Turbo-Lora-v4-600-ema	local/MiniMax-H3-FL2VA-8bit	Y	-	6	/Users/minichen/AI-Models/vpipe-workspace/out/h3-taeh3-preview-relfile.mp4	10
+h3-taeh3-preview.vpipeline	h3-taeh3-preview	VID	512x288	4	39	12.0/3.0	larryvrh/MiniMax-H3-Turbo-Lora-v4-600-ema	local/MiniMax-H3-FL2VA-8bit	Y	-	6	/Users/minichen/AI-Models/vpipe-workspace/out/h3-taeh3-preview.mp4	10
+hyperflow-ref2va-panda.vpipeline	hyperflow-ref2va-panda	VID	832x480	8	124	12.0/3.0	videorebirth/hyperflow-ref2va	local/MiniMax-H3-Ref2VA-8bit	-	-	42	/Users/minichen/AI-Models/vpipe-workspace/out/hyperflow-ref2va-panda.mp4	9
+hyperflow-ref2va-scale0.vpipeline	hyperflow-ref2va-scale0	VID	832x480	8	124	12.0/3.0	videorebirth/hyperflow-ref2va	local/MiniMax-H3-Ref2VA-8bit	-	-	42	/Users/minichen/AI-Models/vpipe-workspace/out/hyperflow-ref2va-scale0.mp4	9
+krea-2-turbo-t2i-nolora.vpipeline	krea-2-turbo-t2i-nolora	IMG	1024x1024	8			-	krea/Krea-2-Turbo	-	-	0	out/krea-2-turbo.jpeg	8
+krea-2-turbo-t2i.vpipeline	krea-2-turbo-t2i	IMG	1024x1024	8			mgwr/M87	krea/Krea-2-Turbo	-	-	0	out/krea-2-turbo.jpeg	8
+lfm3-vl-vqa.vpipeline	lfm3-vl-vqa	UTIL					-	-	-	-	0	-	6
+p1-a-multi-ref.vpipeline	p1-a-multi-ref	VID	832x480	6	124	12.0/3.0	Pika-Labs/Pika-H3-Flex-ref2va	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p1-a-multi-ref.mp4	11
+p1-b-multi-ref.vpipeline	p1-b-multi-ref	VID	832x480	6	124	12.0/3.0	Pika-Labs/Pika-H3-Flex-ref2va	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p1-b-multi-ref.mp4	13
+p1-c-multi-ref.vpipeline	p1-c-multi-ref	VID	832x480	6	124	12.0/3.0	Pika-Labs/Pika-H3-Flex-ref2va	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p1-c-multi-ref.mp4	19
+p1-d-multi-ref.vpipeline	p1-d-multi-ref	VID	832x480	6	124	12.0/3.0	Pika-Labs/Pika-H3-Flex-ref2va	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p1-d-multi-ref.mp4	21
+p13-static-shift12.vpipeline	p13-static-shift12	VID	1344x768	8	22	12.0/3.0	lightx2v/Minimax-h3-Turbo-ref2va-8step-768p	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p13-static-shift12.mp4	11
+p13-static-shift6.vpipeline	p13-static-shift6	VID	1344x768	8	22	6.0/3.0	lightx2v/Minimax-h3-Turbo-ref2va-8step-768p	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p13-static-shift6.mp4	11
+p13-static-shifter-sde.vpipeline	p13-static-shifter-sde	VID	1344x768	8	22	6.0/3.0	lightx2v/Minimax-h3-Turbo-ref2va-8step-768p	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p13-static-shifter-sde.mp4	11
+p13b-default-r1.vpipeline	p13b-default	VID	1344x768	8	22	6.0/3.0	lightx2v/Minimax-h3-Turbo-ref2va-8step-768p	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p13b-default-r1.mp4	12
+p13b-default-r2.vpipeline	p13b-default	VID	1344x768	8	22	6.0/3.0	lightx2v/Minimax-h3-Turbo-ref2va-8step-768p	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p13b-default-r2.mp4	12
+p13b-default.vpipeline	p13b-default	VID	1344x768	8	22	6.0/3.0	lightx2v/Minimax-h3-Turbo-ref2va-8step-768p	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p13b-default.mp4	12
+p13b-ersde-r1.vpipeline	p13b-ersde	VID	1344x768	8	22	6.0/3.0	lightx2v/Minimax-h3-Turbo-ref2va-8step-768p	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p13b-ersde-r1.mp4	12
+p13b-ersde-r2.vpipeline	p13b-ersde	VID	1344x768	8	22	6.0/3.0	lightx2v/Minimax-h3-Turbo-ref2va-8step-768p	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p13b-ersde-r2.mp4	12
+p13b-ersde-r3.vpipeline	p13b-ersde	VID	1344x768	8	22	6.0/3.0	lightx2v/Minimax-h3-Turbo-ref2va-8step-768p	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p13b-ersde-r3.mp4	12
+p13b-ersde.vpipeline	p13b-ersde	VID	1344x768	8	22	6.0/3.0	lightx2v/Minimax-h3-Turbo-ref2va-8step-768p	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p13b-ersde.mp4	12
+p15-repro-af1.vpipeline	p15-repro-af1	VID	1344x768	8	22	6.0/3.0	lightx2v/Minimax-h3-Turbo-ref2va-8step-768p	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p15-repro-af1.mp4	11
+p15-repro-af2.vpipeline	p15-repro-af2	VID	1344x768	8	22	6.0/3.0	lightx2v/Minimax-h3-Turbo-ref2va-8step-768p	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p15-repro-af2.mp4	11
+p15-repro-at1.vpipeline	p15-repro-at1	VID	1344x768	8	22	6.0/3.0	lightx2v/Minimax-h3-Turbo-ref2va-8step-768p	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p15-repro-at1.mp4	11
+p15-repro-at2.vpipeline	p15-repro-at2	VID	1344x768	8	22	6.0/3.0	lightx2v/Minimax-h3-Turbo-ref2va-8step-768p	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p15-repro-at2.mp4	11
+p18-dmd.vpipeline	p18-dmd	VID	1344x768	8	22	6.0/3.0	lightx2v/Minimax-h3-Turbo-ref2va-8step-768p	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p18-dmd.mp4	12
+p18-dmd2.vpipeline	p18-dmd2	VID	1344x768	8	22	6.0/3.0	lightx2v/Minimax-h3-Turbo-ref2va-8step-768p	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p18-dmd2.mp4	12
+p18-euler.vpipeline	p18-euler	VID	1344x768	8	22	6.0/3.0	lightx2v/Minimax-h3-Turbo-ref2va-8step-768p	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p18-euler.mp4	12
+p22-flashvsr-upscale-r2.vpipeline	flashvsr-upscale-1920x1088	VID	1280x768		25		-	/Users/minichen/AI-Models/vpipe-workspace/models/kuohao/FlashVSR-v1.1	-	-	0	out/p22/p22-armB-flashvsr-r2-1280x768.mp4	13
+p22-flashvsr-upscale.vpipeline	flashvsr-upscale-1920x1088	VID	1280x768		25		-	/Users/minichen/AI-Models/vpipe-workspace/models/kuohao/FlashVSR-v1.1	-	-	0	out/p22/p22-armB-flashvsr-1280x768.mp4	13
+p22c-plus-upscale-1920.vpipeline	flashvsr-plus-upscale-1920x1088	VID	1920x1152		49		-	/Users/minichen/AI-Models/vpipe-workspace/models/ruchangyao/FlashVSR_plus	-	-	0	out/p22/p22c-armC-plus-1920x1152.mp4	13
+p3-768p-4step.vpipeline	p3-768p-4step	VID	1344x768	4	124	6.0/3.0	lightx2v/Minimax-h3-Turbo-4step-768p-v1.2	local/MiniMax-H3-FL2VA-8bit	-	-	42	out/p3-768p-4step.mp4	9
+p3-768p-544p.vpipeline	p3-768p-544p	VID	960x544	8	124	12.0/3.0	lightx2v/Minimax-h3-Turbo-8step	local/MiniMax-H3-FL2VA-8bit	-	-	42	out/p3-544p-ref.mp4	9
+p3-768p-shift12.vpipeline	p3-768p-shift12	VID	1344x768	8	124	12.0/3.0	lightx2v/Minimax-h3-Turbo-8step-768p-split	local/MiniMax-H3-FL2VA-8bit	-	-	42	out/p3-768p-shift12.mp4	9
+p3-768p-shift6.vpipeline	p3-768p-shift6	VID	1344x768	8	124	6.0/3.0	lightx2v/Minimax-h3-Turbo-8step-768p-split	local/MiniMax-H3-FL2VA-8bit	-	-	42	out/p3-768p-shift6.mp4	9
+p3-ext-concat.vpipeline	p3-ext-concat	UTIL					-	-	-	-		out/p3-ext-full.mp4	5
+p3-ext-concat2.vpipeline	p3-ext-concat2	UTIL					-	-	-	-		out/p3-ext-full2.mp4	5
+p3-ext-part1.vpipeline	p3-ext-part1	VID	832x480	6	124	12.0/3.0	Pika-Labs/Pika-H3-Flex-fl2va	local/MiniMax-H3-FL2VA-8bit	-	-	42	out/p3-ext-part1.mp4	9
+p3-ext-part2.vpipeline	p3-ext-part2	VID	832x480	6	124	12.0/3.0	Pika-Labs/Pika-H3-Flex-ref2va	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p3-ext-part2.mp4	16
+p3-ext-part3.vpipeline	p3-ext-part3	VID	832x480	6	124	12.0/3.0	Pika-Labs/Pika-H3-Flex-ref2va	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p3-ext-part3.mp4	16
+p3-ext-part4.vpipeline	p3-ext-part4	VID	832x480	6	124	12.0/3.0	Pika-Labs/Pika-H3-Flex-ref2va	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p3-ext-part4.mp4	16
+p3-fetch-544p.vpipeline	p3-fetch-544p	UTIL					-	-	-	-		-	1
+p3-fetch-768p.vpipeline	p3-fetch-768p	UTIL					-	-	-	-		-	1
+p9-ref2va-768p-a.vpipeline	p9-ref2va-768p-a	VID	1344x768	8	124	6.0/3.0	lightx2v/Minimax-h3-Turbo-ref2va-8step-768p	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p9-ref2va-768p-a.mp4	11
+p9-ref2va-768p-b-shift12.vpipeline	p9-ref2va-768p-b-shift12	VID	1344x768	8	124	12.0/3.0	lightx2v/Minimax-h3-Turbo-ref2va-8step-768p	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p9-ref2va-768p-b-shift12.mp4	11
+p9-ref2va-768p-c-multiref.vpipeline	p9-ref2va-768p-c-multiref	VID	1344x768	8	124	6.0/3.0	lightx2v/Minimax-h3-Turbo-ref2va-8step-768p	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p9-ref2va-768p-c-multiref.mp4	17
+p9-ref2va-768p-d-shift8.vpipeline	p9-ref2va-768p-d-shift8	VID	1344x768	8	124	8.0/3.0	lightx2v/Minimax-h3-Turbo-ref2va-8step-768p	local/MiniMax-H3-Ref2VA-8bit	-	-	42	out/p9-ref2va-768p-d-shift8.mp4	11
+pika-i2va-preview-fast.vpipeline	pika-i2va-preview-fast	VID	512x288	6	39	12.0/3.0	Pika-Labs/Pika-H3-Flex-fl2va	local/MiniMax-H3-FL2VA-8bit	Y	-	42	/Users/minichen/AI-Models/vpipe-workspace/out/p4-i2va-preview-fast.mp4	13
+pika-i2va-preview-prod.vpipeline	pika-i2va-preview-prod	VID	832x480	6	124	12.0/3.0	Pika-Labs/Pika-H3-Flex-fl2va	local/MiniMax-H3-FL2VA-8bit	Y	-	42	/Users/minichen/AI-Models/vpipe-workspace/out/p4-i2va-preview-prod.mp4	13
+pika-i2va-shop.vpipeline	pika-i2va-shop	VID	832x480	6	124	12.0/3.0	Pika-Labs/Pika-H3-Flex-fl2va	local/MiniMax-H3-FL2VA-8bit	-	-	42	/Users/minichen/AI-Models/vpipe-workspace/out/pika-i2va-shop.mp4	12
+pika-ref2va-ablation.vpipeline	pika-ref2va-ablation	VID	832x480	6	124	12.0/3.0	Pika-Labs/Pika-H3-Flex-ref2va	local/MiniMax-H3-Ref2VA-8bit	-	-	42	/Users/minichen/AI-Models/vpipe-workspace/out/pika-ref2va-ablation.mp4	9
+pika-ref2va-noref.vpipeline	pika-ref2va-noref	VID	832x480	6	124	12.0/3.0	Pika-Labs/Pika-H3-Flex-ref2va	local/MiniMax-H3-Ref2VA-8bit	-	-	42	/Users/minichen/AI-Models/vpipe-workspace/out/pika-ref2va-noref.mp4	9
+pika-ref2va-panda.vpipeline	pika-ref2va-panda	VID	832x480	6	124	12.0/3.0	Pika-Labs/Pika-H3-Flex-ref2va	local/MiniMax-H3-Ref2VA-8bit	-	-	42	/Users/minichen/AI-Models/vpipe-workspace/out/pika-ref2va-panda.mp4	9
+pika-t2v-preview-fast.vpipeline	pika-t2v-preview-fast	VID	512x288	6	39	12.0/3.0	Pika-Labs/Pika-H3-Flex-fl2va	local/MiniMax-H3-FL2VA-8bit	Y	-	42	/Users/minichen/AI-Models/vpipe-workspace/out/p4-t2v-preview-fast.mp4	10
+prepare-image-models.vpipeline	prepare-image-models	UTIL					-	-	-	-		-	4
+prepare-minimax-h3-8bit.vpipeline	prepare-minimax-h3-8bit	UTIL					-	-	-	-		-	4
+prepare-minimax-h3-preview.vpipeline	prepare-minimax-h3-preview	UTIL					-	-	-	-		-	1
+prepare-multimodal-compare.vpipeline	prepare-multimodal-compare	UTIL					-	-	-	-		-	2
+prepare-pika-h3-flex.vpipeline	prepare-pika-h3-flex	UTIL					-	-	-	-		-	2
+qwen35-4b-chat.vpipeline	qwen35-4b-chat	UTIL					-	-	-	-	0	-	6
+real-ref2va-photo1.vpipeline	real-ref2va-photo1	VID	832x480	6	124	12.0/3.0	Pika-Labs/Pika-H3-Flex-ref2va	local/MiniMax-H3-Ref2VA-8bit	-	-	42	/Users/minichen/AI-Models/vpipe-workspace/out/real-ref2va-photo1.mp4	9
+register-hyperflow-ref2va.vpipeline	register-hyperflow-ref2va	UTIL					-	-	-	-		-	1
+relpath-check.vpipeline	pika-i2va-preview-fast	VID	512x288	6	39	12.0/3.0	Pika-Labs/Pika-H3-Flex-fl2va	local/MiniMax-H3-FL2VA-8bit	Y	-	42	out/p4-i2va-preview-fast.mp4	13
+z-image-turbo-t2i.vpipeline	z-image-turbo-t2i	IMG	1024x1024	8			-	Tongyi-MAI/Z-Image-Turbo	-	-	42	out/z-image-turbo.jpeg	8

@@ -105,6 +105,7 @@ cp -R "$LAB"/pipelines/. "$REPO/pipelines/" 2>/dev/null
 mkdir -p "$REPO/docs/reports"
 for f in "vpipe-H3-部署与测试报告.md" "vpipe-后续计划任务.md" "vpipe-daily-knowledge.md" \
          "vpipe-夜间自动任务SOP.md" "vpipe-upstream-issues.md" "vpipe-能力与速度总表.md" \
+         "vpipe-流水线手册.md" "pipelines-inventory.tsv" \
          ".auto-round-state.json"; do
   [ -f "$LAB/report/$f" ] && cp "$LAB/report/$f" "$REPO/docs/reports/$f"
 done
