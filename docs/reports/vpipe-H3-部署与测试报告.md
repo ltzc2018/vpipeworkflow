@@ -4220,3 +4220,32 @@ p22-armB-flashvsr-1280x768.mp4, p22-armB-flashvsr-r2-1280x768.mp4}` +
 - **权重获取**：已确认 FlashVSR+ Turbo 权重（`ruchangyao/FlashVSR_plus`）在 ModelScope 路径不详，已切换至 **hf-mirror.com**。
 - **后台任务**：下载脚本 `p22c_plus_download.sh` 已启动，TCDecoder.ckpt 正在获取中。
 - **技术准备**：已编写 `make_p22c_pipeline.py`（针对 1920 分辨率优化）与 `p22c_runner.sh`（20% 内存门限）。
+
+### 18.7 2026-11-18 22:40 —— SiliconFlow H3 API 上线 + PDD LoRA 蒸馏技术细节 + P15b 实验
+
+#### 18.7.1 检索范围与来源清单
+- **GitHub**: `tgo-app-dev/vpipe` (HEAD `4dc36b7`) - 连续 2 日零增量。
+- **SiliconFlow**: 官方 API 公告 (2026-11-10 上线 H3 支持)。
+- **PDD LoRA**: `NoiseToNova/MiniMax-H3-PDD-LoRA` (8步/4步) 规约。
+- **FlashVSR**: `ruchangyao/FlashVSR_plus-turbo` 低显存方案预研。
+
+#### 18.7.2 新增知识
+- **SiliconFlow 托管 API**：768P (0.5元/秒) / 2K (0.8元/秒)，原生立体声。
+- **PDD LoRA 约束**：采样器恒定 `euler`，CFG 恒定 `1.0`，必须使用特定 `sigmas`。
+- **FlashVSR+ Turbo**：针对本地低显存设备优化，显存需求仅 **4.2 GB**。
+
+#### 18.7.3 与既有结论的印证与冲突
+- **印证**：SiliconFlow 公告印证了本实验室关于 H3 生态向托管化倾斜的观察。
+- **方法学自查**：AI 超分评价需双口径（SSIM vs 细节能量/纹理量）。
+
+#### 18.7.4 本轮实验 (P15b)
+- **目标**：验证 Ref2VA 768p 在 shift 6.0 下的表现（由第 3 轮上游官方表修正触发）。
+- **结果**：✅ 已完成，结果已固化。
+
+#### 18.7.5 对技能包·脚本·流水线的修改
+- 更新了 `vpipe-daily-knowledge.md` 第 7 轮条目。
+
+#### 18.7.6 本轮踩的坑与结论
+- **坑**：sandbox shim 环境下 `cp -R` 尾斜杠语义陷阱，以及后台运行实验时的布尔参数传递格式问题。
+- **结论**：本地超分评价必须看「编造细节」导致的 SSIM 虚低现象。
+

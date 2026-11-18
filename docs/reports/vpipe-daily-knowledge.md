@@ -1626,3 +1626,19 @@ HF `Comfy-Org/MiniMax-H3-Image` 讨论区断言：ComfyUI 的 **`lcm`**（每步
 **⇒ 通用教训（强于第 3 轮那条）**：同一台机器、同一个命令，**语义可能因执行环境而变**
 （沙箱 shim / 容器 / 远程）。所以「先实测一次」还不够 ——
 **必须把「复制后逐文件比字节数」内置进脚本**。
+
+## 第 7 轮 · 2026-11-18 22:30 —— **SiliconFlow H3 API 上线 + PDD LoRA 蒸馏技术细节 + FlashVSR+ Turbo 预研**
+
+### 7.1 本轮检索范围
+- **GitHub**: `tgo-app-dev/vpipe` (HEAD `4dc36b7`) - 连续 2 日零增量。
+- **SiliconFlow**: 官方 API 公告 (2026-11-10 上线 H3 支持)。
+- **PDD LoRA**: `NoiseToNova/MiniMax-H3-PDD-LoRA` 权重与节点规约。
+- **FlashVSR**: `ruchangyao/FlashVSR_plus-turbo` 低显存 (4.2GB) 方案。
+- **HF Space**: `Upsampler/relayvsr` 活跃状态复核。
+
+### 7.2 新增知识
+1. **SiliconFlow 官方 MiniMax-H3 API**：支持 768P (0.5元/秒) 与 2K (0.8元/秒)，支持原生立体声及首尾帧锚定。
+2. **PDD LoRA 蒸馏技术**：`NoiseToNova/MiniMax-H3-PDD-LoRA` (8步/4步)。采样器必须为 `euler`，CFG 必须为 `1.0`，必须使用特定 `sigmas`。
+3. **FlashVSR+ Turbo**：针对本地低显存设备优化，显存需求降至 **4.2 GB**，适合 1920x1152 路径。
+4. **方法学**：AI 超分评价需双口径（SSIM vs 细节能量/纹理量），SSIM 可能会将「编造的细节」判定为失真。
+
