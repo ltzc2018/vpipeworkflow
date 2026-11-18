@@ -1636,9 +1636,28 @@ HF `Comfy-Org/MiniMax-H3-Image` 讨论区断言：ComfyUI 的 **`lcm`**（每步
 - **FlashVSR**: `ruchangyao/FlashVSR_plus-turbo` 低显存 (4.2GB) 方案。
 - **HF Space**: `Upsampler/relayvsr` 活跃状态复核。
 
-### 7.2 新增知识
+### 第 7 轮 · 2026-11-18 22:30 —— SiliconFlow H3 API 上线 + PDD LoRA 蒸馏技术细节 + FlashVSR+ Turbo 预研
+
+#### 7.1 本轮检索范围与来源
+- **GitHub**: `tgo-app-dev/vpipe` (HEAD `4dc36b7`) - 连续 2 日零增量。
+- **SiliconFlow**: 官方 API 公告 (2026-11-10 上线 H3 支持)。
+- **PDD LoRA**: `NoiseToNova/MiniMax-H3-PDD-LoRA` 权重与节点规约。
+- **FlashVSR**: `ruchangyao/FlashVSR_plus-turbo` 低显存 (4.2GB) 方案。
+- **HF Space**: `Upsampler/relayvsr` 活跃状态复核。
+
+#### 7.2 新增知识
 1. **SiliconFlow 官方 MiniMax-H3 API**：支持 768P (0.5元/秒) 与 2K (0.8元/秒)，支持原生立体声及首尾帧锚定。
-2. **PDD LoRA 蒸馏技术**：`NoiseToNova/MiniMax-H3-PDD-LoRA` (8步/4步)。采样器必须为 `euler`，CFG 必须为 `1.0`，必须使用特定 `sigmas`。
-3. **FlashVSR+ Turbo**：针对本地低显存设备优化，显存需求降至 **4.2 GB**，适合 1920x1152 路径。
+2. **PDD LoRA 蒸馏技术**：`NoiseToNova/MiniMax-H3-PDD-LoRA` (8步/4步)。采样器必须为 `euler`，CFG 必须为 `1.0`，必须使用特定 `sigmas`。视频 shift 12.0 / 音频 shift 3.0。
+3. **FlashVSR+ Turbo**：针对本地低显存设备优化，显存需求降至 **4.2 GB**，相比 v1.1 的 7GB 大幅降低。
 4. **方法学**：AI 超分评价需双口径（SSIM vs 细节能量/纹理量），SSIM 可能会将「编造的细节」判定为失真。
+
+#### 7.3 与既有结论的印证/冲突
+- **印证**：第 3 轮 §10.3 的「换 shift = 换场景」在 PDD LoRA 的规约中得到侧面证实 —— 官方强调 shift 必须精确 (exactly)，否则采样轨迹与 PDD 头不匹配。
+- **冲突**：无。
+
+#### 7.4 待验证任务登记
+- **P22c**：FlashVSR+ Turbo (4.2GB) 本地实测。
+- **P31**：PDD LoRA 8-step 本地流水线适配。
+
+---
 
