@@ -4006,3 +4006,171 @@ audio sigma : 1, 0.969279, 0.928083, 0.869858, 0.782531, 0.610176, 0.381884, 0.1
 10. ★ **GitHub API 还能挖到别的东西**：本轮用 `users/tgo-app-dev/repos`（而不是
     `repos/tgo-app-dev/vpipe`）才发现 **`valtz`** 这个此前完全没记录的上游项目。
     ⇒ **每轮检索要把「组织/用户的所有仓库」列入清单**，不只盯主仓库。
+
+### 18.6 2026-11-18 12:56 —— ★★★ P22：FlashVSR 原生 Metal 4× 视频超分真机跑通 + 量化判决（细节生成器 ≠ 保真放大器）
+
+#### 18.6.1 本轮检索范围与来源清单
+
+| # | 来源 | 端点 / 文件 | 结果 |
+|---|---|---|---|
+| 1 | GitHub 上游 commits | `api.github.com/repos/tgo-app-dev/vpipe/commits` | HEAD 仍 `4dc36b7`（2026-11-16）→ **零增量** |
+| 2 | GitHub 上游 releases | `…/releases` | 仍 **v0.1.110**（2026-11-01） |
+| 3 | GitHub 上游 issues（剔除 PR） | `…/issues?state=all&sort=updated` | **31 issue / 0 PR**；#55 开放 **30 天 0 评论**、#58 / #59 同 |
+| 4 | GitHub 上游 branches | `…/branches` | **只有 `main`** |
+| 5 | GitHub **owner 全部仓库** | `api.github.com/users/tgo-app-dev/repos` | 7 个仓库（`valtz` 79 stars 等），无新增 |
+| 6 | ModelScope `lightx2v/Minimax-h3-Turbo` | `api/v1/models/…/repo/files` | **31 文件 / 26 safetensors**，零变化 |
+| 7 | ModelScope `kuohao/FlashVSR-v1.1` | 同上 | **8 文件 / 6.953 GB**（逐文件 `Size` 累加） |
+| 8 | 本地源码 `stages/flashvsr-model-config-stage.cc` | — | ★ **上游第一手内存数字**：`kv_ratio` 携带 **9.6 GB @1920×1152**；FlashVSR+ **4.2 GB** |
+| 9 | 本地源码 `stages/flashvsr-src-encoder-stage.cc` | — | ★ `continuity:auto` 判据 **~20 GB @1920×1152 / ~2.5 GB @512×512**；v1.1 单 clip **≥25 帧**；`clip_frames` 默认 41 |
+| 10 | 本地源码 `generative-models/flashvsr/flashvsr-family.h` / `flashvsr-family.cc` | — | ★ **几何契约**（128 倍数 / 8k+1 / 输出=4×源）与 **companion 文件名**（`kPublishedSource`/`kPublishedContext`/`kPublishedVae`） |
+| 11 | 本地源码 `stages/model-registry.cc` | — | ★ **未注册的 ref 直接当路径用**；目录里 **1 个 `.safetensors` 的规则** |
+| 12 | 本地源码 `docs/pipelines/flashvsr-*.vpipeline` | 3 条 | 官方模板（restore / upscale / plus-upscale） |
+| 13 | MiniMax 官方模型页 | `platform.minimax.io` | ★ **H3 Max = fal.ai 托管，权重未放出** |
+| 14 | MiniMax 官方 self-host 指南 | `platform.minimax.io/docs/guides/local-deploy` | ★ H3 部署基线**不含** Context-IR 与完整 2K workflow |
+| 15 | SiliconFlow 更新公告 | `docs.siliconflow.cn/release-notes` | ★ **2026-11-10 上线 MiniMax-H3 API** + `negative_prompt`/`image_size` 被静默忽略 |
+| 16 | 社区 10 篇 | SD 中文网 / h3-max.com / woyce / freakyjolly / specialinfluencers / thehype / H3-colab-studio / awesome-MiniMax-H3-cases / Nereo / bbs.monster | H3 Max 托管化、提示词结构、ComfyUI 生态、Colab 实战坑、通用工作流纪律 |
+| 17 | HF API（`api/models/…`、`api/spaces/Upsampler/relayvsr`） | — | ⚠️ **本轮沙箱直连返回非 JSON（被拦）** → 改走搜索侧；**P25 Space 状态本轮未直连复核** |
+
+#### 18.6.2 新增知识
+
+| # | 知识 | 来源 | 日期 | 与本机实测是否冲突 |
+|---|---|---|---|---|
+| **K47** | ★★★ **FlashVSR v1.1 本机跑通并量化**：纹理量 **12.6×** 插值（13.00→163.80）；但对原始 768p 的 SSIM **比插值低 0.0506 / PSNR 低 4.05 dB**；帧间变化 **+37.4%**，HF jitter **超过真值 6.1%** | 本轮 P22 实验 | 2026-11-18 | —— （本轮新证据，**不冲突**；但**改判**第 4 轮 §11 的路线 C） |
+| **K48** | ★★ **几何契约 + 内存账（上游源码第一手）**：输出宽高 128 的倍数、帧数 8k+1（v1.1 ≥25）、输出 = 4× 源、`group_size ≤ 帧数`（否则挂住）；1920×1152 需 ~20 GB / 1280×768 ~8.9 GB / 512×512 ~2.5 GB | 本地源码 ×4 | 2026-11-18 | ✅ **印证**第 4 轮 12.8 的内存估算方向；**新增**降维路径 |
+| **K49** | ★★ **复现性 = 不逐位相同但指标漂移 ≈ 0**（framemd5 不同；SSIM 0.998751 / PSNR 51.89 dB；指标漂移 +0.02%/0.00%/+0.01%/−0.00%）。★ 原因：该家族 sampler/scheduler/negative **全部惰性** → `autotune` 无可调对象、**日志无回显** | 本轮实验 + 源码 | 2026-11-18 | ⚠️ **修订**第 3 轮 11.1 的适用范围（bit-for-bit 结论**只对 H3 成立**），非推翻 |
+| **K50** | ★★★ **「SSIM 会把编造的细节判成失真」** → 评价 AI 超分**必须双口径**（SSIM + 纹理量） | 本轮实验 | 2026-11-18 | ✅ 与第 3 轮「细节能量会把噪点当细节」同族，互为姊妹坑 |
+| **K34** | ★★★ **MiniMax H3 Max = fal.ai 托管，权重未开源** | 官方模型页 + 3 源 | 2026-11 | ✅ 不冲突（「生态有 / vpipe 无 / 本机装不下」三门框架再命中一例：生态有但**只有托管形态**） |
+| **K35** | ★★ **SiliconFlow 上线 MiniMax-H3 API**（`duration` 5–15 s / `resolution` 480p|768p / `ratio` / `images` 用 `role`）；★ **`negative_prompt`、`image_size` 传入不报错但被忽略** | docs.siliconflow.cn | 2026-11-10 | ✅ 不冲突，**跨生态印证**本实验室的静默失效清单 |
+| **K36/K37** | ★★ H3 官方三段式 = **H3-Context-IR / H3-Base / H3-Regenerate-2K**；H3-Base 出 768p / 24 fps；**官方 self-host 指南明写部署基线 excludes Context-IR 与完整 2K workflow** | woyce / Nereo / platform.minimax.io | 2026-11 | ✅ **印证**第 1 轮「2K 模块未开源」——**是官方口径，不是本实验室的悲观** |
+| **K38** | ★ ComfyUI 侧 768p 实为 **1376×768**（1.0 MP 档，图把 1344 宽取整到 1376） | H3-colab-studio runbook | 2026-11 | ⚠️ **口径差**：本实验室用 1344×768（+2.4%）→ 跨实现比较须注明 |
+| **K39** | ★★ Colab 实战两坑：① 模板**即使 turbo 关着也必须下 Turbo LoRA**（图里恒有 LoRA loader）；② **SaveVideo 的 `format` 字段被参数重置清空 → 69 分钟生成后在保存步 `TypeError` 失败** | 同上 | 2026-11 | ✅ 印证「保存环节是独立故障点」；**新纪律：产物落盘才算成功** |
+| **K40** | ★★ Pika H3 Flex = **PDMD 蒸馏**（Pika 称标准 DMD 在其训练中不稳定），50→6 步 | thehype 等 | 2026-10-29 | ✅ 补充第 5 轮 K26 的 DMD 对照表（PDMD = 训练期，DMD ≠ DMD2） |
+| **K41** | ★★ 通用纪律「每次只改一个变量」+ **「参考素材被多次编码 → H3 无法重建已丢失的色调信息」** | Nereo | 2026-11 | ✅ 跨生态印证本实验室的「正交拆解」纪律；**新知识：参考素材的编码历史本身是不可恢复的信息损失** |
+| **K42** | ★ `awesome-MiniMax-H3-cases` 把 **Apple Silicon 原生 C + Metal** 单列为一条独立路线 | GitHub / vibeindex | 2026-11 | ✅ 第三方定位印证 vpipe 的生态位 |
+| **K51** | ★ 上游连续第 4 轮零增量：HEAD `4dc36b7` / v0.1.110 / 31 issue / 0 PR / 1 branch | GitHub API | 2026-11-18 | 基线确认 |
+
+#### 18.6.3 与既有结论的印证 / 冲突
+
+| 既有结论 | 关系 | 本轮证据 |
+|---|---|---|
+| 第 4 轮 12.1「先扫源码树再下结论」 | ✅ **强化** | 本轮**正是靠扫源码树**才发现 `kv_ratio`/`continuity`/几何契约三组第一手数字，并直接据此把目标分辨率定在 1280×768（否则按官方模板的 1920×1152 会撞内存墙） |
+| 第 4 轮 12.8「磁盘是当前第一约束」 | ✅ **兑现** | 磁盘从 5.3 GiB 回升到 **32 GiB** → 立刻解锁拖了 3 轮的 P22 → **清盘比再搜知识值钱** |
+| 第 4 轮 §11 路线 C「480p 生成 + 超分补 1080p」 | ⚠️ **改判** | 技术上可行（45.5 s 出片），但**画质净负**：对真值 SSIM 比插值低 0.0506 / PSNR 低 4.05 dB，且时序更不稳 |
+| 第 3 轮 11.1「`autotune:false` → bit-for-bit」 | ⚠️ **限定范围**（非推翻） | 该结论**只对 H3 成立**；flashvsr 家族 sampler/scheduler/negative 全惰性 → `autotune` 无对象可调 → 日志无回显 → 只能靠「framemd5 + 指标漂移」判复现性 |
+| 第 3 轮「细节能量会把噪点当细节」 | ✅ **姊妹坑** | 本轮发现反面：**SSIM 会把编造的细节判成失真** → 两个口径必须同时报 |
+| 第 5 轮 K23「参考标签写错 = 静默失效」 | ✅ **跨生态印证** | SiliconFlow 官方 API 同样「传了不报错但被忽略」→ **静默失效是生态通病，不是 vpipe 专利** |
+| 第 1 轮「2K 模块未开源」 | ✅ **升级为官方口径** | 官方 self-host 指南明写 excludes Context-IR 与完整 2K workflow |
+| 第 3 轮 10.8 / 13.x LFM3-VL 四缺陷 | ✅ **再现** | Q2 纹理粗判**说反了**（缺陷 ②）、Q1 场景只按语义层（缺陷 ④）、Q4 运动漏检（缺陷 ③）；**但 Q3 的 1:1 判读正确指出「原图里没有的、像 AI 编造的纹理」** |
+
+#### 18.6.4 本轮实验（P22 · FlashVSR v1.1 原生 Metal 4× 视频超分）
+
+**★ 本实验室第一次在本机真机跑通 vpipe 上游自带的原生 Metal 视频超分。**
+
+##### 18.6.4.1 设计
+
+| 项 | 值 |
+|---|---|
+| 底片 | `out/p3-768p-shift6.mp4` **前 25 帧**（1344×768 / 24 fps / 原始 H3 成片） |
+| 真值 R | → lanczos → **1280×768**（与源片同 1.667 比例，**无 aspect 错配**） |
+| 低清源 | → lanczos → **320×192**（= 输出的 1/4，h264 crf 6 近无损） |
+| **A 臂** | 低清源 → lanczos → 1280×768（纯插值基线） |
+| **B 臂** | 低清源 → **FlashVSR v1.1** → 1280×768 |
+| 引擎 | 本地 build `0.1 (33cda00*0)`（★ 已装 App `9db5dd7` **没有** FlashVSR stage） |
+| 权重 | ModelScope `kuohao/FlashVSR-v1.1` **6.953 GB / 8 文件**（文件名与 build 期望逐个吻合，下载即用） |
+| 帧数 | **25**（8k+1，k=3；v1.1 单 clip 最小值） |
+| 目标分辨率 | **1280×768**（上游源码：1920×1152 需 ~20 GB，本机 24 GB 跑不了 → 按面积比降到 44%） |
+
+##### 18.6.4.2 量化判决（★ 核心）
+
+| 指标 | A 插值 | **B FlashVSR** | 真值 R | 效应量 vs 漂移基线 |
+|---|---:|---:|---:|---|
+| 纹理量（3×3 中值后拉普拉斯方差） | 13.00 | **163.80** | 93.20 | **+1160.00%** |
+| 颗粒量 | 0.228 | 1.066 | 0.646 | +367.54% |
+| 纹理/噪点 | 57.1 | **153.7** | 144.3 | +169.18% |
+| **SSIM(口径A) vs 真值** | **0.946253** / PSNR 32.238125 | **0.895679** / PSNR 28.186305 | —— | **−0.0506 / −4.05 dB** |
+| SSIM(口径B, 首帧 PNG) vs 真值 | 0.913821 | 0.821513 | —— | —— |
+| A vs B | SSIM 0.894627 / PSNR 29.083958 | | | |
+| HF jitter | 0.306572 | 0.341048 | 0.321431 | +11.25%（**比真值高 6.1%**） |
+| frame diff | 0.010942 | 0.015037 | 0.011393 | +37.42% |
+| static HF jitter | 0.201133 | 0.235367 | 0.215435 | +17.02% |
+| sharpness | 465.46 | 1198.18 | 800.33 | +157.42% |
+
+**漂移基线（同家族同配置复跑 r1 vs r2）**：`hf_jitter +0.02%` / `frame_diff +0.00%` /
+`sharpness +0.01%` / `static_hf_jitter −0.00%`；`framemd5` **不同**
+（`9c17131b5cc7442c` vs `7da18ab9b1a410bd`）；SSIM 0.998751 / PSNR 51.894127 / 首帧 SSIM 1.000000；音频 md5 相同。
+⇒ **所有效应量都超过基线 4 个数量级 → 全部可采信。**
+
+##### 18.6.4.3 三条结论
+
+1. **它确实生成了插值给不出的细节**：纹理量 13.00 → 163.80（**12.6×**），
+   且纹理/噪点比 153.7 **高于**真值的 144.3 → 是**有结构的毛发级纹理**，不是噪点。
+2. **但它不是「还原」而是「编造」**：对原始 768p 的 SSIM **比纯插值低 0.0506**、PSNR **低 4.05 dB**；
+   真值纹理量的 **1.76×** 就是被编造出来的那部分。
+3. **代价是时序不稳**：frame diff **+37.4%**，HF jitter **甚至超过真值本身 6.1%**。
+
+⇒ **交付口径**：要「忠于原片」→ **别用**（掉 4 dB）；要「看起来更有细节」→ 可以用，
+但必须知道它超出真值 1.76× 且更闪。
+
+##### 18.6.4.4 成本与工程事实
+
+| 项 | 实测 |
+|---|---|
+| 用时 | **45.5 s**（25 帧，含模型加载） |
+| 内存 | 携带 **~8483 MB**、合计 **~11372 MB / 24576 MB** ✅（日志原话：`restoring the source as ONE STREAM at 1280x768`） |
+| VAE 解码 | 整块要 ~5963 MB → **自动降级 TILE-OUTER（3×4 tile，halo 16 px，~1973 MB）** → 逐 tile 跑完，结果正确 |
+| 日志关键行 | `plugin family 'flashvsr' at 1280x768x25 frames, 40 steps`；`v1.1 source projection, 1536 wide, 16x16 pixel unshuffle … chunks of 8 source frames, AdaIN colour fix`；`flashvsr: v1.1 -- 30 blocks at 1536 wide, 12x128 heads; one step at a fixed timestep over a constant conditioning` |
+
+##### 18.6.4.5 LFM3-VL-2B 第三方复核（4 问，2 对 2 错）
+
+| 问 | 答 | 判定 |
+|---|---|---|
+| Q1 三行是否同一场景 | 是（同一只穿牛仔外套的猫，姿态位置一致） | ✅ 语义层正确 → **已知缺陷 ④ 再现**（像素级仍靠 SSIM 裁决） |
+| Q2 哪一行纹理更细碎 | 「**第 2 行（插值）**更细碎更锐」 | ❌ **说反了**（量化是 B 高 12.6×）→ **已知缺陷 ② 再现** |
+| Q3 1:1 裁切：右边比左边多了什么 | 「细节变多了，出现原图里没有的、像 AI 生成的细小纹理或斑点」 | ✅ **与量化完全一致**（编造量 = 真值的 1.76×） |
+| Q4 有没有运动 | 「没有显著运动」 | ⚠️ 漏检（真值 frame diff 0.0114）→ **已知缺陷 ③** |
+
+**本轮人眼复核（1:1 裁切）**：左（真值）毛发自然；中（lanczos）明显涂抹发糊；
+右（FlashVSR）毛发根根分明、胡须锐利 —— **肉眼即可看出「比真值还锐」**，与「纹理量超出真值 1.76×」一致。
+
+#### 18.6.5 对技能包 / 脚本 / 流水线的修改
+
+**技能包（安装版 → 实验室副本 → 仓库，三处同步，顺序不可反）**
+
+| 文件 | 动作 |
+|---|---|
+| `vpipe-model-prepare/references/relayvsr-flashvsr.md` | **追加第 13 节**（本轮实测）：权重逐文件清单 / `hf_dir` 绝对路径 / **几何契约** / **内存账（上游第一手 + 本机实测）** / **量化判决三表** / **复现性判决** / **LFM3-VL 复核** / **新增坑 10–14** |
+| `vpipe-model-prepare/references/h3-ecosystem-map.md` | 新增一行「FlashVSR v1.1（第 6 轮已实测）」，把「本机能跑」列从 ⚠️磁盘 改为 ✅1280×768 已跑通，并写上关键数字 |
+
+**脚本（新建 6 个）**
+
+| 文件 | 作用 |
+|---|---|
+| `scripts/make_p22_pipeline.py` | 以**上游官方模板**为基底生成 FlashVSR 流水线；**7 组自检断言**（iports 总数与 src / 128 倍数 / 8k+1 / group_size==frames / autotune 计数 / 模型目录文件齐全 / save-video 两路） |
+| `scripts/p22_runner.sh` | 调度器：幂等 `.done` + PID 续接 + 内存门限 + `detach_run.py` 脱离进程组；每次跑前从官方模板重新生成流水线（杜绝手改漂移） |
+| `scripts/p22_analysis.py` | 判决脚本：逐位判据（framemd5 + 音频 md5）/ SSIM 双口径 / **原生分辨率**细节量 / #55 三指标 / **漂移基线** / 效应量 |
+| `scripts/p22_contact.sh` | 印相：3×4 抽帧图 + **1:1 原尺寸裁切三臂并排** + 2× 放大 + 首帧并排 + 成片入 `deliverables/` |
+| `scripts/vqa-p22.sh` | LFM3-VL-2B 复核（4 问） |
+| `scripts/p22_flashvsr_download.sh` | ModelScope 权重下载（逐文件 `.done` 幂等 + 体积校验） |
+
+**流水线（新建 2 个）**：`vpipe-workspace/pipelines/p22-flashvsr-upscale.vpipeline`（+ `-r2` 复跑副本）
+
+**产物**：`out/p22/{p22-ref-1280x768.mkv, p22-armA-lanczos-1280x768.mp4,
+p22-armB-flashvsr-1280x768.mp4, p22-armB-flashvsr-r2-1280x768.mp4}` +
+`deliverables/images/p22-{contact-sheet,1to1-crop-3arms,zoom2x-3arms,first-frame-truth-vs-flashvsr}.png` +
+`logs/p22-analysis.json`
+
+#### 18.6.6 本轮踩的坑与结论
+
+1. ★★★ **清盘比再搜知识值钱**（第 4 轮 12.8 的兑现）：磁盘 5.3 → 32 GiB 直接解锁拖了 3 轮的 P22。
+2. ★★★ **「看起来像失真」也可能是效应**：SSIM 判 FlashVSR 差 4 dB、纹理量判它好 12.6×。
+   ⇒ **评价 AI 超分必须双口径同时报**（K50）。
+3. ★★ **复现性判据必须分家族**：H3 关 `autotune` → 逐位相同；FlashVSR 无 `autotune` 对象 →
+   不逐位相同但指标漂移 ≈ 0。**别把一个家族的结论外推到另一个家族。**
+4. ★★ **`group_size > 帧数` 会挂住而不是报错**（`temporal-stack` 攒不够就不发 beat）。
+5. ★★ **`[WARN] the stream's decode failed` 之后若紧跟 `[NORMAL] … runs TILE-OUTER` → 结果是对的**，
+   不要误判为失败（本轮 VAE 解码自动降级成 3×4 tile）。
+6. ★ **未注册的模型名可直接当路径用**（`resolve_model` 对未知 ref 原样返回），但目录里**只能有 1 个 `.safetensors`**。
+7. ★ **h264 要求偶数宽高**（320×183 被 libx264 直接拒：`height not divisible by 2`）。
+8. ★ **本机无 `ffprobe`**（`~/.hermes/tools/ffmpeg-9.0.1-darwin-arm64/` 只有 `ffmpeg`）→ 尺寸一律用 `ffmpeg -i` 的 stderr 正则解析。
+9. ★ **HF API 本轮从沙箱直连被拦**（返回非 JSON）→ **P25（Space 零下载预判）本轮未直连复核**，下轮补。
+10. ★ **上游连续第 4 轮零增量**（#55 开放 30 天 0 评论）→ 本实验室的价值仍来自**回读官方文档/源码/生态**。
