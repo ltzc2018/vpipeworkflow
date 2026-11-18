@@ -17,6 +17,7 @@
 | **MiniMax H3-Image**（16 MP 文生图） | ✅ | ❌ | ❌ | 21 GB（INT8） | **本实验室 T2I 新候选**，见 §2.2 |
 | VDN（Video DeltaNet 线性注意力） | ✅ | ✅ | ✅ | 5.1 GB（本地已有） | 上游 28 个文件，本地已有 |
 | FlashVSR / RelayVSR（Metal 超分） | ✅ | ✅ | ⚠️ 磁盘 | 3.27 / 6.48 / 10.58 GB | 见 `relayvsr-flashvsr.md` |
+| FlashVSR v1.1（**第 6 轮已实测**） | ✅ | ✅ | ✅ **1280×768 已跑通** | 6.953 GB（原生，ModelScope） | **实测：细节 +1160%，但对真值 SSIM −0.0506 / PSNR −4.05 dB** |
 | 官方 H3 提示词结构（六段式） | ✅ | ⚠️ 文档里有 | ✅ | 免费 | 见 `h3-prompt-format.md` |
 
 ---

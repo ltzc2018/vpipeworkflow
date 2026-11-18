@@ -332,3 +332,121 @@ RelayVSR 给出了**第三条路**：
 7. **vpipe 的 stage 只支持 `upscale_factor=4`**（issue #59 未解决）→ 2× 走 ComfyUI 路线。
 8. **ComfyUI 路线要求 ≥ v0.45.0 + `comfy-kitchen` 的 `window_attention`**，且 `detail` 在 `VSRDecode` 节点里。
 9. **超分会重绘画面**（AIwood：面部噪点减少但皮肤/发丝细节被改写）→ 不能当无损放大用。
+
+---
+
+## 13. ★★★ 第 6 轮（2026-11-18 12:56）**本机实测**：FlashVSR v1.1 真机跑通 + 量化判决
+
+> 第 4 轮只做了「文档级登记」；本轮**在 24 GB Mac mini 上第一次真机跑通 FlashVSR**，
+> 并给出「它到底加了什么、代价是什么」的量化答案。
+
+### 13.1 权重与模型目录（ModelScope 全通道）
+
+| 文件 | 大小 | 说明 |
+|---|---:|---|
+| `diffusion_pytorch_model_streaming_dmd.safetensors` | **5.676 GB** | 唯一的 `.safetensors`（DiT 本体，30 blocks，1536 wide） |
+| `LQ_proj_in.ckpt` | 0.576 GB | 源投影（16×16 pixel unshuffle） |
+| `Wan2.1_VAE.pth` | 0.508 GB | Wan 视频 VAE |
+| `TCDecoder.ckpt` | 0.189 GB | FlashVSR 的 tiny decoder |
+| `posi_prompt.pth` | 4.19 MB | 固定上下文（**不是**文字提示词） |
+| `configuration.json` | 50 B | `{"framework":"Pytorch","task":"motion-generation"}` |
+| **合计** | **6.953 GB / 8 文件** | ModelScope `kuohao/FlashVSR-v1.1` |
+
+- **文件名与本地 build 期望的完全一致**（`flashvsr-family.cc:45-47`：`kPublishedSource=kLQ_proj_in.ckpt`、
+  `kPublishedContext=posi_prompt.pth`、`kPublishedVae=Wan2.1_VAE.pth`）→ **下载即可用，无需转换**。
+- ★ **`hf_dir` 直接写绝对路径**：`kuohao/FlashVSR-v1.1` 不在 registry（LMDB）里，
+  `resolve_model()` 对未注册的 ref **直接当文件路径用** → 写
+  `"hf_dir": "/Users/minichen/AI-Models/vpipe-workspace/models/kuohao/FlashVSR-v1.1"` 即可，
+  不必写 registry 条目。
+  ★ **目录里必须恰好只有 1 个 `.safetensors`**（`resolve_adapter_file`：「several are not」——
+  目录遍历顺序不是任何人做的选择）。
+- 下载端点：`https://modelscope.cn/api/v1/models/<repo>/repo?Revision=master&FilePath=<file>`
+  （会 302 到 `cdn-lfs-cn-1.modelscope.cn`）。
+
+### 13.2 ★ 几何契约（上游 `flashvsr-family.h` 明写，违反会被「改写」而不是「拒绝」）
+
+1. **输出宽高必须是 128 的倍数**（窗口划分要求 token grid 能被 8 整除）。
+2. **帧数必须 8k+1**（去噪每块吃 8 源帧）；**v1.1 单个 clip 至少 25 帧**（= 8×3+1）。
+   不满足时**向上取整**，并在日志里报告。
+3. **输出 = 4× 源片** → 想出 1280×768，源片就必须是 320×192。
+4. `temporal-stack.group_size` **必须 ≤ 实际帧数**，否则它永远攒不够、**一个 beat 都不发**，
+   流水线会**挂住**（不是报错）。单组放完最稳：`group_size == frames`。
+5. `generate-video` 的 `width/height` 在本家族里是**上限（cap）**，不是目标值。
+
+### 13.3 ★★ 内存账（**上游源码给的数，本轮实测吻合**）
+
+| 分辨率 | 上游声明 | 本轮实测 |
+|---|---|---|
+| 1920×1152 | 流式携带 ~20 GB（`continuity:auto` 的判据） | **本机 24 GB 跑不了** |
+| **1280×768** | 按面积比 ≈ 8.9 GB | **实测：携带 ~8483 MB、合计 ~11372 MB / 24576 MB ✅** |
+
+- 日志原话：`restoring the source as ONE STREAM at 1280x768 -- the projection, the denoiser and
+  the decode carry ~8483 MB of state from group to group (~11372 MB in all of 24576 MB)`。
+- ★★ **VAE 解码有自动降级**：整块 1280×768 解码要 ~5963 MB，不够时会自动切成
+  **TILE-OUTER（3×4 tile，halo 16 px，~1973 MB）** 逐 tile 跑完。
+  日志里那行 `[NORMAL] MetalWanVae: 1280x768 decode runs TILE-OUTER …` **不是错误，是降级成功**；
+  上面那行 `[WARN] the stream's decode failed (insufficient free RAM …)` 才是需要留意的信号
+  （本轮它紧跟着 TILE-OUTER 出现 → 结果是对的）。
+- 用时：**25 帧 1280×768 = 45.5 s**（含模型加载）。
+
+### 13.4 ★★★ 量化判决（本轮核心）：**它是「细节生成器」，不是「保真放大器」**
+
+实验设计（同一份 320×192 低清源）：
+- **真值 R** = 原始 768p H3 成片 → 1280×768（lanczos，与源片同比例，无 aspect 错配）
+- **A 臂** = 320×192 → lanczos 插值 → 1280×768（纯插值基线）
+- **B 臂** = 320×192 → **FlashVSR 4×** → 1280×768
+
+| 指标 | A 插值 | **B FlashVSR** | 真值 R | 读法 |
+|---|---:|---:|---:|---|
+| 纹理量（3×3 中值后拉普拉斯方差） | 13.00 | **163.80** | 93.20 | **12.6× 插值；且超出真值 1.76×** |
+| 颗粒量（\|帧-中值\| 均值） | 0.228 | 1.066 | 0.646 | 也是真值的 1.65× |
+| 纹理/噪点 | 57.1 | **153.7** | 144.3 | **多出来的细节是结构化纹理，不只是噪点** |
+| **SSIM(A) vs 真值** | — | — | — | **0.946253 / PSNR 32.238** |
+| **SSIM(A) vs 真值（B 臂）** | — | — | — | **0.895679 / PSNR 28.186 → 比插值低 0.0506 SSIM / 4.05 dB** |
+| HF jitter | 0.306572 | 0.341048 | 0.321431 | **比真值还高 6.1%** |
+| frame diff | 0.010942 | 0.015037 | 0.011393 | **+37.4%（相对插值）** |
+| static HF jitter | 0.201133 | 0.235367 | 0.215435 | +9.2%（相对真值） |
+
+⇒ **结论（三条，都可复算）**：
+1. **它确实生成了插值给不出的细节**：纹理量 13.00 → 163.80（**+1160%**，远超漂移基线 0.01%），
+   且纹理/噪点比 153.7 **高于**真值的 144.3 → 那是**有结构的毛发级纹理**，不是噪点。
+2. **但它不是「还原」**：对原始 768p 的 SSIM **比纯插值低 0.0506**、PSNR **低 4.05 dB**
+   → 它在**编造**细节（真值纹理量的 1.76× 就是编造的量）。
+3. **代价是时序不稳**：帧间变化 +37.4%，HF jitter 甚至**超过真值本身 6.1%**。
+
+⇒ **交付口径**：要「忠于原片」→ **别用**（会掉 4 dB）；要「看起来更有细节」→ 可以用，
+但必须知道它超出真值 1.76× 且更闪。
+
+### 13.5 ★★ 复现性：**不逐位相同，但指标漂移 ≈ 0**（与 H3 的 bit-for-bit 不是一回事）
+
+- 复跑两次：**`framemd5` 不同**（`9c17131b…` vs `7da18ab9…`），音频轨 md5 相同。
+- 但 **SSIM(A) = 0.998751 / PSNR = 51.894 dB / 首帧 SSIM(B) = 1.000000**，
+  指标漂移 **hf_jitter +0.02% / frame_diff +0.00% / sharpness +0.01% / static_hf_jitter −0.00%**
+  → **实质上可重复**。
+- ★ **为什么 `autotune:false` 在这里不管用**：flashvsr 家族的
+  **sampler / scheduler / negative port 全部是惰性的**（`one step at a fixed timestep`，
+  guidance 已蒸馏掉）→ **`autotune` 没有可调对象** → 日志里**没有 `autotune` 回显**
+  （符合第 3 轮坑 10.2「字段没被消费 = 静默丢弃」）。
+- ⇒ **纪律**：**FlashVSR 的复现性判据必须用「framemd5 + 指标漂移」双判据**，
+  不能沿用 H3 那一套「关 `autotune` 就该逐位相同」的预期。
+
+### 13.6 LFM3-VL-2B 复核（4 问，2 对 2 错）
+
+| 问 | 答 | 判定 |
+|---|---|---|
+| Q1 三行是否同一场景 | 是（同一只穿牛仔外套的猫，姿态位置一致） | ✅ 语义层正确（像素级差异仍靠 SSIM 裁决 → **已知缺陷 ④ 再现**） |
+| Q2 哪一行纹理更细碎 | 「**第 2 行（插值）**更细碎更锐」 | ❌ **说反了**（量化是 B 高 12.6×）→ **已知缺陷 ② 再现** |
+| Q3 1:1 裁切：右边比左边多了什么 | 「细节变多了，出现原图里没有的、像 AI 生成的细小纹理或斑点」 | ✅ **与量化完全一致**（编造量 = 真值的 1.76×） |
+| Q4 有没有运动 | 「没有显著运动」 | ⚠️ 漏检（真值 frame diff 0.0114）→ **已知缺陷 ③** |
+
+### 13.7 本轮新增坑（接第 12 节）
+
+10. **FlashVSR 不在 registry** → `hf_dir` 用**绝对路径**；且目录里**只能有 1 个 `.safetensors`**。
+11. **几何是硬契约**：输出宽高 128 的倍数、帧数 8k+1（v1.1 ≥ 25）、输出 = 4× 源、
+    `group_size ≤ 帧数`（否则**挂住**）。
+12. **VAE 解码内存不够会自动降级成 TILE-OUTER**（日志 `[NORMAL]` 行）→ 看到 `[WARN] the stream's
+    decode failed` 别慌，**看它后面有没有跟着 TILE-OUTER**。
+13. **`autotune:false` 在 flashvsr 家族无回显也无效果** → 复现性改用指标漂移判据。
+14. **评价 AI 超分不能只看 SSIM**：本轮 SSIM 判它是「更差」，而纹理量判它是「好 12.6×」——
+    **两个口径必须同时报**（第 3 轮坑「细节能量会把噪点当细节」的姊妹坑：
+    **SSIM 会把「编造的细节」判成「失真」**）。

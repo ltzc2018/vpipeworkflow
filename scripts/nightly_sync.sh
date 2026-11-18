@@ -48,13 +48,54 @@ log "复制技能包 / 脚本 / 流水线 / 报告 ..."
 #    **平铺**到仓库的 skills/ 顶层（skills/SKILL.md、skills/references/、skills/assets/…），
 #    正确定位的 skills/<name>/… 从此再也不被刷新（实测陈旧了两轮：21 603 B vs 源 36 163 B），
 #    而且 skills/SKILL.md 会被最后一个技能覆盖（实测 = vpipe-text-to-image），在 public 仓库里误导。
-#    → 必须显式指定目标目录：cp -R "$d" "$REPO/skills/$name/"
+#
+# ★★★ 2026-11-18 第 6 轮再修正：**上面那条「正解」在本沙箱里是错的**。
+#   本机的 `cp` 走 sandbox shim，**尾斜杠语义与 BSD 相反**（实测三个用例）：
+#     cp -R src/  dst/   → dst/src/...     ← 仍然嵌套（源带斜杠被忽略）
+#     cp -R src/. dst/   → dst/...         ← ★ 唯一正确的「铺内容」写法
+#     cp -R src   dst/   → dst/src/...     ← 嵌套
+#   ⇒ 第 6 轮用旧写法 `cp -R "$d" "$REPO/skills/$name/"` 重新制造了**嵌套副本**
+#     `skills/<name>/<name>/…`（21 个条目入库），而正确定位 `skills/<name>/references/…`
+#     仍是旧内容 → 「树里有这个文件」但内容陈旧。
+#   ⇒ **正解：源写成 "$d."（带 /.），目标带斜杠**；并在复制后**逐文件比字节数**。
 for d in "$LAB"/skills/*/; do
   name=$(basename "$d")
   [ -d "$d" ] || continue
   mkdir -p "$REPO/skills/$name"
-  cp -R "$d" "$REPO/skills/$name/" 2>/dev/null || fail "复制技能包失败：$name"
+  cp -R "$d." "$REPO/skills/$name/" 2>/dev/null || fail "复制技能包失败：$name"
 done
+
+# 2.1b 清理历史遗留的嵌套副本 `skills/<name>/<name>/…`（第 6 轮的旧写法造成）
+NESTED=$(find "$REPO/skills" -mindepth 2 -type d -name '*' 2>/dev/null \
+         | while read -r p; do
+             [ "$(basename "$(dirname "$p")")" = "$(basename "$p")" ] && echo "$p"
+         done)
+if [ -n "$NESTED" ]; then
+  log "清理嵌套副本 skills/<name>/<name>/ …"
+  echo "$NESTED" | while read -r p; do
+    log "  移除：${p#$REPO/}"
+    rm -rf "$p"
+  done
+fi
+
+# 2.1c ★ 复制后逐文件比字节数（不能只看「树里有这个文件」—— 第 3/6 轮各踩过一次）
+SKILL_BAD=0
+for d in "$LAB"/skills/*/; do
+  name=$(basename "$d")
+  [ -d "$d" ] || continue
+  while IFS= read -r rel; do
+    a=$(wc -c < "$d$rel" 2>/dev/null || echo -1)
+    b=$(wc -c < "$REPO/skills/$name/$rel" 2>/dev/null || echo -1)
+    if [ "$a" != "$b" ]; then
+      log "❌ 字节不一致：skills/$name/$rel  源=$a 仓库=$b"
+      SKILL_BAD=$((SKILL_BAD+1))
+    fi
+  done < <(cd "$d" && find . -type f)
+done
+if [ "$SKILL_BAD" -ne 0 ]; then
+  fail "技能包有 $SKILL_BAD 个文件字节不一致（见上），已中止推送"
+fi
+log "✅ 技能包逐文件字节校验通过"
 
 # 2.2 脚本与流水线
 cp -R "$LAB"/scripts/. "$REPO/scripts/" 2>/dev/null
