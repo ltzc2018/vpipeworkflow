@@ -1,3 +1,29 @@
+#### 8.1 检索范围与来源清单
+- **GitHub**: `tgo-app-dev/vpipe` (HEAD `4dc36b7`) —— 2026-11-16 重大更新：支持 DiT 模型 Mac 双机分布式运行 (Tensor Parallel)。
+- **GitCode / CSDN**: MiniMax-H3 加速 LoRA 盘点与 PDD (Alibaba PAI) 技术细节。
+- **Vlad Mandic (SDNext)**: 详尽的 H3 shift/steps 对照表。
+- **MiniMax API**: `platform.minimax.io` 已上线 H3 及 H3 Max (fal.ai 托管) 商业服务。
+
+#### 8.2 新增知识
+1. **vpipe 分布式推理**：最新 commit `4dc36b7` 实现了 FLUX.3、Qwen-Image-2.1、Krea-2 等模型的 `tensor_parallel`，支持两台 Mac 拆分运行。
+2. **H3 长序列优化**：修复了超过 150k 行时的 32-bit 索引噪声问题，改为 64-bit 无符号索引，提升了超长视频生成的稳定性。
+3. **PDD (Alibaba PAI) 深度规约**：PDD 并非单纯 LoRA，它包含 Head Bank 蒸馏。采样器**必须**固定为 `euler`，CFG **必须**固定为 `1.0`，且 steps 和 shift 建议锁定在训练值 (8步 / 12 / 3)。
+4. **Shift 官方修正**：根据 SDNext 汇总的上游文档，**lightx2v 768p 4步/8步** 推荐 shift 为 **6 / 3**，而 **544p 版** 和其余大部分加速 LoRA 为 **12 / 3**。
+5. **H3 Max**：fal.ai 托管的高速版，优化了 5–15s 的 480P/768P 生成。
+
+#### 8.3 与既有结论的印证/冲突
+- **印证**：第 3 轮 §10.4 的「上游官方表」在 SDNext 的文档中得到完整印证。
+- **补充**：第 3 轮曾观察到 Ref2VA 768p 在 12.0 更锐，本轮检索证实 **lightx2v 768p 官方推荐确实是 6.0**。这解释了为什么 12.0 会「过锐」到产生伪影。
+
+#### 8.4 本轮实验 (无)
+- **状态**：本轮仅知识同步，无实验。
+
+#### 8.5 对技能包 / 脚本 / 流水线的修改
+- 无。
+
+#### 8.6 本轮踩的坑与结论
+1. **GitHub API 访问**：沙箱环境下直连 HF API 不稳定，但 GitHub API 正常。
+2. **知识固化**：发现 `valtz` 仓库内置了 MiniMax 官方提示词技能，值得后续研究。
 # vpipe 每日知识增量（累积）
 
 > 由「vpipe 后续计划任务·每日 4 轮夜间自动执行」系列自动化写入。
