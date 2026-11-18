@@ -1,7 +1,7 @@
 {
-  "round": 5,
-  "last_run": "2026-11-18 06:30",
+  "round": 6,
+  "last_run": "2026-11-18 12:56",
   "note": "自动任务轮次计数器：每完成一轮 +1；失败不递增",
-  "last_round_topic": "第5轮：P13b 判决（第3轮 er_sde σ 网格 −16% 被推翻，漂移=0 下实为 +12.09%）+ ControlNet Union 生态缺口（vpipe 0 支持）+ 上游新项目 valtz（含 MiniMax 官方 H3 提示词技能）+ H3-Image 需 135GB 本机不可行",
-  "next_suggestions": ["P27 ControlNet Union 可行性预判（零成本）：查 vpipe 挂载点，无输入口则直接写第 7 条上游 issue", "P27-b 提示词结构对照（官方六段式 + <Picture N> vs 本实验室 @Image1），2 臂 × 22 帧 ≈ 8 分钟，模型全在本地", "P22 FlashVSR 超分（权重体积已订正为 kuohao 6.95 GB / mlx-community 3.51 GB），须先清盘到 ≥15 GiB", "P25 用 HF Space Upsampler/relayvsr 零下载预判（Space 仍在，2026-11-07）", "P15b 用 autotune:false 重跑第 17.4.1 节 Ref2VA 768p shift 对照", "P29 2K refiner（5.87 GB）/ P27-c PDD 8-NFE Ref2VA LoRA（1.73 GB）"]
+  "last_round_topic": "第6轮：P22 判决——FlashVSR v1.1 原生 Metal 4× 视频超分本机真机跑通（细节 12.6× 插值，但对真值 SSIM −0.0506 / PSNR −4.05 dB，帧间 +37.4%）+ 复现性修订（该家族 sampler 惰性 → autotune 无效，不逐位相同但指标漂移≈0）+ H3 Max 确认托管化 + SiliconFlow 官方 H3 API 上线 + 同步脚本 cp 尾斜杠语义坑",
+  "next_suggestions": ["P22c FlashVSR+ Turbo（ruchangyao/FlashVSR_plus-turbo，携带仅 4.2 GB）—— 比 v1.1 省一半内存，是 1920×1152 的更现实路径", "P22b 用 flashvsr-model-config 的 kv_ratio 降内存冲 1920×1152（需先清盘到 ≥25 GiB）", "P15b 用 autotune:false 重跑第 17.4.1 节 Ref2VA 768p shift 对照", "P27-b 提示词结构对照（官方六段式 + <Picture N> vs 本实验室 @Image1）", "P27-c PDD 8-NFE Ref2VA LoRA（1.73 GB）/ P29 2K refiner（5.87 GB）", "P25 用 HF Space Upsampler/relayvsr 零下载预判（★ 本轮 HF API 被沙箱拦，状态未直连复核）", "P30 把 5 类静默坑整理成可对外提交的 issue 素材"]
 }
