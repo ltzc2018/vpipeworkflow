@@ -4486,3 +4486,55 @@ p22-armB-flashvsr-1280x768.mp4, p22-armB-flashvsr-r2-1280x768.mp4}` +
 
 #### 18.13.6 本轮踩的坑与结论
 - **结论**: 上游持续静默，生态正围绕音频优化与少步加速（SLA/Turbo）进行局部迭代。
+
+### 18.14 2026-11-20 02:30 —— 第 13 轮：H3 官方分层提示词规范 + PDD 动作控制八阶段 + 4.2GB 低显存路径
+
+#### 18.14.1 本轮检索范围与来源清单
+
+| # | 源 | 地址 | 日期 | 结果 |
+|---|---|---|---|---|
+| 1 | GitHub Commits | `tgo-app-dev/vpipe` | 2026-11-20 | HEAD 仍 `4dc36b7` (2026-11-16)，**4天零新增** |
+| 2 | GitHub 技能库 | `MiniMax-AI/MiniMax-H3/skills/h3-prompt-writing` | 2026-11 | **重大发现**：官方六段式/八阶段提示词规范 |
+| 3 | 社区文档 | `ai-indeed.com/encyclopedia/29229.html` | 2026-11 | **规范解读**：H3 提示词的分层控制模型 |
+| 4 | ModelScope | `ruchangyao/FlashVSR_plus-turbo` | 2026-11 | **路径确认**：4.2GB 显存超分模型 v1.2 |
+
+#### 18.14.2 新增知识
+
+1. **★★★ H3 官方提示词分层规范 (Three Labeled Fields)**：
+   - `integrated_multimodal_description`: 视觉全景 + 镜头切换 (`At 00:04.500, the camera cuts to...`) + 同步音/台词 (`[S1] [English] Line...`)。
+   - `overall_soundscape`: 环境背景音、物理撞击、呼吸。
+   - `non_diegetic_music`: 仅观众可见的配乐。
+   - **价值**：H3 是 CFG 蒸馏模型，**无负向提示词**，分层结构是目前唯一能精确控制时序与音效的手段。
+2. **★★ PDD 动作描述「八阶段」法**：
+   - 流程：Preparation -> Trigger -> Acceleration -> Primary action -> Contact -> Reaction -> Recovery -> Final state。
+   - **价值**：解决了此前「动词堆砌」导致动作漂移的问题，通过因果链条增强模型推理稳定性。
+3. **★★ FlashVSR+ Turbo (4.2 GB)**：
+   - 确认为 24GB Mac 上跑 1920x1152 的最现实路径。相比 v1.1 的 7GB，它释放了 2.8GB Swap 空间，有效缓解了 VAE 解码时的内存焦虑。
+4. **★ 镜头运动词典 (14 种)**：
+   - 官方定义：Zoom In/Out, Push In/Pull Out, Pan L/R, Truck L/R, Tilt U/D, Pedestal U/D, Arc, Tracking, Static, Shake, POV, Roll。
+5. **★ 上游静默延续**：
+   - 截至 11-20 02:30，主库连续 4 天无代码提交。
+
+#### 18.14.3 与既有结论的印证 / 冲突
+
+- **印证**：官方「镜头运动必须写成 ordinary sentence」而非标签堆叠，印证了第 13 轮关于 H3 语义理解能力的判断。
+- **冲突**：无。
+
+#### 18.14.4 本轮实验
+
+- **结论**：**本轮无实验**。
+- **理由**：主要任务为固化官方提示词规范；磁盘空间稳定在 27GiB，但在缺乏上游代码支持的情况下，暂无法验证新型加速开关。
+
+#### 18.14.5 对技能包 / 脚本 / 流水线的修改
+
+- 更新 `~/.workbuddy/skills/vpipe-reference-to-video/references/h3-prompt-guide.md`，固化三字段结构与八阶段动作法。
+
+#### 18.14.6 本轮踩的坑与结论
+
+1. **API 与开源版本差异**：SiliconFlow 等 API 侧的参数（如 `image_size`）在开源 vpipe 侧对应的逻辑是不通的。
+2. **提示词即控制**：再次明确 H3 这种大模型架构下，提示词规范的优先级高于参数微调。
+
+#### 18.14.7 下一轮建议
+
+1. **P33**：按官方「六段式/三字段」结构重构一份 1344x768 复杂动作流水线，实测 PDD 蒸馏模型的遵循度。
+2. **P22d**：实测 FlashVSR+ Turbo (4.2GB) 的保真度 vs 12.6x 纹理量。

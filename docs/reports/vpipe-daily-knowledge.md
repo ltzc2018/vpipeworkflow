@@ -1791,3 +1791,21 @@ HF `Comfy-Org/MiniMax-H3-Image` 讨论区断言：ComfyUI 的 **`lcm`**（每步
 ### 阶段 B：冲突与印证
 - **印证**: 社区在 H3-Image 上复现了「Euler 会产生块状纹理（Crunchy Grid）」的现象，并建议通过 `SamplerLCM`（对应 vpipe 的 `dmd`）解决，与本实验室 P18 判决高度吻合。
 - **冲突**: v1.2 LoRA 的 `video_shift: 12.0` 推荐值与本实验室此前在 v1.1 上实测的 `6.0 更锐` 结论存在版本代差。
+
+## 第 13 轮增量（2026-11-20 02:30）
+
+### 本轮主线
+1. **上游超长静默期确认**：GitHub `main` 分支自 2026-11-16 (`4dc36b7`) 以来连续 4 天无任何 commit 提交，Release 维持在 11月1日的 `v0.1.110`。
+2. **轻量化适配器 v1.2 细节补充**：LightX2V `fl2v-turbo-4step-v1.2-768p` 确认为「音频优化版」，视觉可能略有下降，**vpipe 原生支持**。
+3. **官方提示词规范增强版**：在 `valtz` 仓库与社区文档中发现 H3 专用的「六段式/八阶段」结构化描述规范，强调 `integrated_multimodal_description` 等三个核心字段。
+4. **模型体积对账**：FlashVSR v1.1 实测 6.95 GB，FlashVSR+ Turbo 仅 4.2 GB，进一步印证「低显存、高效率」演进路线。
+
+### 逐条新增知识
+
+| # | 知识 | 来源 | 日期 | 对既有结论的影响 |
+|---|---|---|---|---|
+| **K61** | ★★★ **H3 官方分层提示词规范**：integrated_multimodal_description (视觉/同步音)、overall_soundscape (环境音)、non_diegetic_music (BGM)。| MiniMax-AI/MiniMax-H3 / valtz | 2026-11 | **提升提示词质量**：本机之前的 prompt 过于散漫，建议改用结构化三字段。 |
+| **K62** | ★★ **H3 动作控制「八阶段」**：Preparation -> Trigger -> Acceleration -> Primary action -> Contact -> Reaction -> Recovery -> Final state。| GitCode 官方解读 | 2026-11 | **提升动作连贯性**：针对 PDD LoRA 等蒸馏模型，因果链描述比动词堆砌更稳。 |
+| **K63** | ★★ **v1.2 适配器参数判决**：视频 shift 12.0 / 音频 shift 3.0。采样器固定 `euler`。| ComfyUI-Wiki / LightX2V | 2026-11 | ✅ **印证 §10.3**：shift 精度是所有蒸馏适配器的命门。 |
+| **K64** | ★★ **FlashVSR+ Turbo (4.2GB)**：确认其为目前 24GB Mac 上跑 1920x1152 的最可行超分路径。| ModelScope | 2026-11 | **上调 P22c 优先级**：相比 7GB 的 v1.1，4.2GB 能留出更多 Swap 给 VAE。 |
+| **K65** | ★ **valtz 仓库价值**：内置了 MiniMax 官方的提示词技能插件 (h3-prompt-writing)，包含镜头运动词典（14种机位词）。| tgo-app-dev/valtz | 2026-11 | ✅ **印证 §13.4**：检索 owner 全仓库是发现「隐藏技能」的必经之路。 |
