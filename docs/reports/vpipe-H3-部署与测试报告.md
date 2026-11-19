@@ -4456,3 +4456,33 @@ p22-armB-flashvsr-1280x768.mp4, p22-armB-flashvsr-r2-1280x768.mp4}` +
 1. **P11b**：利用 28GiB 磁盘空间，下载并盘点 `lightx2v` 的 Ref2VA 4-step 768p 变体。
 2. **P32**：尝试在 Valtz GUI 中提取 MiniMax 官方的提示词生成逻辑并固化到本地脚本。
 
+
+## 18. 夜间自动知识同步（自动任务，每轮追加一小节）
+
+### 18.13 2026-11-20 00:30 —— Turbo v1.2 发布 + 音频修复 + Shift 参推剧变
+
+#### 18.13.1 本轮检索范围与来源清单
+- **GitHub API**: \`tgo-app-dev/vpipe\` (HEAD 仍 \`4dc36b7\`)
+- **LightX2V HuggingFace**: \`lightx2v/Minimax-h3-Turbo\` (v1.2 更新公告)
+- **Reddit r/StableDiffusion**: "MiniMax-H3 Turbo LoRA Gets an Audio Upgrade"
+- **ModelScope**: \`lightx2v/Minimax-h3-Turbo\` 仓库文件列表
+- **SLA 生态**: ComfyUI-SLA / lightx2v-SLA 文档
+
+#### 18.13.2 新增知识
+1. **LightX2V v1.2 LoRA (8-step/4-step)**: 核心修复了 v1.1 存在的音频伪影与不稳问题。
+2. **官方配置参数刷新**: v1.2 建议 \`video_flow_shift: 12.0\`，\`audio_flow_shift: 3.0\`。
+3. **AdaLN 兼容性风险**: v1.2 目前不支持裁剪版（Pruned）基座模型，强行挂载会导致 Shape 报错。
+4. **H3-Image 门槛确认**: 官方流水线拉取权重需 135GB。
+
+#### 18.13.3 与既有结论的印证 / 冲突
+- **印证**: 社区在 H3-Image 上对 \`euler\` 产生 Crunchy Grid 的观察，印证了本实验室 P18 换 \`dmd\` 的必要性。
+- **冲突**: v1.2 官方推荐的 \`shift 12.0\` 覆盖了 v1.1 时期的 \`6.0\` 推荐。
+
+#### 18.13.4 本轮实验
+- **结论**: 本轮无实验，仅知识同步。
+
+#### 18.13.5 对技能包 / 脚本 / 流水线的修改
+- 更新技能 \`vpipe-model-prepare/references/768p-adapters.md\`，增加 v1.2 参数映射。
+
+#### 18.13.6 本轮踩的坑与结论
+- **结论**: 上游持续静默，生态正围绕音频优化与少步加速（SLA/Turbo）进行局部迭代。

@@ -1761,3 +1761,33 @@ HF `Comfy-Org/MiniMax-H3-Image` 讨论区断言：ComfyUI 的 **`lcm`**（每步
 | **K59** | ★★ **Ref2VA 配置上限刷新**：支持多达 12 个参考槽位 (9图+3视+3音)。 | 官方 docs/MINIMAX-H3.md | 2026-11-19 | ✅ **印证 §8 坑清单**：对 `attach_audio` 的理解与官方一致。 |
 | **K60** | ★ **量化建议微调**：官方现在更倾向于推荐 **8-bit** 而非 4-bit（4-bit 在推理速度上无优势且画质有损）。 | 官方 docs/MINIMAX-H3.md | 2026-11-19 | ✅ **印证 §4 结论**：本实验室一直坚持以 8-bit 为主。 |
 
+
+## 第 12 轮（2026-11-20 00:30）夜间知识同步
+
+### 阶段 A：检索摘要
+1. **GitHub **: HEAD 仍为 `4dc36b7`（2026-11-16），主库连续 4 天无增量。
+2. **LightX2V Turbo v1.2 发布**: `lightx2v/Minimax-h3-Turbo` 系列更新至 v1.2。
+   - **核心改进**: 针对音频伪影（Noisy/Unstable audio）进行修复，同时提升了 Prompt 遵循度与视觉清晰度。
+   - **参数剧变**: v1.2 建议 `video_flow_shift: 12.0`（v1.1 为 6.0），`audio_flow_shift: 3.0`。
+   - **兼容性警告**: v1.2 针对原始 AdaLN 层设计，与经过 Pruned（裁剪）或 Reranked 的基座模型在 ComfyUI 中可能存在 Shape 冲突，建议使用未裁剪版。
+3. **SLA (Sparse-Linear Attention) 生态**: 确认 vpipe 暂不支持该算子，SLA 路线可实现 2.5x 提速，是未来的重要集成目标。
+4. **H3-Image**: 本地 vpipe 虽然支持，但 BF16 权重合计 135GB 的门槛确认了「本地视频、云端图像」的差异化策略是正确的。
+
+### 阶段 B：冲突与印证
+- **印证**: 社区在 H3-Image 上复现了「Euler 会产生块状纹理（Crunchy Grid）」的现象，并建议通过 `SamplerLCM`（对应 vpipe 的 `dmd`）解决，与本实验室 P18 判决高度吻合。
+- **冲突**: v1.2 LoRA 的 `video_shift: 12.0` 推荐值与本实验室此前在 v1.1 上实测的 `6.0 更锐` 结论存在版本代差。
+
+## 第 12 轮（2026-11-20 00:30）夜间知识同步
+
+### 阶段 A：检索摘要
+1. **GitHub `tgo-app-dev/vpipe`**: HEAD 仍为 `4dc36b7`（2026-11-16），主库连续 4 天无增量。
+2. **LightX2V Turbo v1.2 发布**: `lightx2v/Minimax-h3-Turbo` 系列更新至 v1.2。
+   - **核心改进**: 针对音频伪影（Noisy/Unstable audio）进行修复，同时提升了 Prompt 遵循度与视觉清晰度。
+   - **参数剧变**: v1.2 建议 `video_flow_shift: 12.0`（v1.1 为 6.0），`audio_flow_shift: 3.0`。
+   - **兼容性警告**: v1.2 针对原始 AdaLN 层设计，与经过 Pruned（裁剪）或 Reranked 的基座模型在 ComfyUI 中可能存在 Shape 冲突，建议使用未裁剪版。
+3. **SLA (Sparse-Linear Attention) 生态**: 确认 vpipe 暂不支持该算子，SLA 路线可实现 2.5x 提速，是未来的重要集成目标。
+4. **H3-Image**: 本地 vpipe 虽然支持，但 BF16 权重合计 135GB 的门槛确认了「本地视频、云端图像」的差异化策略是正确的。
+
+### 阶段 B：冲突与印证
+- **印证**: 社区在 H3-Image 上复现了「Euler 会产生块状纹理（Crunchy Grid）」的现象，并建议通过 `SamplerLCM`（对应 vpipe 的 `dmd`）解决，与本实验室 P18 判决高度吻合。
+- **冲突**: v1.2 LoRA 的 `video_shift: 12.0` 推荐值与本实验室此前在 v1.1 上实测的 `6.0 更锐` 结论存在版本代差。
