@@ -1809,3 +1809,41 @@ HF `Comfy-Org/MiniMax-H3-Image` 讨论区断言：ComfyUI 的 **`lcm`**（每步
 | **K63** | ★★ **v1.2 适配器参数判决**：视频 shift 12.0 / 音频 shift 3.0。采样器固定 `euler`。| ComfyUI-Wiki / LightX2V | 2026-11 | ✅ **印证 §10.3**：shift 精度是所有蒸馏适配器的命门。 |
 | **K64** | ★★ **FlashVSR+ Turbo (4.2GB)**：确认其为目前 24GB Mac 上跑 1920x1152 的最可行超分路径。| ModelScope | 2026-11 | **上调 P22c 优先级**：相比 7GB 的 v1.1，4.2GB 能留出更多 Swap 给 VAE。 |
 | **K65** | ★ **valtz 仓库价值**：内置了 MiniMax 官方的提示词技能插件 (h3-prompt-writing)，包含镜头运动词典（14种机位词）。| tgo-app-dev/valtz | 2026-11 | ✅ **印证 §13.4**：检索 owner 全仓库是发现「隐藏技能」的必经之路。 |
+
+## 第 14 轮 · 2026-11-20 04:30 —— ★★ VPIPE vs h3.c 旗舰性能对账 + SLA 稀疏注意力机制拆解 + 上游 4 日静默确认
+
+### 14.1 本轮检索范围与来源清单（12 类）
+
+| # | 来源 | URL / 端点 | 结果 |
+|---|---|---|---|
+| 1 | GitHub 上游 commits | api.github.com/repos/tgo-app-dev/vpipe/commits | HEAD 仍 `4dc36b7` (2026-11-16)，**4 日零增量** |
+| 2 | GitHub 上游 README | README.md | ★ 新增「Flagship workloads / performance」对比表 |
+| 3 | GitHub 上游 issues | .../issues | #55 无回复，无新 issue |
+| 4 | GitHub owner 仓库 | .../users/tgo-app-dev/repos | `valtz` (79 stars) 与 `vpipe-ltx-2.5` 仍为最新关注点 |
+| 5 | 清华 SLA 项目文档 | 腾讯新闻 / GitHub | ★ 揭示 SLA 稀疏-线性注意力三级分诊机制 |
+| 6 | lightx2v SLA LoRA | ModelScope | 确认 LoRA 元数据中的 SLA 算子绑定要求 |
+| 7 | 社区：GHTrending | ghtrending.com | 确认 vpipe 处于「稳定/慢速移动」维护期 |
+| 8 | 社区：Learn AI Wiki | ai.miraheze.org | 确认 vpipe 的「三层架构」历史沿革 |
+| 9 | 社区：YouTube Shorts | youtube.com/shorts/i3F_Fzgt1UM | VPIPE vs h3.c 速度与质量直观对比（124 帧 6 步） |
+| 10 | ModelScope | lightx2v/Minimax-h3-Turbo | 31 文件 / 26 safetensors，零变化 |
+| 11 | 环境变量 | — | `VPIPE_MODEL_SOURCE=modelscope` 依然是国内下载铁律 |
+| 12 | 磁盘监控 | `df -h` | ★ **4.2 GiB** (< 15 GiB)，**强制阻断本轮重实验** |
+
+### 14.2 新增知识
+
+| # | 知识 | 来源 | 日期 | 对既有结论的影响 |
+|---|---|---|---|---|
+| **K66** | ★★★ **VPIPE vs h3.c 旗舰基准确认**：M4 Pro (64GB) VPIPE 胜 21.1% (21:50 vs 27:40)；M5 Air (16GB) VPIPE 胜 25.1% (12:15 vs 16:22)。基准负载：960x544, 124f, 6-step | GitHub README / YouTube | 2026-11-20 | ✅ **量化印证 §10**：VPIPE 在 Apple Silicon 上的 ANE + 矩阵优化具有显著工程红利 |
+| **K67** | ★★★ **SLA (Sparse-Linear Attention) 三级机制**：① 5% 关键权重用精确稀疏 FlashAttention；② 边缘权重用线性注意力 ($\phi$ 映射)；③ 可忽略项直接跳过。总提速 2.5x | 清华 SLA 论文 / lightx2v | 2026-11 | **技术路线补充**：这是 H3 生态除了 DMD/PDD 之外的第三大加速流派，vpipe 目前算子缺失 |
+| **K68** | ★★ **vpipe 维护状态判定**：社区评价为「稳定的 Apple Silicon 原生 Metal 路线」，代码体积 32.6 MB 极精简，但 release 节奏进入静默期 | GHTrending / Learn AI | 2026-11 | ✅ **印证 §13.4**：本实验室「回读源码、独立量化」的长期主义策略是应对上游静默的唯一方案 |
+| **K69** | ★★ **4K 图像生成耗时对账**：H3-Image 在 RTX 5090 上需 10-20s，在 MacBook 上外推需分钟级且受限于 135GB 权重。 | 新智元 / 社区实测 | 2026-11 | ✅ **印证 §14**：再次确认「本地视频、云端图像」是 24GB 机器的理性选择 |
+| **K70** | ★ **上游静默 4 日确认**：自 11-16 以来无代码提交。#55 Issue (纹理沸腾) 依然无人问津。 | GitHub API | 2026-11-20 | **状态确认**：维持看板所有 pending 任务优先级 |
+
+### 14.3 本轮实验（无）
+
+**跳过原因**：磁盘空间仅余 **4.2 GiB**，远低于 15 GiB 安全门限。为保护已有 230 GB 模型资产及正在进行的长时间自动化任务，本轮执行「仅知识同步」策略。
+
+### 14.4 本轮踩的坑与建议
+
+1. **磁盘告警**：Data 卷已触达 100% 临界点。**建议**：下一轮 06:30 之前手动或自动清理 `Boogu` (36G) 或 `LiquidAI` (3.6G) 等非核心项目模型，否则 VAE 解码可能因 Swap 失败而挂起。
+2. **README 增量误导**：GitHub README 的更新（旗舰性能表）并不伴随 commit 增加（可能是此前 push 或 metadata 变更），需通过 WebFetch 读全文才能发现增量。
