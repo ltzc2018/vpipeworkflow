@@ -1705,3 +1705,20 @@ HF `Comfy-Org/MiniMax-H3-Image` 讨论区断言：ComfyUI 的 **`lcm`**（每步
 
 ---
 
+
+## 第 9 轮增量（2026-11-19 20:55）
+
+### 本轮主线
+1. **上游进入静默期**：自 2026-11-16 (4dc36b7) 起至今 3 天零 commit、零 release，issue #55/#58/#59 状态无变化。
+2. **生态重心转向 SLA**：ModelTC (lightx2v) 发布 **MiniMax-H3 Turbo-SLA** (4-step 768p)，利用 85% 稀疏注意力实现 2.5x 提速。
+3. **vpipe 功能缺口确认**：本地源码扫描确认目前**不支持** SLA 稀疏算子及 ControlNet Union 阶段。
+
+### 逐条新增知识
+
+| # | 知识 | 来源 | 日期 | 对既有结论的影响 |
+|---|---|---|---|---|
+| **K52** | ★★★ **SLA (Sparse-Linear Attention) 加速方案**：lightx2v 发布 4 步 768p 蒸馏 LoRA，配合 85% 稀疏率。**vpipe 目前 0 命中**（源码  扫描  为空） | lightx2v / ComfyUI-SLA | 2026-11-19 | **新增能力缺口**：这是继 DMD 后的第二大加速赛道，待上游适配 |
+| **K53** | ★★ **SiliconFlow MiniMax-H3 API 细节**：除了价格（768p 0.5元/秒），确认其**忽略 `negative_prompt`**。 | docs.siliconflow.cn | 2026-11 | ✅ **跨生态印证**：vpipe 的「静默失效」是 H3 生态早期通病 |
+| **K54** | ★★ **上游 Issue #55 (纹理沸腾) 依然 0 回复**：开放 31 天无官方进展。 | GitHub Issues | 2026-11-19 | ✅ **印证 SOP 11.9**：必须维持自建的量化复核能力（P18/P13b） |
+| **K55** | ★ **H3-Image 托管化趋势**：recraft.ai / fal.ai 均已上线 H3-Image，权重开源但体积（135GB）导致本地化门槛极高。 | recraft / fal | 2026-11 | ✅ **印证第 8 轮结论**：本地 24GB 机器应彻底转向「视频为主、图像 API」策略 |
+

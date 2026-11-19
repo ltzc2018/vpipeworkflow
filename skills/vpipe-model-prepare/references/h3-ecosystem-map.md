@@ -18,11 +18,30 @@
 | VDN（Video DeltaNet 线性注意力） | ✅ | ✅ | ✅ | 5.1 GB（本地已有） | 上游 28 个文件，本地已有 |
 | FlashVSR / RelayVSR（Metal 超分） | ✅ | ✅ | ⚠️ 磁盘 | 3.27 / 6.48 / 10.58 GB | 见 `relayvsr-flashvsr.md` |
 | FlashVSR v1.1（**第 6 轮已实测**） | ✅ | ✅ | ✅ **1280×768 已跑通** | 6.953 GB（原生，ModelScope） | **实测：细节 +1160%，但对真值 SSIM −0.0506 / PSNR −4.05 dB** |
+| **MiniMax-H3 Turbo-SLA** | ✅ | ❌ | ❌ | 1.4-1.9 GB (LoRA) | **85% 稀疏注意力 (SLA) 加速，需 vpipe 内置算子支持** |
 | 官方 H3 提示词结构（六段式） | ✅ | ⚠️ 文档里有 | ✅ | 免费 | 见 `h3-prompt-format.md` |
 
 ---
 
-## 1. ControlNet Union（alibaba-pai）—— ★ 本轮最大新发现
+## 1. SLA (Sparse-Linear Attention) —— DMD 后的第二加速赛道（2026-11-19）
+
+### 1.1 是什么
+
+- **`lightx2v/Minimax-h3-Turbo-SLA`**：针对 MiniMax-H3 的 **4步 768p 蒸馏 LoRA**。
+- **核心机制**：
+  - **SLA (Sparse-Linear Attention)**：针对扩散 Transformer 的高效注意力实现。
+  - 使用了 **85% 的注意力稀疏率**，跳过 85% 的计算量。
+  - 与 DMD 不同，SLA 侧重于**每步内部运算逻辑的优化**，而 DMD 侧重于**更新式（Re-noising）**。
+- **效果**：RTX 5090 上实测可实现 **2.5x 提速**。
+
+### 1.2 vpipe 支持状态：❌ 暂不支持算子
+
+- 扫描源码 `33cda00` 确认目前没有 `dynamic_sparse_attn` 或 `SLA` 相关算子。
+- 这是一个重大的功能缺口，建议关注上游适配进度。
+
+---
+
+## 2. ControlNet Union（alibaba-pai）—— ★ 本轮最大新发现
 
 ### 1.1 是什么
 
