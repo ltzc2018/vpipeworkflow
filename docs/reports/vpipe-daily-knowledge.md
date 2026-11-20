@@ -1847,3 +1847,20 @@ HF `Comfy-Org/MiniMax-H3-Image` 讨论区断言：ComfyUI 的 **`lcm`**（每步
 
 1. **磁盘告警**：Data 卷已触达 100% 临界点。**建议**：下一轮 06:30 之前手动或自动清理 `Boogu` (36G) 或 `LiquidAI` (3.6G) 等非核心项目模型，否则 VAE 解码可能因 Swap 失败而挂起。
 2. **README 增量误导**：GitHub README 的更新（旗舰性能表）并不伴随 commit 增加（可能是此前 push 或 metadata 变更），需通过 WebFetch 读全文才能发现增量。
+
+## 第 16 轮（2026-11-20 20:30 · 00:30 自动任务）
+
+### 本轮主线
+1. **GitHub 生态爆发**：上游一次性释出 `vpipe-sensenova-u1.5` 与 `vpipe-ming-image` 插件，多模型架构闭环。
+2. **v0.1.56 Release 判决**：确认为近月最稳版本，正式合入 Flash VSR 高分辨率显存优化。
+3. **M5 旗舰对账确认**：5分00秒 (124帧) 成为 24GB 机器的硬性性能标杆。
+
+### 逐条新增知识
+
+| # | 知识 | 来源 | 日期 | 对既有结论的影响 |
+|---|---|---|---|---|
+| **K71** | ★★★ **vpipe-sensenova-u1.5 插件**：正式支持商汤 SenseNova-U1.5 8B 模型。该模型基于 NEO-Unify 架构，单模型统一理解与生成。 | `tgo-app-dev/vpipe-sensenova-u1.5` | 2026-11-20 | **新增路线**：继 H3, LTX-2.5 后的第三大生成家族，主打「理解+生成」一体化 |
+| **K72** | ★★★ **vpipe-ming-image 插件**：Ming-Image 0.1 正式合入。支持在 Apple Silicon 上进行原生 Metal 加速的 1024 级图像生成。 | `tgo-app-dev/vpipe-ming-image` | 2026-11-20 | **图像能力收口**：提供了 H3-Image (135GB) 之外更轻量的本地图像生成方案 |
+| **K73** | ★★ **v0.1.56 显存优化**：Flash VSR 算法重构，高分辨率超分时的 Tile 管理更智能，降低了 30% 峰值 Swap 压力。 | `releaseport.com` | 2026-11-20 | ✅ **印证 §14**：超分实验 (P22) 的可行性门槛从 32GB 降至 24GB |
+| **K74** | ★★ **H3 Still-Image 修复**：官方 v0.1.56 修复了 Ref2VA 仅有静态图、无音频输入时会被静默拒绝的 Bug。 | GitHub Changelog | 2026-11-20 | ✅ **印证 §8 坑清单**：此前遇到的「无音频不工作」确认为上游 Bug，现已修复 |
+| **K75** | ★ **M5 Pro 性能标杆确认**：M5 Pro (24GB) @ 960x544/124f/6-step = **5min 0sec**。 | GitHub README | 2026-11-20 | **基准刷新**：任何低于此速度的运行均被视为「未充分榨取 Metal 核心」 |
