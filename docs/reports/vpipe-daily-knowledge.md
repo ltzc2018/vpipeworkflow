@@ -1974,3 +1974,12 @@ HF `Comfy-Org/MiniMax-H3-Image` 讨论区断言：ComfyUI 的 **`lcm`**（每步
 
 - 逐位判据：anchor vs r2 **逐位相同**（确定性）；anchor vs 历史 p13b-default-r1 **逐位不同**（跨 build 换轨迹，首帧 SSIM 0.344）；anchor vs sgm **逐位不同**（预期，σ 网格不同）但**同场景**（首帧 SSIM 0.952）。
 - LFM3-VL 复核：p28 两臂「同一场景，无缺陷」✅。
+
+## 第 20 轮续作（2026-11-21 19:10 · P29 RelayVSR 2× 真机判决）
+
+| # | 知识 | 来源 | 日期 | 对既有结论的影响 |
+|---|---|---|---|---|
+| **K102** | ★★★ **P29 判决：RelayVSR 2× 真机跑通**（832×480→1664×960，124 帧仅 14.6 s = 0.12 s/帧，峰值规划 7153 MB），「480p 生成 + 2×→960p」路线双成立（超分时间 ≈ 生成成本 4%） | 本轮 P29 实验 | 2026-11-21 | **P22 判决在 2× 档同构成立**：纹理量 +184%、纹理/噪点比 130.2（结构化）、代价 frame diff +18.3%；但 2× 是「更温和、可控」档（对照 FlashVSR 4× 的 +1160%/+37.4%） |
+| **K103** | ★★★ **RelayVSR stage 的 `autotune:false` 真实生效**：同 config 复跑视频流 framemd5 逐位相同 + 音频 md5 相同 → 与 FlashVSR 家族（惰性、指标漂移判据）不同族 | P29 B vs B-r2 | 2026-11-21 | **修订 13.5**：超分家族复现性判据分叉——FlashVSR 用指标漂移，RelayVSR 可用逐位 |
+| **K104** | ★★ **15 帧周期脉动初测**：B 臂帧间 HF 变化按 (k mod 15) 分组 peak_excess=1.43（关键帧后第一帧差最高）但 f_ratio 0.72 未过判据线 → 疑似接缝脉动待复测；A 臂无周期结构 | P29 周期检验 | 2026-11-21 | 社区 fervorcreativeai 预言初步有信号；判据线需更多素材定标 |
+| **K105** | ★ **RelayVSR 权重摆放坑**：ModelScope `Comfy-Org/RelayVSR-x2` 空仓库；真身在 `Comfy-Org/RelayVSR` 的 `diffusion_models/`+`vae/` 子目录（API 列子目录要带 `Root=`）；`hf_dir` 指本地目录按 ComfyUI 布局摆放可被识别 | ModelScope API + stage 源码 | 2026-11-21 | 技能 relayvsr-flashvsr.md 已有对应节，本轮实测补验证 |

@@ -1,0 +1,140 @@
+{
+ "experiment": "P29 RelayVSR-x2 int8 token 2x (832x480 -> 1664x960, 124f)",
+ "arms": {
+  "A-lanczos": {
+   "framemd5": "2342091c0d139776e3692966551fb766",
+   "audio_md5": "ab0de395160e685d6a4c15c01db20e51",
+   "frames": 124,
+   "detail": {
+    "path": "/Users/minichen/AI-Models/vpipe-workspace/out/p29/p29-armA-lanczos-1664x960.mp4",
+    "frames": 124,
+    "size": "1664x960",
+    "detail_raw": 38.3,
+    "detail_med": 33.0,
+    "grain": 0.414,
+    "snr_texture": 79.6,
+    "med_over_raw": 0.863
+   },
+   "hf": {
+    "file": "p29-armA-lanczos-1664x960.mp4",
+    "path": "/Users/minichen/AI-Models/vpipe-workspace/out/p29/p29-armA-lanczos-1664x960.mp4",
+    "frames": 124,
+    "decode_gray": "384x222",
+    "hf_jitter": 0.685863,
+    "frame_diff": 0.025329,
+    "sharpness": 701.66,
+    "static_hf_jitter": 0.400973,
+    "static_pixel_ratio": 0.644
+   },
+   "period15": {
+    "period": 15,
+    "grand": 0.025250679109154676,
+    "peak_excess": 0.6572,
+    "f_ratio": 0.1448,
+    "group_means": [
+     0.02911,
+     0.03247,
+     0.02007,
+     0.04185,
+     0.01276,
+     0.01913,
+     0.01338,
+     0.02947,
+     0.02628,
+     0.02412,
+     0.02619,
+     0.02317,
+     0.01923,
+     0.02536,
+     0.03384
+    ]
+   }
+  },
+  "B-relayvsr": {
+   "framemd5": "a91297fc30bfcf68bae4a088ee868582",
+   "audio_md5": "013e16e567024ced3513e83d4cc64d21",
+   "frames": 124,
+   "detail": {
+    "path": "/Users/minichen/AI-Models/vpipe-workspace/out/p29-relayvsr-x2.mp4",
+    "frames": 124,
+    "size": "1664x960",
+    "detail_raw": 120.9,
+    "detail_med": 93.6,
+    "grain": 0.719,
+    "snr_texture": 130.2,
+    "med_over_raw": 0.774
+   },
+   "hf": {
+    "file": "p29-relayvsr-x2.mp4",
+    "path": "/Users/minichen/AI-Models/vpipe-workspace/out/p29-relayvsr-x2.mp4",
+    "frames": 124,
+    "decode_gray": "384x222",
+    "hf_jitter": 0.750305,
+    "frame_diff": 0.029963,
+    "sharpness": 1212.28,
+    "static_hf_jitter": 0.449283,
+    "static_pixel_ratio": 0.6319
+   },
+   "period15": {
+    "period": 15,
+    "grand": 0.09034265347612583,
+    "peak_excess": 1.4287,
+    "f_ratio": 0.7226,
+    "group_means": [
+     0.21942,
+     0.08942,
+     0.21098,
+     0.10603,
+     0.07819,
+     0.08082,
+     0.07573,
+     0.03544,
+     0.03262,
+     0.05839,
+     0.06218,
+     0.0696,
+     0.04455,
+     0.05334,
+     0.12151
+    ]
+   }
+  },
+  "B-r2": {
+   "framemd5": "a91297fc30bfcf68bae4a088ee868582",
+   "audio_md5": "013e16e567024ced3513e83d4cc64d21",
+   "frames": 124,
+   "hf": {
+    "file": "p29-relayvsr-x2-r2.mp4",
+    "path": "/Users/minichen/AI-Models/vpipe-workspace/out/p29-relayvsr-x2-r2.mp4",
+    "frames": 124,
+    "decode_gray": "384x222",
+    "hf_jitter": 0.750305,
+    "frame_diff": 0.029963,
+    "sharpness": 1212.28,
+    "static_hf_jitter": 0.449283,
+    "static_pixel_ratio": 0.6319
+   }
+  }
+ },
+ "pairs": [
+  {
+   "pair": "A-lanczos vs B-relayvsr",
+   "a": "p29-armA-lanczos-1664x960.mp4",
+   "b": "p29-relayvsr-x2.mp4",
+   "frames_a": 124,
+   "frames_b": 124,
+   "framemd5_a": "2342091c0d139776e3692966551fb766",
+   "framemd5_b": "a91297fc30bfcf68bae4a088ee868582",
+   "framemd5_identical": false,
+   "audio_md5_a": "ab0de395160e685d6a4c15c01db20e51",
+   "audio_md5_b": "013e16e567024ced3513e83d4cc64d21",
+   "audio_identical": false,
+   "ssim_stream_口径A": 0.940022,
+   "psnr_stream": "32.957783",
+   "ssim_png_口径B": 0.874733,
+   "bytes_a": 7492698,
+   "bytes_b": 15784875
+  }
+ ],
+ "determinism_framemd5_identical": true
+}
