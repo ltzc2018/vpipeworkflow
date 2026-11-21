@@ -450,3 +450,15 @@ RelayVSR 给出了**第三条路**：
 14. **评价 AI 超分不能只看 SSIM**：本轮 SSIM 判它是「更差」，而纹理量判它是「好 12.6×」——
     **两个口径必须同时报**（第 3 轮坑「细节能量会把噪点当细节」的姊妹坑：
     **SSIM 会把「编造的细节」判成「失真」**）。
+
+---
+
+## 13. 原生 2× 与 ComfyUI int8 档（2026-11-21 第 20 轮追加，来源：上游 commit `d72c22f` 2026-11-20 + `docs/RELAYVSR.md`）
+
+- **`relayvsr-upscale` 从 4× 专用变成 2×/4× 双模**：`hf_dir` 接受 `Comfy-Org/RelayVSR-x2` / `Comfy-Org/RelayVSR-x4` / 目录 / 单文件（文件自带 scale 声明）；`scale: 2|4|0`（0=按文件名）。2× 权重本体 = `lightx2v/RelayVSR_X2`（HF），vpipe 侧推荐 ComfyUI 的 int8 repack。
+- **体积账（逐文件口径）**：ComfyUI int8 每档 **5.3 GB 磁盘 / 4.3 GB 内存**；原生 release 8.4 GB 内存 / 10.2 GB 磁盘。
+- **★★ working set 按「输出」计，不按倍数**：2× 的 latent 是输出的 1/16（4× 是 1/8）→ 同一输出尺寸下两档订同样的 ring。**960×540→1920×1080（2×）只需 480×270 行的工作集**，int8 档总计 **7.8 GB** → 24 GB Mac 舒适（对比 4×→4K 的 21.8 GB 紧）。
+- **几何契约变化**：2× 的 pad 倍数是 **16**（4× 是 8）；输出宽高须为 scale 的倍数。
+- **issue #59 已实现但仍 open**（0 评论）—— 上游不改状态，引用功能时别看 issue 状态。
+- **官方流水线**：`prepare-relayvsr-x2.vpipeline` + `relayvsr-upscale-x2.vpipeline`（ComfyUI「RelayVSR 2x」模板同款接线）。
+- **待验证（P29 候选）**：本机 24 GB 实测 2×→1080p 的 SSIM/纹理量双口径（对照 P22 的「细节生成器」判决是否在 2× 档同样成立）。

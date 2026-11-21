@@ -233,3 +233,25 @@ P18 的判决从「本机单点观察」升级为「**家族级共识**」。
 - 本实验室：`dmd` 的 HF jitter 仍是静态地板（0.0010）的 **94×**；
 - 社区那条也没说「完全消除」，只说「明显改善」。
 → **纪律不变（第 4 轮坑 12.4）：任何「效应量」都要同时给出地板值与倍数。**
+
+## 8. PDD (Alibaba PAI) 采样规约 (2026-11-18 23:50 增量)
+来源: SDNext / GitCode
+
+- **采样器必须固定为 `euler`**。
+- **CFG (Guidance Scale) 必须固定为 `1.0`** (Guidance Distilled)。
+- **Shift 锁定**: 8步 PDD LoRA 必须锁定在训练值 (12.0 / 3.0)。
+- **注意**: 任何偏离上述参数的尝试都会导致严重的画质劣化或静默失效。
+
+---
+
+## 8. scheduler 端口与 `lcm`（2026-11-21 第 20 轮追加，来源：上游 commit `d72c22f` + P28 实验）
+
+- **`lcm` 加入 H3 采样器映射**：`lcm` ≡ `dmd` ≡ `dmd_student` ≡ `turbo`（都走重注噪步 kRenoise）。上游文档原话确认与 ComfyUI 的 `lcm` 采样器同款 → **P18 的 `dmd` 判决（HF jitter −12.8%）可直接翻译 ComfyUI 社区配方的 `lcm`**。
+- **scheduler-select 新增四类型**：`normal` / `sgm_uniform` / `beta`（`beta_alpha`/`beta_beta` 默认 0.6/0.6；RES4LYF beta57 = 0.5/0.7）/ `linear_quadratic`。对 H3：`type=simple` 即模型默认网格；其余按 model config 的 **`schedule_shift`**（新键，未设则 `video_shift`）算，**scheduler stage 自己的 shift 不被读**。
+- **`generate-video` iport 4（scheduler）对 H3 从惰性变真读**。优先级：HyperFlow/Pika contract < `sigmas`/scheduler 网格。
+- **P28 判决（22 帧静态夹具 / autotune:false / seed 42 / d72c22f）**：
+  - sgm_uniform（shift 6, 8 步）σ 回显 `[1, 0.9769, 0.9478, 0.9099, 0.8586, 0.7853, 0.6719, 0.4732, 0]`；音频 `[1, 0.9548, 0.9007, 0.8347, 0.7522, 0.6465, 0.5059, 0.3099, 0]`。
+  - vs 默认网格：HF jitter **−3.77%** / sharpness +1.33% → 不作为纹理沸腾解法（`dmd` 仍是唯一超漂移带解）。
+  - **首帧 SSIM 0.952 = 同场景** → **修订「换 σ 网格 = 换轨迹」的强度**：粗换（er_sde 表，0.604）换场景；细换（8 点同族网格）同场景微扰。σ 轨迹差是连续谱。
+  - **跨 build 陷阱**：33cda00 配方跑在 d72c22f 上与历史锚点**逐位不同**（首帧 SSIM 0.344）→ 锚点臂只在同 build 内有效；跨 build 逐位比较全部作废、漂移基线需重测。d72c22f 自身 `autotune:false` 下 bit-for-bit 成立（复跑逐位相同）。
+  - **echo 行为变化**：d72c22f 默认 denoise 不打印 `h3-denoise:` 行（接 scheduler/sampler 端口才打）。
