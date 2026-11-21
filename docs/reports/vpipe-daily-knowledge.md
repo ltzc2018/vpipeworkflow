@@ -1993,3 +1993,29 @@ HF `Comfy-Org/MiniMax-H3-Image` 讨论区断言：ComfyUI 的 **`lcm`**（每步
 | **K108** | ★★ RelayVSR 逐位确定性在第二素材（猫片 25f）复证：r1 ≡ r2 framemd5 相同；0.05 s/帧（1664×960 时 0.12 s/帧） | P32 B-r2 | 2026-11-21 | K103 不再是单素材孤证 |
 | **K109** | ★★ **15 帧周期检验统计功效：25 帧素材无效**（2 个 keyframe 边界，peak 0.058 / f_ratio 0.0 无信号）；P33 定标必须 ≥45 帧（P29 124 帧 peak 1.43 是更接近真实的信号） | P32 周期检验 | 2026-11-21 | **修订 P33 前置条件** |
 | **K110** | ★ LFM3-VL「编造纹理」误报第三次再现（把窗反射差异说成 AI 编造）→ 编造裁决必须用纹理量双口径，VLM 只作粗判 | P32 LFM3-VL Q3 | 2026-11-21 | 印证已知缺陷①，无新结论 |
+
+## 第 21 轮（2026-11-22 01:00 · 00:30 自动任务）—— 上游 d347808 + h3.c 对比表进 README 门面
+
+### 本轮检索范围
+
+GitHub API（commits / releases / issues / d347808 / d72c22f / 7703614 全文）+ tgo-app-dev 全仓库 + 上游 README（h3.c 对比节全文）+ docs/MINIMAX-H3.md（99 KB，部分）+ WebSearch ×3（h3.c 对比、HyperFlow Flash、中文社区）。issues/PR/release/ModelScope 均无变化。
+
+### 逐条新增知识
+
+| # | 知识 | 来源 | 日期 | 对既有结论的影响 |
+|---|---|---|---|---|
+| **K111** | ★★ **上游 HEAD 前进到 `d347808`**（2026-11-21 05:59 UTC，19 文件）：DeepSeek-V4.1 GGUF 获视觉输入（vision tower 三文件：config + ViT/aligner 970 MB + marker/embedding 1.3 GB，放 GGUF 旁 `vision/` 或用 `vision_model` 指目录）；图像 resize 换成 Pillow 精确 bicubic（整数实现，可跨核并行）；矩阵核路径 bf16 RMS 距离 3.5–4.5%。 | GitHub API commit d347808 | 2026-11-21 | 纯 LLM/VLM 侧，视频线零变化；本机 build 落后基准更新为 d347808 |
+| **K112** | ★★★ **h3.c 对比表进入 README 门面**（「Flagship workloads / performance」主章节 + YouTube 对比视频）：960×544/124f/6 步 bf16 同 workload 同 seed 三机全胜——M4 Pro 17m43s vs 23m9s；M5 Air 16GB（冰袋单样本）13m7s vs 16m22s；**M5 Pro 24GB 5m29s vs 7m11s（快 24%，本机同档）**。 | 上游 README @ d347808 | 2026-11-21 | 本机实测 480p/124f ≈ 6m38s（Pika-Flex 档）与官方 5m29s 同量级（工作负载不同族：官方 6 步 bf16 无适配器）。**与本机 vpipe 恒快于 h3.c 的判断一致（第 14 轮 K57 印证+扩展）** |
+| **K113** | ★★ **h3.c 对比表历史上有过一次口径刷新**（考古 commit 7703614，2026-08-19：旧值 M4 Pro 21m50s / Air 12m15s，无 M5 Pro 行）→ **引用 h3.c 数字必须写 commit/日期**。 | GitHub commit 7703614 | 2026-08-19 | 方法论：上游性能数字是活的，禁止无版本引用 |
+| **K114** | ★★ **h3.c 架构取舍确认**：16/24 GB 机器上 h3.c 需 `--ssd-streaming`（bf16），其 int8 引擎需 transformer 全驻留 → h3.c int8 是纯显存路线，vpipe 是统一内存流式路线；两者「int8」不是同一回事。 | 上游 README | 2026-11-21 | 解释了为何跨运行时比较只能用 bf16 口径；对第 14 轮 K57 的机制补充 |
+| **K115** | ★ **issue 全景复查**：#59（RelayVSR 2×）仍 open/0 评论——**上游在 d72c22f 已实现其诉求但未关闭 issue**（第 20 轮 K91 佐证强化：issue 状态维护明显滞后于代码）；其余 issue/PR/release（仍 v0.1.110）/ModelScope 均无变化。 | GitHub API issues?state=all | 2026-11-22 | #55–59 零回复结论维持；新增观察「issue 关闭滞后」 |
+| **K116** | ★ **HyperFlow H3 Flash 社区面复验**（第 1 轮 K12 已记）：多源确认 13.7B/13.9B 剪枝权重、Q4_K_M 9.1 GB、ComfyUI 路线、授权排除美欧英韩 → 与 vpipe「全量 33B + 蒸馏适配器」不同族。 | webdiga/specialinfluencers/kun.net/163.com | 2026-11-08~11 | 无新事实；固化「权重压缩 vs 步数蒸馏」区分纪律 |
+
+### 印证 / 冲突
+
+- 印证：第 14 轮 K57（VPIPE 快 21–25%）在新表上维持；第 19 轮 K84/K86（M5 Pro 边际收益、I/O 受限）与官方 5m29s 同量级。
+- 冲突：无。docs/MINIMAX-H3.md 的逐相位分解本轮未逐段核对（99 KB 截断），引用需注明。
+
+### 本轮实验
+
+无实验，仅知识同步。理由：搜到的新增量为 LLM 侧（不可/无需本地复现）与性能口径（官方已实测）；看板高优先级 P30（d72c22f 漂移基线重测）属重实验，且 00:30 时段按惯例留给知识同步轮（P30 建议留 02:30/04:30 时段）。

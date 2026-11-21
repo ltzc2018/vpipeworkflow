@@ -4994,3 +4994,51 @@ P22 的 768p 真值链（lanczos 降采样到 640×384）同分辨率对比—�
 1. **sed 对中文路径报 "No such file"**（BSD sed + 中文目录）→ 改流水线配置一律用 python3 json 读写。
 2. **P32 的 r2 复跑直接改 output_url 再 --launch 即可**（无需重生成整条流水线）；跑完记得把
    流水线恢复 r1 路径，否则下次 runner 幂等重生成会覆盖——生成器是唯一真源。
+
+### 18.23 2026-11-22 01:00 —— 第 21 轮：上游 d347808（LLM/VLM 侧推进）+ h3.c 对比表进 README 门面（本机同档官方口径首次落表）
+
+#### 18.23.1 本轮检索范围与来源清单
+
+| # | 来源 | 方式 | 日期 | 结果 |
+|---|---|---|---|---|
+| 1 | GitHub API · commits | `commits?per_page=15` | 2026-11-22 | HEAD `d347808`（2026-11-21 05:59），新增 1 commit |
+| 2 | GitHub API · d347808 全文 | commit detail | 2026-11-22 | 19 文件，DeepSeek-V4.1 GGUF vision tower |
+| 3 | GitHub API · releases | `releases?per_page=5` | 2026-11-22 | 仍 v0.1.110（2026-11-01），零新增 |
+| 4 | GitHub API · issues+PR | `issues?state=all&sort=updated` | 2026-11-22 | 无状态变化；#59 仍 open/0 评论 |
+| 5 | 上游 README | WebFetch（h3.c 对比节全文） | 2026-11-22 | 新增「Flagship workloads / performance」章节 |
+| 6 | docs/MINIMAX-H3.md | WebFetch（99 KB，部分） | 2026-11-22 | 目录确认含 Against h3.c；正文未逐段核对 |
+| 7 | tgo-app-dev 全仓库 | `users/tgo-app-dev/repos` | 2026-11-22 | valtz 更新至 2026-11-17，无新仓库 |
+| 8 | commit 考古 7703614 | commit detail | 2026-11-22 | 2026-08-19 旧版 h3.c 表（口径已刷新过） |
+| 9 | WebSearch ×3（h3.c / HyperFlow Flash / 中文社区） | WebSearch | 2026-11-22 | 社区面无 vpipe 相关新帖 |
+| 10 | ModelScope lightx2v | （第 20 轮核过，本轮 API 无变化信号） | — | 仍 31 文件 / 26 safetensors |
+
+#### 18.23.2 新增知识（详见台账第 21 轮 K111–K116）
+
+1. **K111 ★★**：HEAD → `d347808`（2026-11-21），DeepSeek-V4.1 GGUF 视觉输入 + Pillow 精确 bicubic resize。纯 LLM/VLM 侧。
+2. **K112 ★★★**：h3.c 对比表进 README 门面。960×544/124f/6 步 bf16 同 workload：**M5 Pro 24GB：VPIPE 5m29s vs h3.c 7m11s（快 24%）**——本机同档官方口径首次落表；本机实测 480p/124f 6m38s（Pika-Flex）同量级。
+3. **K113 ★★**：该表历史上刷新过一次（7703614，2026-08-19 旧口径无 M5 Pro 行）→ 引用必须带 commit/日期。
+4. **K114 ★★**：h3.c 在 16/24 GB 机需 `--ssd-streaming`（bf16），int8 需全驻留 → 与 vpipe 统一内存流式是两种架构；跨运行时只能比 bf16 口径。
+5. **K115 ★**：#59 上游已实现但未关 issue（状态维护滞后）；其余 issue/release/ModelScope 无变化。
+6. **K116 ★**：HyperFlow H3 Flash 社区面复验，无新事实。
+
+#### 18.23.3 与既有结论的印证 / 冲突
+
+- **印证**：第 14 轮 18.14（VPIPE 快 21–25%）在新表三机全部维持；第 19 轮 18.19（M5 Pro 性能定位）与官方 5m29s 同量级。
+- **冲突**：无。
+
+#### 18.23.4 本轮实验
+
+**无实验，仅知识同步。** 理由：新增量为 LLM 侧能力与官方性能口径（均无需本地复现）；看板高优先级 P30（d72c22f 漂移基线重测）为重实验，留待 02:30/04:30 时段执行。
+
+#### 18.23.5 对技能包 / 脚本 / 流水线的修改
+
+| 文件 | 修改 |
+|---|---|
+| `vpipe-model-prepare/references/vpipe-能力与速度总表.md` | 追加第 8 节（h3.c 对比基准全表）与第 9 节（LLM/VLM 侧动态） |
+| `vpipe-model-prepare/references/sampler-spec.md` | 追加第 9 节（README 采样契约口径 + 7703614 考古） |
+| `vpipe-model-prepare/references/h3-ecosystem-map.md` | 追加补充节（h3.c 官方承认位 + 权重压缩 vs 步数蒸馏区分纪律） |
+
+#### 18.23.6 本轮踩的坑与结论
+
+1. **`curl raw.githubusercontent.com` 在本轮沙箱下多次 exit 35（SSL connect error）**，重试无效 → WebFetch 直接拉 GitHub blob 页可行但 99 KB 文档会截断。**纪律**：大文档提取定向小节时优先 WebFetch + 明确 prompt；curl 失败时不要无限重试。
+2. docs/MINIMAX-H3.md 的「Against h3.c」逐相位分解未核对完整 → 引用该节时注明「部分核对」。
