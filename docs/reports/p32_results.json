@@ -1,0 +1,176 @@
+{
+ "experiment": "P32 RelayVSR-x2 ground-truth comparison (320x192 -> 640x384, 25f)",
+ "arms": {
+  "A-lanczos": {
+   "framemd5": "b66e3ec32d6420852f6f68ba33fb4f08",
+   "audio_md5": "9da12ff2a6a103e0bb2b71a5c8ad1962",
+   "frames": 25,
+   "detail": {
+    "path": "/Users/minichen/AI-Models/vpipe-workspace/out/p32/p32-armA-lanczos-640x384.mp4",
+    "frames": 25,
+    "size": "640x384",
+    "detail_raw": 110.0,
+    "detail_med": 98.5,
+    "grain": 0.814,
+    "snr_texture": 121.0,
+    "med_over_raw": 0.895
+   },
+   "hf": {
+    "file": "p32-armA-lanczos-640x384.mp4",
+    "path": "/Users/minichen/AI-Models/vpipe-workspace/out/p32/p32-armA-lanczos-640x384.mp4",
+    "frames": 25,
+    "decode_gray": "384x230",
+    "hf_jitter": 0.304533,
+    "frame_diff": 0.010836,
+    "sharpness": 456.55,
+    "static_hf_jitter": 0.197662,
+    "static_pixel_ratio": 0.8627
+   },
+   "period15": {
+    "period": 15,
+    "grand": 1.7960681915283203,
+    "peak_excess": 0.0996,
+    "f_ratio": 0.0,
+    "group_means": [
+     1.975,
+     1.61714
+    ]
+   }
+  },
+  "B-relayvsr": {
+   "framemd5": "4caa7c43ee2b58f6400b36c167959f41",
+   "audio_md5": "cc7a3fda8756a5afed8d05851c8746a4",
+   "frames": 25,
+   "detail": {
+    "path": "/Users/minichen/AI-Models/vpipe-workspace/out/p32/p32-relayvsr-x2-640x384.mp4",
+    "frames": 25,
+    "size": "640x384",
+    "detail_raw": 229.9,
+    "detail_med": 175.7,
+    "grain": 1.392,
+    "snr_texture": 126.2,
+    "med_over_raw": 0.764
+   },
+   "hf": {
+    "file": "p32-relayvsr-x2-640x384.mp4",
+    "path": "/Users/minichen/AI-Models/vpipe-workspace/out/p32/p32-relayvsr-x2-640x384.mp4",
+    "frames": 25,
+    "decode_gray": "384x230",
+    "hf_jitter": 0.303947,
+    "frame_diff": 0.012316,
+    "sharpness": 730.65,
+    "static_hf_jitter": 0.196268,
+    "static_pixel_ratio": 0.8647
+   },
+   "period15": {
+    "period": 15,
+    "grand": 1.9402713775634766,
+    "peak_excess": 0.0581,
+    "f_ratio": 0.0,
+    "group_means": [
+     2.05304,
+     1.8275
+    ]
+   }
+  },
+  "B-r2": {
+   "framemd5": "4caa7c43ee2b58f6400b36c167959f41",
+   "audio_md5": "cc7a3fda8756a5afed8d05851c8746a4",
+   "frames": 25
+  },
+  "真值": {
+   "framemd5": "21c80cd4185d7e01073f80cf83386e10",
+   "audio_md5": null,
+   "frames": 25,
+   "detail": {
+    "path": "/Users/minichen/AI-Models/vpipe-workspace/out/p32/p32-ref-640x384.mkv",
+    "frames": 25,
+    "size": "640x384",
+    "detail_raw": 500.3,
+    "detail_med": 223.7,
+    "grain": 1.498,
+    "snr_texture": 149.4,
+    "med_over_raw": 0.447
+   },
+   "hf": {
+    "file": "p32-ref-640x384.mkv",
+    "path": "/Users/minichen/AI-Models/vpipe-workspace/out/p32/p32-ref-640x384.mkv",
+    "frames": 25,
+    "decode_gray": "384x230",
+    "hf_jitter": 0.323384,
+    "frame_diff": 0.011513,
+    "sharpness": 802.54,
+    "static_hf_jitter": 0.218771,
+    "static_pixel_ratio": 0.8618
+   }
+  }
+ },
+ "pairs": [
+  {
+   "pair": "A-lanczos vs 真值",
+   "a": "p32-armA-lanczos-640x384.mp4",
+   "b": "p32-ref-640x384.mkv",
+   "frames_a": 25,
+   "frames_b": 25,
+   "framemd5_a": "b66e3ec32d6420852f6f68ba33fb4f08",
+   "framemd5_b": "21c80cd4185d7e01073f80cf83386e10",
+   "framemd5_identical": false,
+   "audio_md5_a": "9da12ff2a6a103e0bb2b71a5c8ad1962",
+   "audio_md5_b": null,
+   "audio_identical": false,
+   "ssim_stream_口径A": 0.962488,
+   "psnr_stream": "32.994632",
+   "ssim_png_口径B": 0.944039,
+   "bytes_a": 267674,
+   "bytes_b": 311387
+  },
+  {
+   "pair": "B-relayvsr vs 真值",
+   "a": "p32-relayvsr-x2-640x384.mp4",
+   "b": "p32-ref-640x384.mkv",
+   "frames_a": 25,
+   "frames_b": 25,
+   "framemd5_a": "4caa7c43ee2b58f6400b36c167959f41",
+   "framemd5_b": "21c80cd4185d7e01073f80cf83386e10",
+   "framemd5_identical": false,
+   "audio_md5_a": "cc7a3fda8756a5afed8d05851c8746a4",
+   "audio_md5_b": null,
+   "audio_identical": false,
+   "ssim_stream_口径A": 0.901536,
+   "psnr_stream": "29.776594",
+   "ssim_png_口径B": 0.800706,
+   "bytes_a": 2632593,
+   "bytes_b": 311387
+  },
+  {
+   "pair": "A vs B",
+   "a": "p32-armA-lanczos-640x384.mp4",
+   "b": "p32-relayvsr-x2-640x384.mp4",
+   "frames_a": 25,
+   "frames_b": 25,
+   "framemd5_a": "b66e3ec32d6420852f6f68ba33fb4f08",
+   "framemd5_b": "4caa7c43ee2b58f6400b36c167959f41",
+   "framemd5_identical": false,
+   "audio_md5_a": "9da12ff2a6a103e0bb2b71a5c8ad1962",
+   "audio_md5_b": "cc7a3fda8756a5afed8d05851c8746a4",
+   "audio_identical": false,
+   "ssim_stream_口径A": 0.925157,
+   "psnr_stream": "32.292197",
+   "ssim_png_口径B": 0.825741,
+   "bytes_a": 267674,
+   "bytes_b": 2632593
+  }
+ ],
+ "determinism_framemd5_identical": true,
+ "effect": {
+  "B_vs_A_detail_med_pct": 78.38,
+  "B_over_REF_detail_med": 0.785,
+  "B_vs_A_grain_pct": 71.01,
+  "B_over_REF_grain": 0.929,
+  "B_vs_A_snr_texture_pct": 4.3,
+  "B_over_REF_snr_texture": 0.845,
+  "B_vs_A_hf_jitter_pct": -0.19,
+  "B_vs_A_frame_diff_pct": 13.66,
+  "B_vs_A_sharpness_pct": 60.04
+ }
+}
