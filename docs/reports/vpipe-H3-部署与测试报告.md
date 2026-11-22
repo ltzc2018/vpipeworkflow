@@ -5042,3 +5042,48 @@ P22 的 768p 真值链（lanczos 降采样到 640×384）同分辨率对比—�
 
 1. **`curl raw.githubusercontent.com` 在本轮沙箱下多次 exit 35（SSL connect error）**，重试无效 → WebFetch 直接拉 GitHub blob 页可行但 99 KB 文档会截断。**纪律**：大文档提取定向小节时优先 WebFetch + 明确 prompt；curl 失败时不要无限重试。
 2. docs/MINIMAX-H3.md 的「Against h3.c」逐相位分解未核对完整 → 引用该节时注明「部分核对」。
+
+### 18.24 2026-11-22 10:38 —— 第 22 轮：★★★ pi-H3 权重按承诺窗口发布（2/4 步 + 免 VAE 解码器）+ 上游 vpipe 完全静默（双槽位精简后手动验证轮）
+
+#### 18.24.1 检索范围与来源清单
+
+| # | 来源 | 方式 | 结果 |
+|---|---|---|---|
+| 1 | GitHub `tgo-app-dev/vpipe` commits | API | HEAD 仍 `d347808`（11-21 05:59），pushed_at 11-21 10:37 UTC，**零新增 commit** |
+| 2 | 同上 releases | API | 仍 v0.1.110（11-01），零新增 |
+| 3 | 同上 issues + **PR search** | API ×2 | issues 无状态变化（#59 仍 open/0 评论）；**PR 总数 = 0**（search API 复核） |
+| 4 | HF `Lakonik/pi-H3` 模型页 | WebFetch 全文 | **权重已发布**：4 适配器（2/4 步 × DWD/VAE）+ INT8 ConvRot（仅 ComfyUI）；License = H3 社区许可（衍生品）；768×1344/243f（17n+5） |
+| 5 | `Lakonik/LakonLab` commits | API | v0.3.0 发布（c08dad1，11-21）+ 引用文献 commit（2ee2b33） |
+| 6 | `ComfyUI-piFlow` | WebFetch README | v1.4.0（11-21）加 pi-H3 节点/工作流；作者警示 Comfy 质量劣于 diffusers（疑原生 Sol-Attn 妥协） |
+| 7 | ModelScope `lightx2v/Minimax-h3-Turbo` | API | 仍 31 文件 / 26 safetensors，最新 11-16/17，无变化 |
+| 8 | WebSearch ×4（vpipe 社区 / H3 近 5 日 / pi-H3 权重 / 中文社区） | WebSearch | Suno H3Move（11-20 报道）+ H3 生态规模量化 + vpipe 社区面无新帖 |
+
+#### 18.24.2 新增知识（详见台账第 22 轮 K117–K122）
+
+1. **K117 ★★★ pi-H3 权重已开源**（11-21，兑现「11-16~22」承诺窗口）：2 步 / 4 步两条蒸馏路线，**DWD（Decoding Without a Decoder）**在最后一步直接预测像素、整段跳过 VAE 解码器；官方推荐 DWD 档；帧数约束 17n+5；许可继承 H3 社区协议（地域限制照旧）。第 20 轮 K95 的「仅 demo」状态正式终结。
+2. **K118 ★★ ComfyUI-piFlow v1.4.0** 同日支持 pi-H3（要求 ComfyUI ≥ 0.45.0）；**作者本人警示 Comfy 工作流质量劣于 diffusers 管线**（首要嫌疑：Comfy 原生 Sol-Attn 与官方 Sol-H3 有差）→ 复现优先走 LakonLab v0.3 diffusers 路线。
+3. **K119 ★★ LakonLab v0.3.0 发布**，作者 3090 实测（2 步 INT8 免 VAE）：768p 5s=38.5s / 10s=97.6s / 15s=186s；480p 5s=15.5s。消费级卡首个 pi-H3 量化基准。
+4. **K120 ★★ Suno Visuals/H3Move 上线**（11-20）：H3 垂直应用（音乐视频/口型同步/15s）；**H3 开源 100 天衍生 1400+ 模型、HF 下载 1.4 亿次**——生态规模首次量化，官方合作矩阵新增此例。
+5. **K121 ★ 上游 vpipe 完全静默**：d347808 后无 commit、PR=0、release 不动、issue 不关（#59 已实现但 open 第 6 天）；**上游对 pi-H3 零迹象**（repo 内搜索 = 0）→ vpipe 接入 pi-H3 无时间表。
+6. **K122 ★ ModelScope lightx2v 基线维持**（31 文件/26 safetensors）；pi-H3 不在 lightx2v 体系，走 LakonLab 分发。
+
+#### 18.24.3 与既有结论的印证与冲突
+
+- **印证**：第 20 轮 K95 的承诺窗口如期兑现——「承诺日期型情报要设提醒复查」方法论再次有效（第 20 轮登记 → 本轮第 22 轮捕获，间隔 1 天）。
+- **口径警示**：pi-H3 全部数字为 NVIDIA（B200/H100/3090）口径，与第 14 轮 K57（本机 bf16 Apple Silicon 对比）不同族，禁止直接比。
+- **冲突**：无。
+
+#### 18.24.4 本轮实验
+
+无实验，仅知识同步。理由：pi-H3 属 ComfyUI/diffusers 生态（LakonLab v0.3 Python 栈），vpipe 无对应 stage（DWD 免 VAE 形态是 vpipe 现有架构没有的）；本机复现需另装 Python 依赖栈并做 24 GB 内存账（INT8 ConvRot 路径），超出本轮时间预算 → 已登记看板 **P34（待验证·低优先级）**。
+
+#### 18.24.5 对技能包·脚本·流水线的修改
+
+- 本轮无脚本/流水线修改（纯知识同步轮）。
+- 看板变更：新增第 22 轮行 + 待验证登记新增 P34。
+
+#### 18.24.6 本轮踩的坑与结论
+
+1. **HF API 直连仍被代理拦**（`curl huggingface.co/api` CONNECT 502）→ 第 6 轮 14.10 纪律再现：HF 侧结论必须走 WebFetch 页面路径，本轮以 WebFetch 模型页全文替代，成功拿到文件表与许可信息。
+2. **issues API 的 fields 参数不生效**（返回完整对象被 WebFetch 摘要掉）→ 改用 search API + 专用端点交叉复核，PR 总数以此确认为 0。
+3. **结论**：本轮为「双槽位精简（00:30 主跑 + 04:30 兜底）后首次执行」的验证轮，全程约 35 分钟（10:38 锁 → 预计 11:15 前收尾），远低于 90 分钟硬超时——**时间纪律压缩执行有效**。

@@ -2019,3 +2019,29 @@ GitHub API（commits / releases / issues / d347808 / d72c22f / 7703614 全文）
 ### 本轮实验
 
 无实验，仅知识同步。理由：搜到的新增量为 LLM 侧（不可/无需本地复现）与性能口径（官方已实测）；看板高优先级 P30（d72c22f 漂移基线重测）属重实验，且 00:30 时段按惯例留给知识同步轮（P30 建议留 02:30/04:30 时段）。
+
+## 第 22 轮（2026-11-22 10:38 · 手动触发，验证精简后双槽位配置）—— ★★★ pi-H3 权重按承诺窗口发布（2/4 步 + 免 VAE 解码器）+ Suno H3Move 生态事件
+
+### 本轮检索范围
+
+GitHub API（vpipe commits / releases / issues / PR search / repo meta；Lakonik/LakonLab commits）+ HF 模型页 Lakonik/pi-H3（WebFetch 全文）+ ComfyUI-piFlow changelog + ModelScope lightx2v 文件 API + WebSearch ×4（vpipe 社区 / MiniMax H3 近 5 日 / pi-H3 权重 / 中文社区）。
+
+### 逐条新增知识
+
+| # | 知识 | 来源 | 日期 | 对既有结论的影响 |
+|---|---|---|---|---|
+| **K117** | ★★★ **pi-H3 权重已发布**（HF `Lakonik/pi-H3`，2026-11-21 兑现「11-16~22」承诺）：4 个适配器（2/4 步 × DWD/VAE 两路，DWD 推荐）+ INT8 ConvRot 版（仅 ComfyUI）；License = minimax-h3-community-license（衍生品，继承 H3 社区许可地域限制）；基座为 MiniMaxAI/MiniMax-H3；768×1344/243 帧（17n+5 帧数约束）。 | HF 模型页 + teapawt@HanshengCh | 2026-11-21 | 第 20 轮 K95「pi-H3 仅 demo」状态更新为「已开源」。**与 vpipe 的蒸馏适配器同族但不同路线**：DWD 免 VAE 解码器是 vpipe 现有 any stage 都没有的形态 |
+| **K118** | ★★ **ComfyUI-piFlow v1.4.0（2026-11-21）** 增加 pi-H3 节点与工作流（2 步/4 步，含/不含 DWD），要求 ComfyUI ≥ v0.45.0；作者同时警示 **Comfy 工作流质量劣于 diffusers 管线**（疑 Comfy 原生 Sol-Attn 质量妥协）。 | ComfyUI-piFlow changelog + 作者推文 | 2026-11-21 | 若本机走 ComfyUI 复现需注意质量风险；diffusers + LakonLab v0.3 是官方推荐路线（本机 24 GB 需 INT8/FP8 路径核算） |
+| **K119** | ★★ **LakonLab v0.3.0 发布**（2026-11-21 commit c08dad1），pi-H3 官方推理代码落地；作者实测 3090（2 步 INT8 无 VAE）：768p 5s=38.5s / 10s=97.6s / 15s=186s；480p 5s=15.5s。 | LakonLab GitHub API commits | 2026-11-21 | 提供 pi-H3 在消费级卡的实测基准；本机 M5 Pro 无直接可比（Metal vs CUDA），但 2 步档速度量级可参照 |
+| **K120** | ★★ **Suno Visuals/H3Move 上线**（2026-11-20 报道）：基于开源 H3 的音乐视频垂直应用（口型同步/呼应歌曲结构/15s）；H3 开源 100 天社区衍生 **1400+ 模型、HF 下载 1.4 亿次**；官方合作矩阵再列：RunningHub 480P、fal H3Max、NVIDIA Open-H3-Regenerate-2K、Pika H3 Flex。 | 新浪财经/和讯/东财 | 2026-11-20 | 第 22 轮生态面新事实：「下载量最多的开源模型之一」+ 衍生规模首次量化；不影响本机技术路线 |
+| **K121** | ★ **上游 vpipe 完全静默**：HEAD 仍 `d347808`（11-21 05:59），pushed_at 11-21 10:37 UTC；release 仍 v0.1.110；**PR 总数 0**（search API 复核）；issues 无状态变化（#59 仍 open/0 评论）。 | GitHub API ×4 | 2026-11-22 | 第 21 轮结论维持；上游对 pi-H3 无任何迹象（search "pi-H3" = 0）→ vpipe 接入 pi-H3 无时间表 |
+| **K122** | ★ **ModelScope lightx2v/Minimax-h3-Turbo 无新增**：仍 31 文件 / 26 safetensors，最新 commit 2026-11-16/17（README 更新 726193a3）。 | ModelScope API | 2026-11-22 | 基线维持；pi-H3 适配器不在 lightx2v 体系内（走 LakonLab） |
+
+### 印证 / 冲突
+
+- 印证：第 20 轮 K95（pi-H3 承诺窗口）如期兑现——**「承诺日期型情报要设提醒复查」方法论有效**。
+- 冲突：无。pi-H3 的 B200/H100 数字均 NVIDIA 口径，与第 14 轮 K57（本机 bf16 对比）不冲突、不可直接比。
+
+### 本轮实验
+
+无实验，仅知识同步。理由：pi-H3 属 ComfyUI/diffusers 生态，vpipe 无接入路径，本地复现需另起 LakonLab v0.3（Python/diffusers）栈，超出本轮时间预算 → 登记看板「待验证」供后续轮评估优先级。
