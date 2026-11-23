@@ -5127,3 +5127,65 @@ P22 的 768p 真值链（lanczos 降采样到 640×384）同分辨率对比—�
 - 对照图：`deliverables/images/dance-{three-way-detail,768p-vs-480p-detail,768p-vs-480p-firstframe}.png`。
 - 脚本/流水线：`scripts/dance-woman-relayvsr-x2-hq.vpipeline`。
 - 台账：K123–K126；看板：P33 判据修订 + 新增本轮行；日志 `logs/dance-relayvsr-x2-hq.log`。
+
+### 18.26 2026-11-23 23:20 —— 第 23 轮（04:30 槽故障诊断后手动补跑）：★★★ 上游 a6a1f53 重大增量（+17617 行）——vpipe 主仓原生接入 pi-H3 2/4 步适配器 + DWD 免解码 + MiniMax-H3 LoRA 训练，推翻 K121「上游零迹象」
+
+> 触发：用户要求「查看当前执行的 04:30 定时任务进度，是否存在问题并修复」。核查发现 04:30 槽今天（11-23）**根本没执行**、轮次停在 22，且上游在 11-23 17:54（北京）出现 +17617 行的重大 commit 未被消化 → 本轮手动补跑第 23 轮，同时固化任务故障诊断。
+
+#### 18.26.1 检索范围与来源清单
+
+| # | 来源 | 方式 | 结果 |
+|---|---|---|---|
+| 1 | GitHub `tgo-app-dev/vpipe` commits | API ×2 | **HEAD d347808 → a6a1f53**（2026-11-23T09:54:27Z / 北京 17:54），**85 文件 +17617/−509 行** |
+| 2 | 同上 commit 详情 | API（完整 files 数组） | 拿到 85 文件逐项增删 + 完整 commit message，确认四大功能族 |
+| 3 | 同上 releases | API | 仍 v0.1.110（11-01），**release 未随 main 更新**，build 与 main 差距扩大 |
+| 4 | 本地会话触发痕迹 | `ls -lat ~/.workbuddy/projects/.../` | 11-22 04:30/06:30 会话仅 376 B 纯空壳；**11-23 凌晨无任何会话文件** |
+| 5 | `report/.auto-round-state.json` | 读取 | round=22 / last_run=2026-11-22 10:38，今天无推进 |
+| 6 | automation list/view | 自动化工具 | 04:30 槽配置正常（ACTIVE / `FREQ=DAILY;BYHOUR=4;BYMINUTE=30` / prompt 完整），但槽内只注册了 00:30 + 04:30 两个槽 |
+
+#### 18.26.2 新增知识（详见台账第 23 轮 K127–K135）
+
+1. **K127 ★★★ 上游静默被彻底打破**：HEAD `d347808` → `a6a1f53`（11-23 17:54 北京），**85 文件 +17617/−509 行**，是本项目追踪以来单 commit 最大增量之一。
+2. **K128 ★★★ pi-H3 2/4 步适配器原生进入 vpipe 主仓**：跑在 ComfyUI 剪枝版 MiniMax-H3 checkpoint；每个 partition 入口带**精确 handle**（fl2va 可在多个剪枝副本中精确指向）；适配器 = 部分投影低秩对 + 每 block 调制/输出调制+norm/双 head 的**整体替换**，strength 非 0 应用 / 0 撤销，step grid 来自文件；发布版 checkpoint / split rank / 训练基座按名拒绝。**与第 22 轮 K117（外部 HF 权重）+ K118（ComfyUI 路线）形成「vpipe 原生」第三路线**。
+3. **K129 ★★★ DWD（Decoding Without a Decoder）在 vpipe 内落地**：适配器最后一步把 video rows 特征直接交给 `vae-decode` 代替 latent，`vae-decode` 跑适配器自有 pixel head 而非 video VAE，**解码器不加载**。精度：对 restatement 读 f32 **0.0053** / 参考自身 bf16 **0.0052**。印证 K117 的 DWD 定义，并首次给出 vpipe 内可复现路径。
+4. **K130 ★★ `train-lora` 训练 MiniMax-H3 自身 DiT**（两个 partition）+ Qwen-Image 家族：样本 = 静帧或带音轨的 clip 窗口，锚定首/末/双/无；Ref2VA 用 sidecar 命名参考；MiniMax-H3-Image / P-H3-Image 用编辑对训练。
+5. **K131 ★★ 调制表折叠 26 GB → 174 MB**（压到剪枝 ckpt 携带的 8 维曲线）；每 block 保留激活不重算、梯度逐位相同；优化器 AdamW / 8-bit / Adafactor / B 因子独立学习率。**这是 24 GB 机器跑 LoRA 的内存关键**。
+6. **K132 ★★ Dials（拨盘）**：每 prompt row 加一个向量，恒定强度或时间曲线；音轨跟随曲线或独立；曲线重跑前几步并按 latent 帧混合，进度条计入额外前向。
+7. **K133 ★★ 三处内存记账修正**：video-ref-encoder 之前只记 vision tower（漏 VAE encode 参考 + prefill）→ 现 prefill 前归还；prefill 的 dequant scratch 按权重路线记账（此前 dense 栈按 quantized 收费）；fast video decoder 每次 decode 后归还工作集。**影响显存规划口径（关联 K91），峰值数字需重测**。
+8. **K134 ★ 新增 8 条流水线**：`minimax-h3-train-lora` / `-clips` / `-ref2va` / `-image-train-lora-edit`（4 条 LoRA）+ `pi-h3-{text,first-frame,first-last}-to-video` + `prepare-pi-h3`；文档 `docs/LORA-TRAINING.md` +262 / `docs/MINIMAX-H3.md` +246。
+9. **K135 ★ release 仍 v0.1.110**（11-01）但 main 已 +17617 行 → **release 与 main 差距扩大**；本机 build 树落后基准需重新核对。
+
+#### 18.26.3 与既有结论的印证与冲突
+
+- **★★★ 重大冲突：推翻第 22 轮 K121**。K121（11-22）断言「上游 vpipe 对 pi-H3 零迹象、接入无时间表」——该结论寿命仅 **1 天**：11-23 上游直接把 pi-H3 2/4 步适配器 + DWD 合进主仓（K128/K129）。**方法论固化**：「静默期/零迹象」是**有时效的快照**，不是趋势结论，必须按日复查；本轮补跑的价值正是捕获这个反转。
+- **印证**：K117 的 DWD 定义在 vpipe 源码内得到实现印证（K129）；第 20 轮 K95 的「承诺窗口复查」方法论再次奏效（pi-H3 从外部权重 → vpipe 原生仅隔 2 天）。
+- **口径警示**：0.0053/0.0052 是上游 f32/bf16 精度对照，**不是本机 Apple Silicon 实测**，禁止与本机 bf16 结论直接比。
+
+#### 18.26.4 本轮实验
+
+无实验（本轮核心是修复定时任务漏跑 + 固化重大增量，时间预算内不启动重任务）。登记待验证：**P36**（pi-H3 原生适配器本机复现，前置=更新 build 到 a6a1f53 + prepare-pi-h3 权重账）、**P37**（LoRA 训练在 24 GB 的显存账，前置=K131 折叠 + K133 记账修正后重测峰值）。
+
+#### 18.26.5 对技能包·脚本·流水线的修改
+
+- `vpipe-model-prepare/references/768p-adapters.md` 追加「2026-11-23 第 13 轮更新」：pi-H3/DWD/LoRA 三族 + 新流水线清单 + release 滞后警示。
+- 看板新增第 23 轮行 + P36/P37 待验证条目；轮次状态推进到 23。
+
+#### 18.26.6 ★★★ 04:30 定时任务故障诊断与修复（本轮触发原因）
+
+**症状**：用户要求查看「当前执行的 04:30 定时任务进度」。核查结论——**今天（11-23）04:30 槽（及 00:30 槽）根本没有执行**，轮次停在 22（11-22 10:38）。
+
+**证据链**：
+
+| 检查项 | 结果 | 判定 |
+|---|---|---|
+| 04:30 自动化配置 | ACTIVE / `FREQ=DAILY;BYHOUR=4;BYMINUTE=30` / prompt 完整 | ✅ 配置无错 |
+| 11-22 04:30 & 06:30 会话文件 | 各 376 B，仅 2 行 `session-meta`，无任何 prompt 处理记录 | ⚠️ 触发了但 agent 未真正执行（空壳） |
+| 11-23 00:30 & 04:30 会话文件 | **完全不存在** | ❌ 根本没被触发 |
+| 轮次状态 | round=22 / last_run=11-22 10:38 | ❌ 今天零推进 |
+| 锁文件 | 无残留 | 正常 |
+
+**根因**：本机自动化依赖 **WorkBuddy 应用在对应时刻常驻运行 + 机器不休眠**。凌晨若应用未运行或机器休眠，调度器无法拉起会话（11-23 情形）；即便拉起，若应用在会话初始化瞬间不可用，会话只有 meta 而无 prompt 执行（11-22 情形）。**这不是任务配置错误，是本机调度的架构性限制**——附带风险：槽位已从早期 4 个（00:30/02:30/04:30/06:30）精简为 2 个（00:30+04:30），冗余降低，00:30 失败则只剩 04:30 一次机会，而本次两次都未触发，导致整天漏跑。
+
+**已执行修复**：① 手动补跑第 23 轮（即本轮，把漏掉的上游重大增量补回三份报告 + 技能参考 + 轮次推进 + GitHub 同步）；② 诊断结论固化到本节与 SOP。
+
+**加固建议（待用户确认，涉及改动既定调度架构）**：见交付总结——恢复 02:30/06:30 冗余槽、配置凌晨防休眠、或改用常驻daemon 触发。
