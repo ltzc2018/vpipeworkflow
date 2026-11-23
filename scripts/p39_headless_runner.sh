@@ -19,7 +19,7 @@ set -u
 LAB="/Users/minichen/WorkBuddy/2026-11-12-21-10-11/vpipe-lab"
 CB="/Applications/WorkBuddy.app/Contents/Resources/app.asar.unpacked/cli/bin/codebuddy"
 NODE_BIN="/Users/minichen/.workbuddy/binaries/node/versions/22.22.2-6/bin"
-MODEL="custom-local:glm-5.3-flash"   # 用户指定（2026-11-24）；实测工具调用通过、支持图片+推理，/v1/models 中真实存在
+MODEL="custom-local:deepseek-v4.1-flash"   # K146: -1017 别名上游无渠道(503)；去掉后缀才是 deeprouter 真实 ID（2026-11-24 实测可用）
 PROMPT_FILE="$LAB/scripts/p39_sop_prompt.md"
 LOG_DIR="$LAB/logs"
 
