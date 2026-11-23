@@ -2196,3 +2196,34 @@ GitHub API（vpipe commits / releases / issues / PR search / repo meta；Lakonik
 - **诊断坑**：traces/19260 下两个 trace 混淆，把主对话 trace（Bash 全是我的诊断命令）当无头任务，误报"仍在推进"。正解：按 session-id `grep -rl` 关联到对应 trace，看其 trace_end 状态；workerPid 共享不能区分。
 - **修复**：runner 加完成信号看门狗——每 20s 查本 session trace 是否 trace_end，出现即 pkill CLI，20s 内释放锁；270×20s=90min 对齐硬超时。bash -n + 命中/pkill 自检通过。
 - **方法论**：无头 agent 失败判定唯一可靠信号 = 对应 session 的 trace_end 状态；CLI 进程存活 ≠ agent 存活（可僵死占连接）。
+
+## 第 26 轮（2026-11-24 06:30 · 上游第 2 日静默复核 + 权重仓库级量化 + 4 步口径冲突 + DWD 原论文定量 + P39 04:30 槽实证失败）
+
+> 本轮由 **P39 launchd + codebuddy 无头 CLI 实际执行**（session `p39-0630-20261124-063005`，模型 `custom-local:deepseek-v4.1-flash`）——这是 P39 方案首次跑完「检索→固化→报告→同步→release」的整条链路，与第 25 轮「主对话代跑」性质不同。
+
+| # | 知识 | 来源 | 日期 | 对既有结论的影响 |
+|---|---|---|---|---|
+| **K148** | ★ 上游第 2 日静默复核：HEAD 仍 `a6a1f53`（pushed_at 2026-11-23T11:20:51Z）；最新 release 仍 **v0.1.110（2026-11-01）→ 落后 main 22 天**；issue **14 条全开**（最新仍 #59，11-16，0 回复）；**PR = 0**；仓库 266 star / 27 fork / 36.9 MB。 | GitHub API（commits/releases/search/issues/pulls/repo） | 2026-11-24 | **零增量确认**，K135/K115 延续；release 落后从 21 天扩到 22 天 |
+| **K149** | ★★ **提交统计口径冲突**：主报告 18.26 记 a6a1f53 为「85 文件 +17617/−509」；本轮单 commit detail API 实测 **total 20003 / additions 19494 / deletions 509**（净 +18985），差 1877 行。本页 `files` 数组被 API 截断（至少 15 项，无法核对 85）。 | `commits/a6a1f53` detail API | 2026-11-24 | **不改历史正文**，仅登记差异；此后 a6a1f53 规模一律引 detail API（19494/509），「85 文件」改注为「files 数组计数、未经 detail 核对」 |
+| **K150** | ★ 权重仓库级指标首次量化：`lightx2v/Minimax-h3-Turbo` **downloads 1,793,937 / likes 1,235 / 存储 75.80 GB（70.6 GiB）/ 26 个 safetensors + 4 非权重 = 30 文件**；**lastModified 2026-11-16T09:19:46Z**。 | HF `/api/models/...` | 2026-11-24 | 自 11-16 起 **8 天无新权重** → **v1.3 即当前最终版，无 v1.4**；与「ModelScope 已收录、上游 catalog 未收」互证 |
+| **K151** | ★★ **4 步家族字节级同构**：`fl2v_turbo_4step` 的 v1.0 / v1.1 / v1.2 / v1.3（768p bf16）LFS size **全部 = 1,383,677,808 B**（sha256 各异）→ 版本迭代**只换权重值、不改张量结构与 rank**。fp8 版精确 **34,023,114,720 B（31.69 GiB）**，与 ModelScope 报的 32.4 GB 一致。 | HF `tree/main`（逐文件 LFS size） | 2026-11-24 | **工程可用**：v1.3 可直接占 v1.2 的槽位做 A/B，**无需改任何 shape/rank 假设**（P11c 前置条件成立） |
+| **K152** | ★★ **社区「4 步不够」口径**（minimax3.com，明确非官方）：两位 LoRA 作者均推荐 >4 步；larryvrh card 称 6–8 明显优于 4、>8 无增益反过锐；**ModelTC 官方示例工作流默认 8 步而非 4 步**。RTX 5080 单机：标准 1035 s → 仅 SageAttention 487 s → Turbo+Sage **193 s**（作者自述非受控基准）。核心指标是 **time-per-usable-clip**：5× 采样缩减端到端只兑现约 2×。 | minimax3.com/blog/minimax-h3-turbo-steps | 2026-08-15 | ★ **与本机冲突（见下）**：主报告 18.21「4 步画质不降」需**限定条件**。社区二手，待复现 |
+| **K153** | ★★ **DWD 原论文定量**（arXiv **2611.22287**，v1 2026-11-17 / v2 11-18，Hansheng Chen、Gordon Wetzstein、Leonidas Guibas 等，Stanford）：Wan 视频 **warping error −23%**（细节失真与闪烁下降）；ImageNet **FID 1.55 → 1.43**（pixel flow 新 SOTA）。方法 = **只微调最后几个 block + 线性 DWD head，原 denoising head 冻结**以锚定采样轨迹。 | arXiv abs 页 | 2026-11-17 | 印证 K117/K129（定义与 vpipe 内实现）；**新增 P36 成本预估依据**：训练侧仅末几 block，比全量微调轻得多 |
+| **K154** | ★★★ **P39 第 4 次实测（04:30 槽）失败 + 第 5 次（06:30 槽）成功**：04:30 launchd 准时触发、4 min 54 s 后 `Upstream response stream was interrupted`，**cb_exit 仍 = 0**、round 未推进、无 sync 日志 → runner 兜底正确删锁不推进。06:30 槽**同一二进制同一模型正常执行全链路**。**新诊断坑**：`ps` 中同命令行的子进程不是双开，是**看门狗子 shell**（sleep 20 循环）。 | 本机 `logs/p39-run-0430-*` / `p39-launchd.out.log` | 2026-11-24 | 坐实 K147 的「CLI 假成功」防御有效；失败属**传输层瞬时中断**而非系统性缺陷；K144「到点触发正常」再次成立 |
+
+### 印证 / 冲突
+
+- **★★ 冲突①（统计口径）**：a6a1f53 的 additions 有两个值——上轮记 17617、本轮 detail API 19494，差 1877 行。**不改写 18.26 历史正文**，只在此登记，后续统一用 detail API 口径（19494 / −509 / total 20003）。方法论同 K113：**上游数字必须带端点与日期**。
+- **★★ 冲突②（4 步画质）**：本机 18.21 用 1344×768/124 帧固定夹具测出「4 步 v1.2 细节能量 170.6 > 8 步 167.7，耗时仅 45.5%」；社区口径说 4 步在**快/大运动**上糊成拖影。两者不必然矛盾——**本机夹具是静态/慢速**。**修订建议：把「4 步画质不降」显式限定为「静态或慢运动」，快动作场景走 6–8 步**。此为社区二手，待本机用运动夹具复现后再定稿（可挂 P40）。
+- **印证**：K153 论文的 DWD 定义与 K117/K129 完全对齐，且首次给出可引用定量；K150 的 8 天未更新印证第 17 轮「ModelScope 已收录、上游 catalog 未跟」的判断；K151 的字节同构解释了为何 v1.0→v1.3 可在不改配方的前提下互换（与 18.21 实测互换可行互为印证）。
+- **零增量**：vpipe 上游、ComfyUI 上游（近 10 条 commit 无 MiniMax/H3）、stable-diffusion.cpp（近 5 条无 H3）、ModelTC/Minimax-H3-Turbo 代码仓（最新 commit 仍 2026-08-27）、ComfyUI 官方博客（无 H3 条目）——**均为零迹象快照，明日须复查（K121 教训）**。
+
+### 本轮实验
+
+无实验，仅知识同步。理由：本轮时间预算优先保证「两份报告 + 轮次推进 + nightly_sync」最小闭环；新知识中唯一可本地复现的是 **K151（v1.3 换槽 A/B）**，但需先下 1.38 GB 权重 + 29 min 生成，超预算 → 登记为 **P40**（与 K152 的 6–8 步运动夹具验证合并为一项）。
+
+### 坑
+
+- **K149 的口径漂移**：同一个 commit 在不同端点给出不同的「行数」，且 detail API 的 `files` 数组会被截断——**不能只看数组长度推文件总数**。
+- **K154 的进程误判**：看门狗子 shell 与主 runner 命令行完全相同，`ps | grep` 会看起来像双开。**判并发只看 `.auto-round.lock` 与守卫退出码 11**，不看进程数。
+- **磁盘**：`models/Comfy-Org/MiniMax-H3/diffusion_models/minimax_h3_fl2va_bf16.safetensors.part` 是 11-19 遗留的 **18.3 GB 半成品下载**（未完成、无同名完整文件）。当前剩 37 GiB 尚安全，但**建议清理**（未经用户确认不删，因可能是手动下载中断）。清理后可回收至 ~55 GiB。
