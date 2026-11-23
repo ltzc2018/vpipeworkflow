@@ -5428,3 +5428,27 @@ bash /Users/minichen/WorkBuddy/2026-11-12-21-10-11/vpipe-lab/scripts/p39_headles
 - `models.json` 已有该条目（supportsToolCall=true / supportsImages=true / supportsReasoning=true），无需新增。
 
 改动：`scripts/p39_headless_runner.sh` 的 `MODEL` 由 `custom-local:deepseek-v4.1-flash` 改为 `custom-local:glm-5.3-flash`。`bash -n` OK。下次终端实测将用 glm-5.3-flash 跑第 26 轮闭环。
+
+### 18.34 2026-11-24 01:40 —— 第 25 轮续（P39 第三次实测）：★★★ K147 agent 失败后 CLI 僵死占锁 + 看门狗修复
+
+#### 18.34.1 第三次实测结果（01:02:42 → 01:38 人工清理）
+- ✅ 模型加载正确：`deepseek-v4.1-flash` 全程 generation `status=ok`（前 9 次），无 503、无 model_not_found——K146 修复确认生效。
+- ❌ **agent 中途失败**：真实 agent trace（`trace_b9394a903a9c42`）在 **01:24:05** 结束，`cli status=error`；根因一次 generation 流式中断 `Error streaming response`（该次生成卡 95 秒被取消）。
+- ❌★★★ **CLI 僵死不退出**：agent 已 error，但 CLI 进程 PID 19800/19801 仍存活——`lsof` 显示挂着多条到 deeprouter(36.151.170.17) 的 ESTABLISHED 连接，僵死到 01:38（14 分钟+）。后果：runner 卡在 `timeout 5400` 继续傻等（最坏还要 66 分钟），**并发锁一直不释放，会阻塞 02:30/04:30 后续槽**。
+- ✅ **人工处置**：01:38 kill 19800/19801/19773 → `nightly_guard.sh release 25 "2026-11-24 00:59"` 幂等删锁 → round 保持 25、状态干净。
+
+#### 18.34.2 诊断方法论（自身踩坑修正）
+排查中一度误判：把 `traces/19260/` 下**两个 trace**搞混——`trace_083764bfd`（主对话/PID 19260 agent，Bash 里全是我的诊断命令）当成无头任务，误报"仍在正常推进"。**正解**：无头 agent 的 trace 用 session-id 关联（`grep -rl <session-id> traces/`），本次命中 `trace_b9394a903a9c42`（含 8 处 session-id，`workerPid=19260` 是共享 worker，不能按 workerPid 区分）。判活必须看**对应 session 的 trace 的 trace_end 状态**，不能看目录里最新 mtime。
+
+#### 18.34.3 修复 —— 完成信号看门狗
+`scripts/p39_headless_runner.sh` 第 1 步新增后台看门狗：
+- 每 20s 检查 `grep -rl "$SESSION_ID" traces/` 中是否出现 `"type":"trace_end"`（trace 与 session 可靠关联，实测命中）；
+- 一旦 agent trace_end（无论成功/失败），立即 `pkill -f "codebuddy -p.*$SESSION_ID"` 终止僵死 CLI，让 runner 立刻进入第 2 步校验/兜底；
+- 270×20s=90min 与硬超时对齐；主线程在 CLI 退出后 kill+wait 看门狗回收。
+- `bash -n` OK，命中逻辑与 pkill 模式自检通过。
+
+**效果**：此后 agent 失败最多 20s 内释放锁，不再阻塞后续槽；90min 硬 timeout 仍作最后兜底。
+
+#### 18.34.4 待办
+- 用户终端重跑第三次（这次带看门狗），观察：若 agent 成功→round 25→26 + sync-r26；若 streaming 再中断→看门狗 20s 内 kill CLI、runner 尽快删锁退出（日志会出现 `[watchdog ...] 检测到 agent trace_end`）。
+- 若 `Error streaming response` 反复出现（deeprouter 长连接不稳），考虑：① 缩短 SOP 检索规模降低单次流式时长；② 换 glmm 系模型（用户暂未同意）；③ 给 generation 加重试。

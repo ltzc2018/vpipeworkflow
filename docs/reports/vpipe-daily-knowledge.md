@@ -2188,3 +2188,11 @@ GitHub API（vpipe commits / releases / issues / PR search / repo meta；Lakonik
 
 - 用户指定 P39 改用 `glm-5.3-flash`。实测：`/v1/models` 真实存在、chat 返回 OK、**工具调用返回正确 `tool_calls`**（无头 SOP 关键前提）、models.json 条目能力齐全（tool/img/reasoning 全 true）。
 - runner MODEL 改 `custom-local:glm-5.3-flash`，bash -n OK。待终端实测第 26 轮。
+
+### P39 第三次实测 · K147（2026-11-24 01:40）
+
+- 模型加载正确（deepseek-v4.1-flash 全程 gen=ok、无 503，K146 确认生效），但 agent 01:24:05 因一次 `Error streaming response`（generation 卡 95s 取消）失败，`cli status=error`。
+- **★★★ K147 僵死占锁**：agent 已 error 但 CLI PID 19800/19801 不退出（lsof 多条到 deeprouter 36.151.170.17 的 ESTABLISHED），僵死 14min+，runner 卡在 timeout 5400 傻等、锁不释放会阻塞后续槽。人工 kill + `release 25` 幂等删锁恢复（round 保持 25）。
+- **诊断坑**：traces/19260 下两个 trace 混淆，把主对话 trace（Bash 全是我的诊断命令）当无头任务，误报"仍在推进"。正解：按 session-id `grep -rl` 关联到对应 trace，看其 trace_end 状态；workerPid 共享不能区分。
+- **修复**：runner 加完成信号看门狗——每 20s 查本 session trace 是否 trace_end，出现即 pkill CLI，20s 内释放锁；270×20s=90min 对齐硬超时。bash -n + 命中/pkill 自检通过。
+- **方法论**：无头 agent 失败判定唯一可靠信号 = 对应 session 的 trace_end 状态；CLI 进程存活 ≠ agent 存活（可僵死占连接）。
