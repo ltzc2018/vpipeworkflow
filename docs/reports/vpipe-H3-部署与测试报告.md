@@ -5196,3 +5196,44 @@ P22 的 768p 真值链（lanczos 降采样到 640×384）同分辨率对比—�
 - **三级兜底机制**：任一槽成功 → 写 `last_run=今天` → 后续槽自动跳过；否则 02:30→04:30→06:30 依次重跑，杜绝整天漏跑。
 - **模型口径**：`gemini-3-flash`（deeprouter.top）为全局 models.json 配置，自动化对象不含模型字段，新槽继承全局设置。
 - **残留风险**：应用被手动退出后不自愈（autostart 仅登录拉起一次）；彻底自愈需另配 launchd 守护，当前作为已知限制登记。详见 SOP 9.1 节。
+
+### 18.27 2026-11-23 23:45 —— 第 24 轮（4 槽「立即运行 + 自动运行」可执行化 + 逐个测试）：★★★ 守卫脚本 nightly_guard.sh 落地，判断逻辑从「prompt 文本自觉」升级为「可执行 + 可测」
+
+#### 18.27.1 检索范围与来源清单
+- GitHub `tgo-app-dev/vpipe` commits API（per_page=5）：HEAD 仍 `a6a1f53`（2026-11-23T09:54:27Z），**上游静默约 6 小时**，无新 commit。
+- releases API（per_page=2）：仍 `v0.1.110`（published 2026-11-01），draft=false；release 落后 main 差距维持（K135）。
+- search/issues API（state:open，total_count=**14**）：#59 / #58 / #56 均 open、0 评论；**#59 正文含 RelayVSR 原生 2× checkpoint 的关键技术细节**（本轮新固化）。
+- 结论：知识增量小而集中，本轮重心放在**工程侧可执行化**（用户明确要求）。
+
+#### 18.27.2 新增知识
+| # | 知识 | 来源 | 日期 | 影响 |
+|---|---|---|---|---|
+| **K136** | ★★ issue #59 给出 `lightx2v/RelayVSR_X2` 原生 2× checkpoint 的 tensor-level 差异：`lq_proj.conv1.weight` 从 `[768,768,1,1]`（4× 的 16×16 unshuffle）变 `[768,192,1,1]`（8×8 unshuffle，3×8×8=192）；config 多 `upscale_factor:2`；格式名 `relayvsr-wan-x2-v1`/`relayvsr-flash-x2-v1`；flash 权重 F32。 | GitHub issue #59 正文 | 2026-11-16 | 印证 K91「原生 2×」的权重级依据；本实验室 K124 用的 2× 属不同来源（Comfy-Org/RelayVSR），需注明口径 |
+| **K137** | ★ issue #59 称原生 X2 在 H100 上约为 4× 的 3.6× 速度（243f 1024×768：5.3s vs 19.3s），同款闪烁抑制；当前 vpipe stage 在 `metal-relayvsr-decoder.cc:137` 因 "upscale_factor is not 4" 拒绝，且 `ph/4`、`4*_h` 假设硬编码 4×。 | GitHub issue #59 正文 | 2026-11-16 | 上游原生 2× 尚未合入（issue open 0 评论）；本机 RelayVSR 2× 走 Comfy-Org 权重的路线仍是唯一可复现路径 |
+| **K138** | ★★ **4 槽判断逻辑工程化**：原「今天已跑则跳过 / 并发保护」写在 prompt 文本靠 agent 自觉 → 不可测、且 last_run=今天时「立即运行」必空转。新增 `scripts/nightly_guard.sh` 统一入口，check(自动)/force(立即)/test(隔离)/status/release 五模式，退出码 0=RUN/10=今天已跑/11=并发中。 | 本轮工程 | 2026-11-23 | 4 槽从「文本约定」升级为「可执行 + 可测」，满足用户「每项可立即运行 + 自动运行」 |
+
+#### 18.27.3 与既有结论的印证 / 冲突
+- 印证 K135：release v0.1.110 落后 main 差距维持。
+- 印证 K115：issue 状态维护滞后——#59 的 2× checkpoint 诉求与 d72c22f 已实现的 RelayVSR 2× 并存但口径不同（原生 X2 vs Comfy-Org 权重），#59 仍 open。
+- 冲突：**无**。上游静默是时效快照（K121 教训），本轮按日复查确认仍静默。
+
+#### 18.27.4 本轮实验（工程测试替代生成实验）
+**T1 守卫脚本四类判断 × 4 槽隔离测试**（`nightly_guard.sh test <slot>`，临时 state/lock，不碰真实状态）：
+
+| 槽 | 场景1 今天已跑→SKIP(10) | 场景2 今天未跑→RUN(0) | 场景3 force 立即→RUN(0) | 场景4 并发锁→SKIP(11) | 判定 |
+|---|---|---|---|---|---|
+| 00:30 | ✅ exit=10 | ✅ exit=0 | ✅ exit=0 | ✅ exit=11 | 全通过 |
+| 02:30 | ✅ exit=10 | ✅ exit=0 | ✅ exit=0 | ✅ exit=11 | 全通过 |
+| 04:30 | ✅ exit=10 | ✅ exit=0 | ✅ exit=0 | ✅ exit=11 | 全通过 |
+| 06:30 | ✅ exit=10 | ✅ exit=0 | ✅ exit=0 | ✅ exit=11 | 全通过 |
+
+**T2 真实状态集成测试**：`status` 正确读 round=23/last_run=今天；`check`（last_run=今天）→ SKIP exit=10；`force` → RUN exit=0 并建锁；建锁后 `check` → SKIP exit=11（并发保护生效）；`release 23` 幂等恢复状态并删锁。
+
+#### 18.27.5 对技能包·脚本·流水线的修改
+- 新增 `scripts/nightly_guard.sh`（可执行，五模式）→ 纳入 nightly_sync.sh 自动同步范围（scripts/ 整目录复制）。
+- 4 槽 automation prompt 将改为「开头先跑 `nightly_guard.sh check`，依退出码决定跳过/继续」「手动立即运行用 `force`」「成功后 `release`」。
+
+#### 18.27.6 本轮踩的坑与结论
+- **坑1 全角字符吞变量**：`echo "...R=$r（...）"` 在 `$r` 后紧跟全角「（」→ 变量名被吞成 `r（` → `unbound variable`。修法 `${r}`（印证 SOP 记忆「`${N}` 防吞字」）。
+- **坑2 给 shell 函数前置环境变量不生效**：`VAR=x decide` 不会覆盖函数内已固定的全局 `$LOCK`（在脚本顶部赋值），导致 4 场景测试全误读真实锁 → 全返回 11。修法：测试用**子进程调用脚本自身**（`VAR=x bash script.sh check`）真正隔离。
+- **结论**：「文本约定」式的调度逻辑必须「可执行化」才能测试；本轮两处 bash 坑都是隔离测试才暴露的，若只靠阅读 prompt 无法发现。

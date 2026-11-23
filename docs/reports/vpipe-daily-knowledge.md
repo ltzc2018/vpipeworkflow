@@ -2101,3 +2101,18 @@ GitHub API（vpipe commits / releases / issues / PR search / repo meta；Lakonik
 - 三级兜底：任一槽今天成功写 last_run → 后续跳过；否则 02:30→04:30→06:30 依次重跑。
 - 模型 gemini-3-flash 为全局 models.json 配置，自动化对象不含模型字段，新槽继承。
 - 残留风险：应用手动退出不自愈（autostart 仅登录拉起一次），彻底自愈需 launchd 守护。详见报告 18.26.7 / SOP 9.1。
+
+## 第 24 轮（2026-11-23 23:45 · 4 槽立即运行/自动运行可执行化 + 逐个测试）
+
+| # | 知识 | 来源 | 日期 | 对既有结论的影响 |
+|---|---|---|---|---|
+| **K136** | ★★ issue #59 给出 `lightx2v/RelayVSR_X2` 原生 2× checkpoint tensor 差异：`lq_proj.conv1.weight` `[768,768,1,1]`→`[768,192,1,1]`（16×16→8×8 unshuffle）；config 加 `upscale_factor:2`；flash 权重 F32。 | GitHub issue #59 | 2026-11-16 | 印证 K91 原生 2× 权重依据；与本机 K124（Comfy-Org 2×）不同来源，需注明 |
+| **K137** | ★ 原生 X2 H100 约 4× 的 3.6× 速度（243f 1024×768：5.3s vs 19.3s）；vpipe stage 在 `metal-relayvsr-decoder.cc:137` 因非 4× 拒绝，尺寸硬编码 4×。 | GitHub issue #59 | 2026-11-16 | 原生 2× 未合入（open/0 评论），本机 Comfy-Org 2× 路线仍是唯一可复现路径 |
+| **K138** | ★★ 4 槽判断逻辑从 prompt 文本升级为可执行守卫 `nightly_guard.sh`：check/force/test/status/release 五模式，退出码 0/10/11。 | 本轮工程 | 2026-11-23 | 满足「每项可立即运行 + 自动运行 + 可测试」 |
+
+### 印证 / 冲突 / 本轮实验
+- 上游静默约 6 小时（HEAD a6a1f53 无新 commit）、release v0.1.110 差距维持（K135）、issue 14 条开放 0 评论（K115）。无冲突。
+- **T1**：4 槽 × 4 场景隔离测试全通过（今天已跑 SKIP / 今天未跑 RUN / force RUN / 并发锁 SKIP）。
+- **T2**：真实状态集成测试通过（check 跳过 / force 建锁 / 并发保护 / release 幂等恢复）。
+- **坑**：① `${r}` 防全角吞变量；② 给 shell 函数前置 `VAR=x` 不覆盖函数内全局 → 测试须用子进程调脚本自身。
+- 无生成实验（本轮为工程可执行化 + 知识同步）。
