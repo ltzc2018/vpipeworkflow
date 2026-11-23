@@ -253,26 +253,28 @@ git push origin main
 - **模型**：`gemini-3-flash`（`https://deeprouter.top/v1`）为全局 models.json 配置，自动化对象不含模型字段，新槽继承全局设置。
 - **残留风险**：应用被手动退出后不自愈（autostart 仅登录时拉起一次）。若需彻底自愈，另配 launchd 守护进程定时检查并拉起 WorkBuddy——当前未做，作为已知限制。
 
-### 9.2 ★★★ 2026-11-23 23:45 守卫脚本 nightly_guard.sh（第 24 轮）——「立即运行 + 自动运行 + 可测试」唯一入口
+### 9.2 ★★★ 2026-11-23 23:55 守卫脚本 nightly_guard.sh（第 24 轮续）——「立即运行 + 自动运行 + 可测试」唯一入口
 
 **问题**：9.1 之前「今天已跑则跳过 / 并发保护」写在 prompt 文本里靠 agent 自觉——不可自动化测试，且 `last_run=今天` 时「立即运行」必然空转（用户第 24 轮明确要求修正）。
 
 **解决**：`scripts/nightly_guard.sh` 把判断标准化为可执行、可测的唯一入口。4 槽 prompt 的「第 0 步」统一调用它。
 
+**★★ 23:55 用户再修正——去掉「今天已跑则跳过」**：每次点击运行或到点都执行，唯一拒绝条件是「上一轮真正在跑（并发锁新鲜 <90 min）」。`last_run` 字段仍写入作审计痕迹，但**不再作为跳过依据**；退出码 10 已废弃、任何模式都不再产生。
+
 | 模式 | 命令 | 用途 | 退出码 |
 |---|---|---|---|
-| 自动 | `bash scripts/nightly_guard.sh check` | 4 槽定时运行时判定：今天已跑→跳过；并发中→跳过；否则建锁→运行 | 0=RUN / 10=今天已跑 / 11=并发中 |
-| 立即 | `bash scripts/nightly_guard.sh force` | 用户手动要求「现在就跑某槽」：忽略日期去重，仅拒并发 | 0=RUN / 11=并发中 |
-| 测试 | `bash scripts/nightly_guard.sh test 04:30` | 隔离测该槽四类判断（临时 state/lock，不碰真实状态） | 全 0 |
+| 自动 | `bash scripts/nightly_guard.sh check` | 4 槽定时判定：**不看今天是否跑过**；并发中→跳过；否则建锁→运行 | 0=RUN / 11=并发中 |
+| 立即 | `bash scripts/nightly_guard.sh force` | 用户手动「现在就跑某槽」：与 check 同——仅拒并发 | 0=RUN / 11=并发中 |
+| 测试 | `bash scripts/nightly_guard.sh test 04:30` | 隔离测该槽四类判断（临时 state/lock，不碰真实状态） | 见下 |
 | 状态 | `bash scripts/nightly_guard.sh status` | 查看 round/last_run/锁，不修改任何文件 | — |
 | 收尾 | `bash scripts/nightly_guard.sh release <R> "<时间>"` | 成功后推进 round + 删锁（**须在 nightly_sync.sh 成功后执行**）；失败用当前 round 幂等删锁不递增 | — |
 
-**纪律**：4 槽一律「开头 check（或手动 force）按退出码决定跳过/继续；结束先 nightly_sync.sh 再 release」。**禁止手工改 `.auto-round-state.json` / `.auto-round.lock`**。
+**纪律**：4 槽一律「开头 check（或手动 force）按退出码决定跳过/继续；结束先 nightly_sync.sh 再 release」。**禁止手工改 `.auto-round-state.json` / `.auto-round.lock`**。知识层面仍做内容去重（不重复写相同知识），但**整轮不跳过**。
 
-**测试证据（2026-11-23 23:45 第 24 轮）**：
-- 4 槽 × 4 场景隔离测试全通过（今天已跑→SKIP10 / 今天未跑→RUN0 / force→RUN0 / 并发锁→SKIP11）。
-- 端到端：force 建锁 R=24 → 并发 check 被挡(11) → nightly_sync.sh 推送 cb432e8 → release 24 删锁 → 自动 check 正确去重(10)。
-- 两处 bash 坑：① `$r（` 全角吞变量 → 用 `${r}`；② 给 shell 函数前置 `VAR=x` 不覆盖函数内全局 `$LOCK` → 测试改用**子进程调用脚本自身**。
+**测试证据（2026-11-23 23:55 第 24 轮续，修正后）**：
+- 4 槽 × 4 场景隔离测试全通过（今天已跑→RUN0 / 到点 check→RUN0 / 点击 force→RUN0 / 并发锁→SKIP11）。
+- 真实状态：`last_run=今天 23:45` 时 check→RUN exit=0（不再是 10），证明去重已去除；并发锁期间 check→SKIP11。
+- 二轮 bash 坑（首轮）：① `$r（` 全角吞变量 → 用 `${r}`；② 给 shell 函数前置 `VAR=x` 不覆盖函数内全局 `$LOCK` → 测试改用**子进程调用脚本自身**。
 
 ---
 
