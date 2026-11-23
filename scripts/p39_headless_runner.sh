@@ -19,7 +19,7 @@ set -u
 LAB="/Users/minichen/WorkBuddy/2026-11-12-21-10-11/vpipe-lab"
 CB="/Applications/WorkBuddy.app/Contents/Resources/app.asar.unpacked/cli/bin/codebuddy"
 NODE_BIN="/Users/minichen/.workbuddy/binaries/node/versions/22.22.2-6/bin"
-MODEL="custom-local:deepseek-v4.1-flash-1017"   # gemini-3-flash 已下线(model_not_found)，改用实测可用的 deepseek
+MODEL="custom-local:deepseek-v4.1-flash"   # K146: -1017 别名上游无渠道(503)；去掉后缀才是 deeprouter 真实 ID（2026-11-24 实测 5 模型可用）
 PROMPT_FILE="$LAB/scripts/p39_sop_prompt.md"
 LOG_DIR="$LAB/logs"
 

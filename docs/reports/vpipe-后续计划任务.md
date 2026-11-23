@@ -38,7 +38,7 @@
 
 | 任务 | 优先级 | 前置 | 说明 |
 |---|---|---|---|
-| **P39 定时任务会话空壳根治** | 高 | ✅ 文件就绪，待用户本机终端一键启用 | 方案=launchd + codebuddy 无头 CLI 独立进程绕开会话层。已建 `scripts/p39_headless_runner.sh`/`p39_sop_prompt.md`/`p39_enable.sh` + `~/Library/LaunchAgents/com.vpipe.nightly.plist`（4 时段）。模型因 gemini-3-flash 下线改 deepseek-v4.1-flash-1017（用户确认）。**本会话 launchctl/crontab/无头 CLI 均被沙箱拦截，最后注册+验证须真实终端跑 `bash scripts/p39_enable.sh`**。详见报告 18.30 |
+| **P39 定时任务会话空壳根治** | 高 | 🔄 本机已注册 launchd；连破 K145(bundle)/K146(模型ID别名) 两关，待第三次实测闭环 | 方案=launchd + codebuddy 无头 CLI 独立进程绕开会话层。已建 `scripts/p39_headless_runner.sh`/`p39_sop_prompt.md`/`p39_enable.sh` + `~/Library/LaunchAgents/com.vpipe.nightly.plist`（4 时段）。模型因 gemini-3-flash 下线改 deepseek-v4.1-flash-1017（用户确认）。**本会话 launchctl/crontab/无头 CLI 均被沙箱拦截，最后注册+验证须真实终端跑 `bash scripts/p39_enable.sh`**。详见报告 18.30 |
 | **P36 pi-H3 原生适配器本机复现** | 中 | 更新 build 到 a6a1f53 + prepare-pi-h3 权重账（24GB 需核 INT8/FP8 路径） | K128/K129：适配器自带 step grid + 精确 handle；DWD 免 VAE 解码（f32 0.0053）。vpipe 原生第三路线，优先于外部 LakonLab 栈复现 |
 | **P37 LoRA 训练 24GB 显存账** | 中 | K131 调制表折叠 26GB→174MB + K133 三处记账修正后重测峰值 | K130：train-lora 训练 H3 DiT 两 partition；本机首次涉及「训练」能力族。需确认 24GB 能否承载 |
 | ~~**P38 定时任务调度加固**~~ → **已完成（18.26.7，用户选方案①）** | — | — | 恢复 4 槽制（重建 02:30 id c17d1b23 / 06:30 id 94c4eadb，四槽均 ACTIVE + prompt 统一新基线）；防休眠核查通过（AC sleep 0 + autostart 已配，无需 caffeinate）；三级兜底机制生效。残留风险：应用手动退出不自愈（已知限制，需 launchd 守护才彻底解决） |

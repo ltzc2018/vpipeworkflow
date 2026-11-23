@@ -5384,3 +5384,37 @@ bash /Users/minichen/WorkBuddy/2026-11-12-21-10-11/vpipe-lab/scripts/p39_headles
 #### 18.31.5 方法论沉淀
 - **定制版 CLI bundle 分派是隐藏单点**：官方 codebuddy 有 headless/full 双 bundle，WorkBuddy 定制版裁剪为 lite-wb 单一产物。任何脚本化调用必须显式设 `CODEBUDDY_FORCE_LITE_WB_BUNDLE=1`，否则 `-p` 静默走错分支报 MODULE_NOT_FOUND。这是继「autotune 开关静默」「旧 build 丢 config 键」之后第三类**静默配置陷阱**。
 - **判活口径补充**：执行器「启动→MODULE_NOT_FOUND→删锁不推进」的完整链路本身就是成功信号（证明守卫+兜底可用），与 K139「会话空壳零执行」有本质区别——前者是真执行真失败，后者是根本没执行。
+
+### 18.32 2026-11-24 01:00 —— 第 25 轮续（P39 第二次实测）：★★★ K146 模型 ID 别名陷阱（`-1017` 上游无渠道）
+
+> 本节记录 K145 修复后第二次真实终端实测的结果与新根因。18.31 原样保留。
+
+#### 18.32.1 第二次实测结果（用户真实终端 00:57:53 → 00:59:45）
+- ✅ **K145 修复生效**：`codebuddy -p` 不再报 MODULE_NOT_FOUND，进程 PID 18558/18559 正常拉起并进入生成阶段（trace 中 8 个 generation span、11 个 Bash 工具调用、error 全为 null）——证明 lite-wb bundle 强制路由正确，无头 CLI 真正执行了 prompt。
+- ❌ **模型调用 503**：约 2 分钟后日志出现：
+  ```
+  503 分组 DeepSeek 下模型 deepseek-v4.1-flash-1017 无可用渠道（distributor）
+  ```
+  无头 CLI **退出码竟为 0**（`-p` 模式遇模型 503 不返回非零），但执行器靠第 93 行三重校验（`cb_exit=0` AND `round 推进` AND `sync_log 存在`）兜住——round 仍 25、无 r26 同步日志 → 正确判定"闭环未完整"、删锁不推进。**这套校验设计经受住了"CLI 假成功"的考验**。
+
+#### 18.32.2 ★★★ K146 根因 —— 模型 ID 是别名，上游真实 ID 无后缀
+- 直连 `curl https://deeprouter.top/v1/models` 拉真实模型列表（用配置里的 key），返回 13 个模型，**列表里是 `deepseek-v4.1-flash`，根本没有 `-1017` 后缀**。
+- `~/.workbuddy/models.json` 里配置的 `deepseek-v4.1-flash-1017` 是一个**自定义别名**；CLI 把这个别名原样发给 deeprouter，上游按"DeepSeek 分组下该模型"找不到渠道 → 503。
+- 之前"实测渠道正常"的判断错在：当时只验证了 key 有效、URL 可达，没验证**这个具体 ID 在 /v1/models 里存在**。教训同 K145——静默配置陷阱，必须在真实调用链上验证 ID。
+- **逐模型实测（chat/completions，均返回 OK）**：`deepseek-v4.1-flash`、`glm-5.3-flash`、`minimax-m3`、`kimi-k3`、`hy4-preview` 五个全部可用。
+
+#### 18.32.3 修复
+| 项 | 改动 |
+|---|---|
+| `~/.workbuddy/models.json` | 备份为 `models.json.bak-20261124-0100`；新增 `id=name=deepseek-v4.1-flash` 条目（复制原 `-1017` 条目的 url/key/能力字段）。原 `-1017` 条目保留以免影响其他引用 |
+| `scripts/p39_headless_runner.sh` | `MODEL` 由 `custom-local:deepseek-v4.1-flash-1017` 改为 `custom-local:deepseek-v4.1-flash` |
+
+`json.load` 校验合法（7 条目）、`bash -n` OK。因 runner 每次调用实时读取，**不需重新 bootstrap plist**（plist 只在上次已注入 lite-wb env）。
+
+#### 18.32.4 方法论沉淀
+- **模型 ID 必须在 `/v1/models` 里精确存在**：自定义别名（`-1017` 这类日期后缀）看似合理，但上游不认就是 503。选模型前先 `curl /v1/models` 拉清单逐个比对，再 `chat/completions` 实测。
+- **`codebuddy -p` 遇模型错误退出码为 0**：不能只看 `cb_exit`，必须三重校验闭环产物（round 推进 + sync 日志存在）。现有执行器已具备此防御，无需改动。
+- 至此 P39 已连破两关：K145（bundle 分派）→ K146（模型 ID 别名）。第三次实测待用户终端执行。
+
+#### 18.32.5 下一步
+用户真实终端重跑 `bash scripts/p39_headless_runner.sh 00:30 force`（或整份 `p39_enable.sh`），预期本次 round 25→26 + `nightly-sync-r26.log` + 退出码 0。

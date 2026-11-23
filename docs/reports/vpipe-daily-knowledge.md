@@ -2175,3 +2175,11 @@ GitHub API（vpipe commits / releases / issues / PR search / repo meta；Lakonik
 - **修复**：runner 第 57 行 + plist EnvironmentVariables 双处注入 `CODEBUDDY_FORCE_LITE_WB_BUNDLE=1`；plutil/bash -n 均 OK。
 - **待复核**：终端重跑 `bash scripts/p39_headless_runner.sh 00:30 force`，预期 round 25→26 + `nightly-sync-r26.log` + 退出码 0。
 - **方法论**：定制版 CLI bundle 分派是隐藏单点，脚本化调用 `-p` 必须显式强制 lite-wb；此为继 autotune 静默、旧 build 丢 config 之后第三类静默配置陷阱。
+
+### P39 第二次实测 · K146（2026-11-24 01:00）
+
+- **K145 修复生效**：无头 CLI 正常拉起，trace 中 8 个 generation span + 11 个 Bash 调用、error 全 null，prompt 真实执行（区别于 K139 空壳）。
+- **★★★ K146 新根因（模型 ID 别名陷阱）**：报 `503 分组 DeepSeek 下模型 deepseek-v4.1-flash-1017 无可用渠道`。`curl /v1/models` 证实上游真实 ID 是 `deepseek-v4.1-flash`（无 `-1017` 后缀），models.json 里的 `-1017` 是自定义别名、上游不认。逐模型实测 `deepseek-v4.1-flash`/`glm-5.3-flash`/`minimax-m3`/`kimi-k3`/`hy4-preview` 全部可用。
+- **修复**：models.json 备份后新增 `deepseek-v4.1-flash` 条目（保留原条目）；runner MODEL 改 `custom-local:deepseek-v4.1-flash`。不需重新 bootstrap plist。
+- **坑**：`codebuddy -p` 遇模型 503 退出码仍为 0！执行器靠三重校验（round 推进+sync 日志）兜住，正确删锁不推进——这套防御经受住"CLI 假成功"考验，勿简化为只看 exit code。
+- **方法论**：模型 ID 必须在 `/v1/models` 精确存在，别名不能靠"key 有效+URL 可达"推断可用，须在真实调用链实测。K145/K146 同为静默配置陷阱家族。
