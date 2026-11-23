@@ -2123,3 +2123,24 @@ GitHub API（vpipe commits / releases / issues / PR search / repo meta；Lakonik
 - **改动**：`nightly_guard.sh` 删除日期去重分支（原 exit=10），`check`=`force`=仅拒并发(exit=11)否则建锁 RUN(0)；last_run 仅审计不作跳过依据；4 槽 prompt + SOP 9.2 同步。
 - **语义**：由「三级兜底（今天成功则后续跳过）」改为「4 槽独立执行，每次点击/到点都跑」；知识内容仍去重，但整轮不跳过。
 - **测试**：4 槽 × 4 场景全通过（今天已跑 RUN0 / 到点 check RUN0 / 点击 force RUN0 / 并发锁 SKIP11）；真实状态 last_run=今天 check→RUN0 验证去重已除。详见报告 18.28 节。
+
+## 第 25 轮（2026-11-24 00:06 · 用户手动触发 00:30 槽失败后代跑）
+
+| # | 知识 | 来源 | 日期 | 对既有结论的影响 |
+|---|---|---|---|---|
+| **K139** | ★★★ 首次 daemon.log 级实证「会话空壳/unknown_interrupted」：23:33–23:59 手动触发 00:30/04:30 槽，`session attached` 拉起后 2–5 min 内 `cause=unknown_interrupted` 取消；末次会话 a8efe90e 仅 222 B 元数据 + 143 B 日志，无 prompt 执行；automation.log 自 11-23 06:00 停写近 18h。 | 本机 daemon.log / automation.log | 2026-11-24 | 坐实 18.26.6 推断：非配置/非脚本错，是自动化会话被主对话抢占中断的执行层问题 |
+| **K140** | ★ FlashGen 4-step LoRA（社区）：VSD 无数据蒸馏 rank64 BF16，攻击 qkv/out/fc1/fc2/adaln_proj.linear；merge_lora_ckpt.py 固化 + base_schedule [1.0,0.7,0.4,0.15,0.0]；1344×768/5.2s；FP8/INT8≈16–24GB。 | studio.aifilms.ai | 2026-11 | 外部 4 步蒸馏新路线（与 K128 vpipe 原生并列）；社区二手待复现 |
+| **K141** | ★ Character Swap LoRA V1.5（akatz-ai）：Ref2VA video-to-video 换角色；配方 INT8+V1.5@1.0+8step Turbo@1.0，8 步 CFG=1.0 er_sde，原音 passthrough。 | studio.aifilms.ai | 2026-11 | 对照「Ref2VA 细小附件会丢」：换角色走 LoRA 而非原生参考；待复现 |
+| **K142** | ★★ Turbo 三档耗时（ComfyUI-NPU）：768p/15s 50步 35min / 21步 15min / 8步 Turbo 6.9min；video shift 12 / audio shift 3；silu(t_emb) 网格注入 pruned 覆盖 bf16/int8/pruned。 | lpqz.cn | 2026-11 | 印证 K106 双 shift + K128 pruned；NPU/15s 口径不可比本机 M5/124f |
+| **K143** | ★ vLLM PR #52023（非 vpipe）：--model-variant fl2va+ref2va 共享编码器省一半内存；需 181.7GiB 两 DiT 常驻，<120GiB 启动失败。 | mindpattern.ai | 2026-11-22 | 服务器大显存场景，本机 24GB 无关，登记不采信 |
+
+### 印证 / 冲突
+- 上游静默约 14h（HEAD a6a1f53 无新 commit/release/PR，issue 14 条全开零回复）；印证 K135/K115/K106/K128。无量化冲突。
+- 口径：K140–K143 均社区二手，非上游 commit、非本机实测，禁止并入已验证能力，须复现后采信。
+
+### 本轮实验
+无生成实验。动作 = force 建锁(R=25) → 检索 → 固化 → sync → release 全链路代跑，验证「自动化会话层失效时主对话内手动代跑能完整闭环」。
+
+### 坑
+- automation.log 停写 ≠ 应用停摆（daemon.log 仍在动）；判活看 daemon.log 的 attached+cancel 事件对。
+- 会话元数据/skdsdk 日志存在 ≠ 真执行；唯一执行证据 = vpipe-lab 内锁/报告 mtime/同步日志。

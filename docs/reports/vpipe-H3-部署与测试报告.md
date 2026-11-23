@@ -5259,3 +5259,40 @@ P22 的 768p 真值链（lanczos 降采样到 640×384）同分辨率对比—�
 **真实状态验证**：`last_run=今天 23:45` 时 `check` → RUN exit=0（不再是 10），建锁期间 `check` → SKIP exit=11；测试后 `release 24` 幂等恢复。证据 `logs/guard-test-r24.log`（23:55 续测）。
 
 **结论**：调度器现在满足「点击即跑、到点即跑、永不因『今天已跑』空转」，仅用并发锁防止两轮同时写状态文件。
+
+### 18.29 2026-11-24 00:06 —— 第 25 轮（用户手动触发 00:30 槽失败后代跑）：★★★ 首次捕获「会话空壳」的 daemon.log 级根因证据 + 社区 4-step LoRA / Character Swap / vLLM 双分区增量
+
+#### 18.29.1 检索范围与来源清单
+- GitHub `tgo-app-dev/vpipe` commits API（per_page=5）：HEAD 仍 `a6a1f53`（2026-11-23T09:54:27Z），**上游静默约 14 小时**，无新 commit。
+- releases API：仍 `v0.1.110`（published 2026-11-01T11:12:27Z，draft=false，with-ffmpeg 1193 下载 / slim 166）。
+- search/issues API（state:open）：total_count=**14**，#59/#58/#56/#55/#53 均 open、0 评论（与 18.27 一致）。
+- pulls API（state=open）：**0 个开放 PR**。
+- WebSearch（freshness=d3，中英双语）：MiniMax H3 / FlashGen / Character Swap / Turbo / vpipe / pi-H3。
+- **运行态取证**：`~/.workbuddy/logs/daemon.log`、`automation.log`、`logs/2026-11-23/extension-scheduler-diag.log`、会话元数据文件。
+
+#### 18.29.2 新增知识
+| # | 知识 | 来源 | 日期 | 影响 |
+|---|---|---|---|---|
+| **K139** | ★★★ **首次拿到「会话空壳/unknown_interrupted」的 daemon.log 级证据**：23:33–23:59 手动触发 00:30/04:30 槽，会话被 `[AutomationRecords] session attached` 拉起后，均在 2–5 分钟内 `[AutomationCancel] rawStopReason=cancelled cause=unknown_interrupted`；最后会话 `a8efe90e`（23:59:48）只有 222 B 空间元数据 + 143 B sdk 日志、无 prompt 执行内容 → 守卫脚本第 0 步从未执行、无锁、round 未推进。`automation.log` 自 11-23 06:00 起停写近 18h（与应用多次重启/日志轮转同期）。 | 本机 daemon.log / automation.log | 2026-11-24 | 坐实 18.26.6 的推断：非配置错、非守卫脚本错（第24轮 4×4 测试全过），是**自动化会话被主对话抢占中断**的执行层问题 |
+| **K140** | ★ **FlashGen 4-step LoRA**（社区）：VSD 无数据蒸馏，rank64 BF16，攻击 qkv/out/fc1/fc2/**adaln_proj.linear**（时间步条件层，4 步跨大噪声间隔保运动/音频同步的关键）；随附 `merge_lora_ckpt.py` 把适配器永久融合进 FL2VA 基座并写入 base_schedule `[1.0,0.7,0.4,0.15,0.0]`；目标 1344×768 / 5.2 s；FP8/INT8 ≈16–24 GB。 | studio.aifilms.ai（社区博客） | 2026-11（近期） | 与 K128（vpipe 原生 pi-H3 2/4 步）并列，是**外部 4 步蒸馏**新路线；社区二手源，需复现后采信 |
+| **K141** | ★ **Character Swap LoRA V1.5**（akatz-ai）：Ref2VA 上的 video-to-video 换角色适配器（注入参考身份 token 到时空注意力）；推荐配方 = Ref2VA INT8 + V1.5@strength 1.0 + 8-step Turbo@1.0，8 步 CFG=1.0 er_sde；原音 passthrough 非重生成。 | studio.aifilms.ai（社区博客） | 2026-11 | 与既有「Ref2VA 细小附件会丢」形成对照：换角色走 LoRA 而非原生参考 |
+| **K142** | ★★ **Turbo 三档耗时口径**（ComfyUI-MiniMax-H3-Turbo，NPU 平台）：768p/15s 参考 50 步 Euler≈35.0 min / 21 步 res_multistep≈15.0 min / 8 步 Turbo≈6.9 min；双 flow schedule **video shift 12 / audio shift 3**；`silu(t_emb)` 网格注入 pruned/curve 基座使单个 LoRA 覆盖 bf16/int8/pruned。 | lpqz.cn（社区教程） | 2026-11 | 印证 K106「双 shift」与 K128「pruned 基座」；**NPU/15s 口径，不可与本机 M5 768p/124f 29:34 直接比** |
+| **K143** | ★ **vLLM PR #52023**（非 vpipe）：`--model-variant fl2va+ref2va` 把带参考行的请求发到 transformer_2，两 DiT 共享编码器省一半 encoder 内存；需 181.7 GiB 空闲两 DiT 常驻，<120 GiB 启动即失败。 | mindpattern.ai（研究简报） | 2026-11-22 | 仅服务器大显存场景参考；本机 24 GB 单 token 路线无关，登记不采信为本机能力 |
+
+#### 18.29.3 与既有结论的印证 / 冲突
+- 印证 K135：release v0.1.110 落后 main 差距维持；印证 K115：issue 零回复、状态维护滞后（14 条全开）。
+- 印证 K106/K128：video shift 12 / audio shift 3、pruned 基座去 AdaLN——社区教程与官方/changelog 口径一致。
+- 印证 18.26.6：会话空壳根因从「推断」升级为「日志实证」。**无量化冲突**。
+- 口径警示：K140–K143 均为社区二手来源（博客/简报），非上游 commit、非本机实测；禁止直接并入本机已验证能力，须复现后才采信。
+
+#### 18.29.4 本轮实验
+无生成实验（用户诉求为代跑知识同步闭环 + 修复执行链可见性）。**本轮的"动作"是 force 建锁 → 检索 → 固化 → sync → release 全链路代跑**，验证「自动化会话层失效时，主对话内手动代跑能完整闭环」。
+
+#### 18.29.5 对技能包·脚本·流水线的修改
+- 本轮不改守卫脚本（第 24 轮已定稿且测试全过；失败点在会话层不在脚本）。
+- 知识固化进本节 + 台账 + 看板；K140–K143 标注「社区来源待复现」，不进技能包已验证区。
+
+#### 18.29.6 本轮踩的坑与结论
+- **坑（运行态）**：`automation.log` 停写 ≠ 应用停摆——daemon.log 仍在动；判活必须看 daemon.log 的 `[AutomationRecords] session attached` + `[AutomationCancel]` 事件对，不能只看 automation.log。
+- **坑**：会话元数据文件（space-history，222 B）与 sdk 会话日志（143 B）存在 ≠ 会话真执行；**唯一执行证据 = vpipe-lab 内锁/报告 mtime/同步日志**。
+- **结论**：代跑闭环成功，说明 SOP 与脚本可用；真正待解是「自动化会话被主对话抢占中断」——残留风险升级为待验证项 P39（需 launchd + 独立 CLI 会话，彻底绕开 WorkBuddy 自动化调度器）。
