@@ -5418,3 +5418,13 @@ bash /Users/minichen/WorkBuddy/2026-11-12-21-10-11/vpipe-lab/scripts/p39_headles
 
 #### 18.32.5 下一步
 用户真实终端重跑 `bash scripts/p39_headless_runner.sh 00:30 force`（或整份 `p39_enable.sh`），预期本次 round 25→26 + `nightly-sync-r26.log` + 退出码 0。
+
+### 18.33 2026-11-24 01:01 —— 模型改用 glm-5.3-flash（用户指定）
+
+用户指定 P39 无头任务改用 `glm-5.3-flash`。实测确认：
+- 在 `curl /v1/models` 返回的 13 个模型中真实存在（无别名问题）；
+- `chat/completions` 调用返回 OK；
+- **工具调用实测通过**：发送 `get_weather` function schema，模型正确返回 `tool_calls`（`{"city":"北京"}`），无头 SOP 依赖 Bash/WebSearch 等工具，此项是关键前提；
+- `models.json` 已有该条目（supportsToolCall=true / supportsImages=true / supportsReasoning=true），无需新增。
+
+改动：`scripts/p39_headless_runner.sh` 的 `MODEL` 由 `custom-local:deepseek-v4.1-flash` 改为 `custom-local:glm-5.3-flash`。`bash -n` OK。下次终端实测将用 glm-5.3-flash 跑第 26 轮闭环。

@@ -2183,3 +2183,8 @@ GitHub API（vpipe commits / releases / issues / PR search / repo meta；Lakonik
 - **修复**：models.json 备份后新增 `deepseek-v4.1-flash` 条目（保留原条目）；runner MODEL 改 `custom-local:deepseek-v4.1-flash`。不需重新 bootstrap plist。
 - **坑**：`codebuddy -p` 遇模型 503 退出码仍为 0！执行器靠三重校验（round 推进+sync 日志）兜住，正确删锁不推进——这套防御经受住"CLI 假成功"考验，勿简化为只看 exit code。
 - **方法论**：模型 ID 必须在 `/v1/models` 精确存在，别名不能靠"key 有效+URL 可达"推断可用，须在真实调用链实测。K145/K146 同为静默配置陷阱家族。
+
+### 模型切换 glm-5.3-flash（2026-11-24 01:01）
+
+- 用户指定 P39 改用 `glm-5.3-flash`。实测：`/v1/models` 真实存在、chat 返回 OK、**工具调用返回正确 `tool_calls`**（无头 SOP 关键前提）、models.json 条目能力齐全（tool/img/reasoning 全 true）。
+- runner MODEL 改 `custom-local:glm-5.3-flash`，bash -n OK。待终端实测第 26 轮。
