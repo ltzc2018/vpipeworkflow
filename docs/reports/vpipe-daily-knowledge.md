@@ -2144,3 +2144,25 @@ GitHub API（vpipe commits / releases / issues / PR search / repo meta；Lakonik
 ### 坑
 - automation.log 停写 ≠ 应用停摆（daemon.log 仍在动）；判活看 daemon.log 的 attached+cancel 事件对。
 - 会话元数据/skdsdk 日志存在 ≠ 真执行；唯一执行证据 = vpipe-lab 内锁/报告 mtime/同步日志。
+
+### 第 25 轮续 · 00:30 槽手动/定时可执行性复查（2026-11-24 00:23）
+
+- **K139 复现（手动）**：用户 00:10 再次手动执行 00:30 槽 → 会话 `12d57e09`（00:10:50 attached、进入 working）198 行 sdk 日志中 `tool=0/bash=0/nightly_guard=0`，仅会话管理元数据；`listSessions` 标 `status=terminated`；vpipe-lab 无锁/无报告更新/无 r26 同步日志 → **仍是空壳，prompt 从未执行**。00:21 用户再次点选仍 `history-missing` 空壳，00:21:58 焦点切回主对话。
+- **K144 定时通道实证（失效）**：本地调度器 `automation.log` 自 11-23 06:00 停写近 18h，最后活动为 11-23 04:30 槽超时；11-24 凌晨 4 槽（00:30/02:30/04:30/06:30）全部漏跑（round 停 22 直到手动补跑第 23 轮）。`SchedulerCloudAutomation` 在 daemon.log 仍每几分钟列 1 个 cloud task，但那是 cloud:2700702（PAUSED 的资讯任务），与本 4 槽本地任务无关 → **到点定时触发通道事实上已失效，非仅仅会话空壳**。
+- **判活口径再确认**：应用活着（AppStartup 5.11.3，00:21 仍写 DocumentSelectionHook）≠ 调度器活着；`automation.log` 停写 + round 不推进 + daemon.log attached/cancel 事件对，三者合看才能定性。
+- **结论**：手动可执行（会话能拉起）但 agent 不执行=实质失败；到点定时连续漏跑=不可靠。**根治=P39（launchd + 独立 CLI 会话绕开 WorkBuddy 调度器）**，代跑仅治标。
+
+### 第 25 轮续 · 00:30 到点触发实证 + K144 重大修正（2026-11-24 00:32）
+
+- **用户先要求停止手动那次**：00:10 手动会话 `12d57e09` 于 **00:28:57 被 cancel + Released**（daemon.log: `[AutomationCancel] cause=unknown_interrupted decision=interrupted` + `Released automation conversation runtime (interrupted=true, state=idle)`）→ 用户"我已手动停止了"确认生效。
+- **★★★ K144 重大修正（定时通道并未失效）**：**00:30:27 本地调度器准时触发了 00:30 槽**——`automation.log` 从 11-23 06:00 停写状态**恢复写入**（mtime=11-24 00:30:27），出现 `run start` + `dispatch automation c8411425...`；daemon.log 00:30:27 `session attached` 新会话 `a5ccaf68`、00:30:28 `pool:state-change idle→working`。→ **推翻 K144「到点定时通道失效」结论**。`automation.log` 停写 ≠ 调度器死：它是**事件驱动**（仅在槽触发/结束时写），11-23 06:00→11-24 00:30 之间无槽成功 dispatch 所以不写，不代表不能触发。此前漏跑是"触发了但会话空壳/中断"，不是"没触发"。
+- **但空壳问题依旧（K139 第 N 次复现）**：`a5ccaf68` sdk 日志 89 行中 `tool=0 / bash=0 / nightly_guard=0`、`assistant=0`，仅 `user=7/prompt=3` 会话管理元数据；守卫状态仍 round=25、无锁、无 r26 同步日志 → 到点这次同样**会话被拉起但 agent 不执行 prompt**。
+- **结论更新**：手动执行与到点定时**都能被调度层正确拉起会话**（本次到点已实证），唯一的、真正的故障点始终是**会话空壳 / prompt 不执行 / 被主对话抢占中断**。根治仍是 P39（launchd + 独立 CLI 会话绕开 WorkBuddy 会话层），代跑仅治标。判活口径不变：看 daemon.log attached+cancel 事件对 + vpipe-lab 锁/报告 mtime/同步日志，automation.log 只作"槽是否被调度"的辅助证据（事件驱动、非心跳）。
+
+### 第 25 轮续 · P39 根治落地 + K144 修正（2026-11-24 00:50）
+
+- **空壳会话 a5ccaf68**：00:30 到点触发，00:38:59 已 `terminated`，无活跃进程，无需 kill。
+- **★★★ K144 修正**：到点定时通道**实际正常**——00:30:27 automation.log 恢复写入（run start + dispatch c8411425），daemon.log session attached。推翻 00:23「定时失效」结论。automation.log 是**事件驱动日志**（停写≠调度器死），此前漏跑是「触发了但会话空壳」非「没触发」。但 a5ccaf68 仍空壳（tool=0/bash=0），唯一真故障=会话被主对话抢占中断。
+- **P39 方案落地**：发现 WorkBuddy 自带无头 CLI `codebuddy -p`（v2.176.0，独立进程不经过会话层）。建执行器 `p39_headless_runner.sh` + SOP `p39_sop_prompt.md` + launchd plist（StartCalendarInterval 数组原生 4 时段）+ 一键启用 `p39_enable.sh`。模型：gemini-3-flash 已下线（model_not_found）→ 用户确认改 deepseek-v4.1-flash-1017（实测渠道正常）。
+- **阻塞（环境限制）**：本会话 `launchctl bootstrap/load` 全 I/O error（连最小 plist 也失败）、`crontab` operation not permitted、`codebuddy -p` 被安全策略拦截 → 系统级注册+无头验证两步须本机真实终端执行（已封装为 p39_enable.sh 一键）。文件全就绪、轮次未污染。
+- **判活口径更新**：事件驱动日志停写不能推断调度器死亡，须看 run start/dispatch 事件对 + daemon.log session attached + vpipe-lab 锁/同步日志。
