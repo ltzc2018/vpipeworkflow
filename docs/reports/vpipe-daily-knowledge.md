@@ -2166,3 +2166,12 @@ GitHub API（vpipe commits / releases / issues / PR search / repo meta；Lakonik
 - **P39 方案落地**：发现 WorkBuddy 自带无头 CLI `codebuddy -p`（v2.176.0，独立进程不经过会话层）。建执行器 `p39_headless_runner.sh` + SOP `p39_sop_prompt.md` + launchd plist（StartCalendarInterval 数组原生 4 时段）+ 一键启用 `p39_enable.sh`。模型：gemini-3-flash 已下线（model_not_found）→ 用户确认改 deepseek-v4.1-flash-1017（实测渠道正常）。
 - **阻塞（环境限制）**：本会话 `launchctl bootstrap/load` 全 I/O error（连最小 plist 也失败）、`crontab` operation not permitted、`codebuddy -p` 被安全策略拦截 → 系统级注册+无头验证两步须本机真实终端执行（已封装为 p39_enable.sh 一键）。文件全就绪、轮次未污染。
 - **判活口径更新**：事件驱动日志停写不能推断调度器死亡，须看 run start/dispatch 事件对 + daemon.log session attached + vpipe-lab 锁/同步日志。
+
+### P39 本机实测首跑 · K145（2026-11-24 00:55）
+
+- **launchd 注册成功**：真实终端跑 `p39_enable.sh`，`bootstrap gui/501` 成功，服务在域内，4 时段就绪。
+- **守卫与兜底首次真实跑通**：force→RUN(R=26)→建锁→CLI 失败→自动删锁不推进（round 仍 25），容错链路正确。这与 K139「会话空壳零执行」本质不同——本次是真执行真失败。
+- **★★★ K145 根因**：WorkBuddy 定制版 `cli/dist/` 只有 `codebuddy-lite-wb.mjs`（12.8MB）+ `lazy-lite-wb/`(96 chunks)，**无** `codebuddy`/`codebuddy-headless` CJS bundle。`codebuddy -p` 触发 `isHeadless` → require headless 失败 → 回退 `dist/codebuddy`（第306行）→ MODULE_NOT_FOUND。仅 `CODEBUDDY_FORCE_LITE_WB_BUNDLE=1` 才走 lite-wb 分支（唯一存在的产物）。静态确认 lite-wb 支持 -p/--model/--permission-mode/--session-id/--add-dir 全参数。
+- **修复**：runner 第 57 行 + plist EnvironmentVariables 双处注入 `CODEBUDDY_FORCE_LITE_WB_BUNDLE=1`；plutil/bash -n 均 OK。
+- **待复核**：终端重跑 `bash scripts/p39_headless_runner.sh 00:30 force`，预期 round 25→26 + `nightly-sync-r26.log` + 退出码 0。
+- **方法论**：定制版 CLI bundle 分派是隐藏单点，脚本化调用 `-p` 必须显式强制 lite-wb；此为继 autotune 静默、旧 build 丢 config 之后第三类静默配置陷阱。

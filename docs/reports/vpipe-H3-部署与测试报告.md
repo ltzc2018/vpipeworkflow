@@ -5337,3 +5337,50 @@ P22 的 768p 真值链（lanczos 降采样到 640×384）同分辨率对比—�
 #### 18.30.6 待办
 - **P39 最后一步（用户本机执行）**：真实终端跑 `bash scripts/p39_enable.sh`，确认 launchd 注册 + 无头闭环成功推进 round。
 - 若 codebuddy 无头实测仍空壳/失败 → 降级方案：launchd 直接调 `nightly_guard.sh` + 纯 shell 知识同步（无 LLM 检索，仅 git/commit/release 增量），保证「到点必跑最小闭环」。
+
+### 18.31 2026-11-24 00:55 —— 第 25 轮续（P39 本机实测首跑）：★★★ K145 launchd 注册成功但无头 CLI MODULE_NOT_FOUND 根因与修复
+
+> 本节记录用户在本机真实终端执行 `p39_enable.sh` 后的首轮实测结果。18.30 方案设计原样保留。
+
+#### 18.31.1 实测结果（用户真实终端 00:50:55）
+- ✅ **launchd 注册成功**：`launchctl bootstrap gui/501` 成功，`launchctl print` 确认服务在 gui/501 域。到点 4 时段（00:30/02:30/04:30/06:30）注册就绪。
+- ✅ **守卫判定正常**：force 模式返回 `RUN||下一轮 R=26`，退出码 0，锁正确建立（证明 18.27 守卫脚本在真实终端可用）。
+- ❌ **无头 CLI 启动即失败**：`codebuddy -p` 退出码 1，报错 `Error: Cannot find module '../dist/codebuddy'`，require stack 指向 `cli/bin/codebuddy:306`。
+- ✅ **失败兜底正确**：执行器自动删锁、未推进轮次（round 仍 25）、无污染。这套容错逻辑首次真实跑通。
+
+#### 18.31.2 ★★★ K145 根因 —— WorkBuddy 定制版只打包 lite-wb 单一 bundle
+静态排查 `cli/dist/` 目录：
+```
+dist/
+  ├── codebuddy-lite-wb.mjs   (12.8 MB，唯一 bundle)
+  └── lazy-lite-wb/           (96 个 lazy chunk，齐全)
+```
+**没有** `dist/codebuddy`（完整 TUI CJS）和 `dist/codebuddy-headless`（headless CJS）。
+
+`cli/bin/codebuddy` 的分派逻辑（第 280–306 行）：
+- `-p` → `isHeadless=true` → 先 `require('../dist/codebuddy-headless')` → MODULE_NOT_FOUND → 回退 `require('../dist/codebuddy')`（第 306 行）→ 仍不存在 → 抛出，进程 exit 1。
+- 只有 `forceLiteWb=true` 时走 `importMjs('codebuddy-lite-wb.mjs')`（第 281 行）——**这才是本机唯一存在的产物**。
+
+`forceLiteWb` 仅由环境变量 `CODEBUDDY_FORCE_LITE_WB_BUNDLE=1|true` 触发（宿主 workbuddy-server 预置），手动 CLI 调用缺省为空 → 走错分支。
+
+**静态确认 lite-wb bundle 支持全部所需参数**：bundle 内 `--print`/`-p`(15处)、`--model`(10)、`--permission-mode`(9)、`--session-id`(6)、`--add-dir`(3)、`bypassPermissions`(14) 均在。lazy chunk 目录完整。故强制 lite-wb 是可行且无损的修复。
+
+#### 18.31.3 修复（两处注入环境变量，双保险）
+| 文件 | 改动 |
+|---|---|
+| `scripts/p39_headless_runner.sh` | 第 57 行新增 `export CODEBUDDY_FORCE_LITE_WB_BUNDLE=1`（脚本级，覆盖 force/手动/launchd 所有调用路径） |
+| `~/Library/LaunchAgents/com.vpipe.nightly.plist` | EnvironmentVariables 新增同键（plist 级，确保 launchd 原生环境也携带） |
+
+`plutil -lint` OK、`bash -n` OK。两处 env 均已 grep 确认落盘。
+
+#### 18.31.4 待用户本机复核（下一步）
+用户需在真实终端重跑一次验证（**不需重新 bootstrap**，plist 变更仅影响环境变量，bootout+bootstrap 可选）：
+```bash
+bash /Users/minichen/WorkBuddy/2026-11-12-21-10-11/vpipe-lab/scripts/p39_headless_runner.sh 00:30 force
+```
+- 预期：`codebuddy -p` 正常启动 → 联网检索+固化+同步 → round 25→26 → 出现 `nightly-sync-r26.log` → 执行器退出码 0。
+- 若仍失败，看新日志 `logs/p39-run-*.log` 的具体报错（本会话无法直接跑 codebuddy，安全策略拦截，须终端实测）。
+
+#### 18.31.5 方法论沉淀
+- **定制版 CLI bundle 分派是隐藏单点**：官方 codebuddy 有 headless/full 双 bundle，WorkBuddy 定制版裁剪为 lite-wb 单一产物。任何脚本化调用必须显式设 `CODEBUDDY_FORCE_LITE_WB_BUNDLE=1`，否则 `-p` 静默走错分支报 MODULE_NOT_FOUND。这是继「autotune 开关静默」「旧 build 丢 config 键」之后第三类**静默配置陷阱**。
+- **判活口径补充**：执行器「启动→MODULE_NOT_FOUND→删锁不推进」的完整链路本身就是成功信号（证明守卫+兜底可用），与 K139「会话空壳零执行」有本质区别——前者是真执行真失败，后者是根本没执行。

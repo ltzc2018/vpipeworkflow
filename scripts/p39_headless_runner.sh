@@ -50,6 +50,11 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$RUN_LOG"; }
 export PATH="$NODE_BIN:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 export VPIPE_DISABLE_TELEMETRY=1
 export VPIPE_MODEL_SOURCE=modelscope
+# ★ 关键（K145）：本机 WorkBuddy 定制版 cli/dist 下只打包了 codebuddy-lite-wb.mjs，
+#   没有 codebuddy-headless / codebuddy 两个 CJS bundle。-p 会触发 headless 分支，
+#   逐级回退到缺失的 dist/codebuddy → MODULE_NOT_FOUND（实测 2026-11-24 00:50）。
+#   必须显式强制 lite-wb bundle（其支持 -p/--model/--permission-mode/--session-id/--add-dir）。
+export CODEBUDDY_FORCE_LITE_WB_BUNDLE=1
 
 log "===== P39 无头执行启动 slot=$SLOT mode=$MODE ====="
 
