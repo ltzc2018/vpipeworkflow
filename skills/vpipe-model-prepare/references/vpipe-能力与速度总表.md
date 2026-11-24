@@ -48,6 +48,7 @@
 | 能力 | 模型 / 路线 | 分辨率 | 步数 | 实测耗时 |
 |---|---|---|---:|---:|
 | **文生视频 t2v** | FL2VA-8bit + Turbo-LoRA v4 | 960×544 | 4 | **5 分 50 秒**（350 s） |
+| **第 10 轮官方基准 (2026-11-19)** | 960x544, 124f, 6步 | — | — | **5m00s**（M5 Pro 官方基准） |
 | **文生视频 t2v** | FL2VA-8bit + Turbo-LoRA v4 | 960×544 | 6 | **8 分 01 秒**（481 s） |
 | **首帧图生视频 i2va** | FL2VA-8bit + Pika H3 Flex fl2va | 832×480 | 6 | **5 分 59 秒**（359 s） |
 | **参考生视频 Ref2VA** | Ref2VA-8bit + Pika H3 Flex ref2va | 832×480 | 6 | **6 分 49 秒**（409 s） |
@@ -174,3 +175,28 @@ vpipe 上游自带原生 Metal 视频超分，**不升 main 就能跑**（本地
 | 要 10 秒以上的长片 | 768p 241 帧 | ~1 小时 21 分 |
 | 商品图 + 动作参考视频 | 多参考组合（接受 ×3 耗时） | ~20 分钟 |
 | 已有低清视频想变清晰 | FlashVSR 4× 超分（**但保真度低于插值，慎用**） | 46 秒 / 25 帧 |
+
+---
+
+## 8. 上游官方 h3.c 对比基准（2026-11-22 第 21 轮追加，来源：README @ d347808）
+
+> 口径：960×544 / 124 帧 / 6 DiT 步，bf16 原始权重从内置 SSD 读、无 LoRA 无量化、同 prompt 同 seed；
+> h3.c 跑 its exact mode（全 50 块、无步复用）；VPIPE 按芯片开对应加速（M4 Pro 用 ane_ffn+ane_qkv，M5 用 i8_gemm）。
+
+| 硬件 | VPIPE | h3.c |
+|---|---:|---:|
+| M4 Pro Mac mini 64 GB | 17m43s | 23m9s |
+| M5 Air 15" 16 GB（风扇-less，冰袋散热，单样本） | 13m7s | 16m22s |
+| **M5 Pro MacBook Pro 16" 24 GB**（1620 MHz 满频可重复） | **5m29s** | 7m11s |
+
+- **本机同档（M5 Pro 24 GB）官方口径 5m29s** —— 本机实测 480p/124f ≈ 6m38s（Pika-Flex），同量级。
+- 16/24 GB 的 h3.c 需要 `--ssd-streaming`（bf16；其 int8 引擎需 transformer 全驻留）→ h3.c 的 int8 是纯 GPU 显存路线，与 vpipe 的统一内存流式是两种架构取舍。
+- 逐相位分解见 `docs/MINIMAX-H3.md#against-h3c`（原文 99 KB，未逐段核对，引用时注明）。
+
+---
+
+## 9. LLM/VLM 侧动态（2026-11-22 第 21 轮追加，来源：commit d347808，2026-11-21）
+
+- **DeepSeek-V4.1 GGUF 支持视觉输入**：vision tower 三文件（config + ViT/aligner 970 MB + marker/embedding 1.3 GB）放 GGUF 旁 `vision/` 目录或用 `vision_model` 直接指目录；文本 chat stage 新键。矩阵核路径 bf16 RMS 距离 3.5–4.5%。
+- **d72c22f（上一轮已记的 2× RelayVSR/scheduler 之外）**：Qwen3.8-Flash-Next GGUF、MoE expert cache 的 GPU↔host 无等待握手、`far-memory/1` 跨机 expert 托管（PROTOTYPE，插件传输）。
+- 对视频线无影响；但**「本机 build 落后多少」的判断基准**从此按 d347808（2026-11-21）计。

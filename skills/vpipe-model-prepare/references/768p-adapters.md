@@ -704,3 +704,193 @@ ModelScope `lightx2v/Minimax-h3-Turbo` 现有 **31 个文件 / 27 个 safetensor
 `reference_image_short_edge` 默认值：**2048（Ref2VA）/ 768（FL2VA）**。
 2048 → 单张静图 **121 个 VAE tile**（最多 9 张）；1024 → **25 个**。
 上游自己的示例用 `image-resample` + `reference_image_short_edge: 1024`。
+
+## 2026-11-20 00:30 更新（第 12 轮）
+
+### LightX2V Turbo v1.2 参数映射
+- **来源**: LightX2V v1.2 Release Notes
+- **适用**: `lightx2v/Minimax-h3-Turbo` (v1.2)
+- **参数**:
+  - `infer_steps`: 8 或 4
+  - `video_flow_shift`: 12.0 (★ v1.1 为 6.0)
+  - `audio_flow_shift`: 3.0
+- **注意事项**: 
+  - 修复了音频噪点问题；
+  - 提升了对 Prompt 语义的还原；
+  - **不兼容** Pruned 型基座（报 AdaLN shape 错误）。
+
+## 2026-11-23 23:20 更新（第 13 轮 · 04:30 槽故障诊断后补跑）
+
+**来源**：GitHub `tgo-app-dev/vpipe` commit `a6a1f53`（2026-11-23 09:54Z，85 文件 +17617/−509 行）。**注意：release 仍 v0.1.110（11-01），此增量仅在 main，本机 build 需更新后才能用。**
+
+### pi-H3 2/4 步适配器原生进主仓（K128）
+- 跑 ComfyUI **剪枝版** MiniMax-H3 checkpoint；每个 partition 入口带**精确 handle**（fl2va 可在多个剪枝副本中精确指向）。
+- 适配器结构 = 部分投影低秩对 + 整块替换（每 block 调制 / 输出调制+norm / 双 head）；strength 非 0 时应用、0 时撤销；**step grid 来自适配器文件**。
+- 被拒绝场景（按名字）：发布版 ckpt / split rank / 作为训练基座。
+
+### DWD — Decoding Without a Decoder（K129）
+- 适配器最后一步把 video rows 特征**直接交给 vae-decode 代替 latent**，vae-decode 跑适配器自己的 pixel head 而非 video VAE → **解码器不加载**，decode 阶段只记 head。
+- 精度：对 restatement 读 f32 **0.0053**，参考自身 bf16 **0.0052**（上游口径，非本机 Apple Silicon 实测）。
+- 意义：印证 K117 的 DWD 定义，首次给出 vpipe 内可复现路径（此前只能走外部 LakonLab v0.3）。
+
+### train-lora 与内存关键（K130/K131/K133）
+- `train-lora` 训练 MiniMax-H3 自身 DiT（两 partition）+ Qwen-Image 家族；样本=静帧或带音轨 clip 窗口，锚定首/末/双/无；Ref2VA 用 sidecar 命名参考。
+- **调制表折叠 26 GB → 174 MB**（压到剪枝 ckpt 携带的 8 维曲线）；每 block 保留激活不重算、梯度逐位相同；AdamW/8bit/Adafactor/B 因子独立 lr → **24GB 机器跑 LoRA 的内存关键**。
+- 三处内存记账修正（影响峰值显存口径，关联 K91，需重测）：video-ref-encoder 补 VAE encode+prefill 并在 prefill 前归还；prefill dequant scratch 按权重路线记账（此前 dense 按 quantized 收费）；fast decoder 每次 decode 后归还工作集。
+
+### 新增流水线（K134）—— 流水线手册待补 8 条
+- 4 条 LoRA：`minimax-h3-train-lora` / `-clips` / `-ref2va` / `-image-train-lora-edit`
+- 3 条 pi-H3：`pi-h3-text-to-video` / `pi-h3-first-frame-to-video` / `pi-h3-first-last-to-video`
+- 1 条准备：`prepare-pi-h3`
+- 文档：`docs/LORA-TRAINING.md` +262、`docs/MINIMAX-H3.md` +246
+
+### 版本口径警示（K135）
+- main 已 +17617 行但 release 仍 v0.1.110 → **release 落后 main**，引用上游能力时必须注明 commit（`a6a1f53`），禁止以 release 号推断功能有无。
+
+## 2026-11-24 00:06 更新（第 25 轮 · 社区增量，⚠️ 二手来源待复现，非本机实测）
+
+**来源**：社区博客/教程（studio.aifilms.ai、lpqz.cn、mindpattern.ai），非上游 commit。**禁止并入已验证能力区，须本机复现后才采信。**
+
+### FlashGen 4-step LoRA（K140，待复现）
+- VSD（无数据分布匹配蒸馏），rank 64 BF16；攻击 qkv_proj/out_proj/fc1/fc2/**adaln_proj.linear**——时间步条件层是 4 步跨大噪声间隔保运动/音频同步的关键。
+- 随附 `merge_lora_ckpt.py` 把适配器永久融合进 FL2VA 基座，并写入 base_schedule `[1.0,0.7,0.4,0.15,0.0]` 到 checkpoint config（**勿用通用线性 sigma 覆盖，否则边缘发软/瞬态浑浊**）。
+- 目标 1344×768 / 5.2 s；FP8/INT8 ≈16–24 GB。与 K128（vpipe 原生 pi-H3 2/4 步）并列，属外部 4 步蒸馏路线。
+
+### Turbo 三档耗时 + 双 shift 印证（K142，口径警示）
+- ComfyUI-NPU 平台 768p/15s：50 步 Euler≈35.0 min / 21 步 res_multistep≈15.0 min / 8 步 Turbo≈6.9 min。
+- **video shift 12 / audio shift 3** 双 flow schedule——印证 K106；旧版 ComfyUI 4 步音频会过度采样失真。
+- `silu(t_emb)` 网格注入 pruned/curve 基座 → 单 LoRA 覆盖 bf16/int8/pruned（印证 K128 pruned）。
+- ⚠️ NPU/15s 口径，**不可与本机 M5 768p/124f 29:34 直接比**。
+
+### Character Swap LoRA V1.5（K141，待复现）
+- akatz-ai，Ref2VA 上的 video-to-video 换角色；推荐配方 Int8 base + V1.5@1.0 + 8step Turbo@1.0，8 步 CFG=1.0 er_sde；原音 passthrough 非重生成。
+
+### vLLM PR #52023（K143，本机不采信）
+- `--model-variant fl2va+ref2va` 共享编码器省一半 encoder 内存；需 181.7 GiB 两 DiT 常驻，<120 GiB 启动失败 → 服务器大显存场景，与本机 24 GB 单 token 路线无关。
+
+## 2026-11-24 06:30 更新（第 26 轮 · 权重仓库级指标 + 字节同构 + 社区步数口径）
+
+### 仓库级指标（K150，HF `/api/models/lightx2v/Minimax-h3-Turbo`，2026-11-24 取）
+- **downloads 1,793,937 / likes 1,235 / 存储 75.80 GB（70.6 GiB）/ 30 文件（26 safetensors + .gitattributes/LICENSE/NOTICE/README）**。
+- **lastModified = 2026-11-16T09:19:46Z** → 自 11-16 起 **8 天无新权重**；结合文件清单**最高版本是 v1.3（4 步）/ v1.2（8 步）** ⇒ **不存在 v1.4**，v1.3 即当前 4 步终版。
+- ModelScope 镜像侧 Downloads 64,476、LastUpdated 同为 2026-11-16 —— 两站同步。
+
+### 4 步家族字节级同构（K151，★ 工程可用）
+`minimax_h3_fl2v_turbo_4step` 的 768p bf16 各版本 **LFS size 全部相同**：
+
+| 文件 | size (B) | 备注 |
+|---|---|---|
+| `..._4step_v1.0_768p_bf16` | 1,383,677,808 | |
+| `..._4step_v1.1_768p_bf16` | 1,383,677,808 | |
+| `..._4step_v1.2_768p_bf16` | 1,383,677,808 | 本机已装 |
+| `..._4step_v1.3_768p_bf16` | 1,383,677,808 | **本机未装** |
+| `..._4step_v1.1_768p_fp8` | 34,023,114,720 | = 31.69 GiB（ModelScope 报 32.4 GB，勾稽一致） |
+
+（各文件 sha256 **互不相同** → 同构但非同文件。）
+
+**结论**：v1.0→v1.3 的迭代**只换权重值、不改张量结构与 rank** ⇒ **v1.3 可直接占 v1.2 的槽位做 A/B，无需修改任何 shape / rank / 配方假设**。这条把「换版本」从「改管线」降级为「换路径」。
+- 8 步家族不满足该规律：v1.2 = **1,543,291,302 B**（比 v1.0/v1.1 的 1,383,677,808 大 11.5%），`_comfyui_bf16` 版 = 2,115,772,012 B ⇒ 8 步 v1.2 是**结构性变更**，不可直接换槽。
+- Ref2VA 4 步只有 v0.1 与 v1.0 两个 768p 版（均 1,383,677,808 / 1,956,193,000）；8 步有 v1.0 / v1.1。
+
+### 社区「4 步不够」口径（K152，⚠️ 二手待复现，非上游 commit、非本机实测）
+- 来源：minimax3.com/blog/minimax-h3-turbo-steps（2026-08-15，**明示非官方**）。
+- 断言：两位 LoRA 作者**均推荐 >4 步**；larryvrh card 称 6–8「明显优于 4」，**>8 无增益反过锐**；**ModelTC 官方示例工作流默认挂 8 步 checkpoint 而非 4 步**。
+- 唯一基准（RTX 5080 / 15 s / ~0.5 MP，作者自述「一个人的机器、非受控」）：标准 **1035 s** → 仅 SageAttention **487 s** → Turbo+Sage **193 s**。
+- 核心指标是 **time-per-usable-clip**：5× 采样缩减在「算上弃片重跑」后端到端只兑现约 **2×**。
+- 已知短板：快/大运动在低步数下拖影；Ref2VA 参考遵循是最不成熟环节（仍 v0.1）。
+- **与本机冲突**：18.21 用静态/慢速夹具测得 4 步细节能量 170.6 > 8 步 167.7。**不矛盾——适用场景不同**；本机口径应加限定「静态或慢运动」。待用运动夹具复现（P40）。
+
+---
+
+## 2026-11-25 追加（第 27 轮 · 官方迭代方向 + 8 步家族结构性变更）
+
+### K156 ★★ 官方两条线的迭代投入不对称（ModelScope + HF 交叉，2026-11-25 取）
+- **4 步线最后更新 = 2026-10-20（v1.3）**，此后 36 天无新版本；**8 步线最后更新 = 2026-11-12（v1.2）**，且 v1.2 相对 v1.1 是**结构性变更**（bf16 1,383,677,808 → **1,543,291,302 B，+11.5%**；comfyui 版 1,956,193,000 → **2,115,772,012 B**）。
+- 推论（**这是从日期+字节推的，非官方声明**）：官方把新增投入放在 **8 步线**，4 步线自 v1.3 起进入冻结。⇒ 本机若把 4 步当唯一主力，等于押在一条**已停止迭代**的分支上。
+- 官方 README 在 **2026-11-24 14:36** 更新过（唯一变更文件，权重 0 变更），内容仍是「**⭐ v1.2（8 步）** 优于 v1.1（8 步）/ Pika LoRA / 29 步 base」。⚠️ 该对比**只比 8 步 v1.1 vs 8 步 v1.2，不涉及 4 步** —— 不能拿它给「4 步不够」背书，只能证明「8 步线还在被维护」。
+- 8 步 v1.2 **本机未安装**（本机 8 步只有 v1.0）。因是结构性变更，**不可**按 K151 的字节同构直接换槽（换了会 shape/rank 不匹配）。
+
+### K150 指标复核（2026-11-25，HF 页面口径）
+- downloads **1,793,803** / likes **1.24k** / discussions **63** / Spaces **100** / collection `MiniMax-H3-LightX2V`（11 项）。相对 11-24 的 1,793,937 基本**持平**（-134，噪声级）。
+- ModelScope 镜像：**31 文件 / 26 safetensors / 75,804,462,395 B（75.80 GB）**，非权重文件 5 个（`.gitattributes` / `LICENSE` / `NOTICE` / `README.md` / `configuration.json`）。
+
+## 2026-11-25 追加（第 28 轮 · H3-Tiny 三步采样契约 + 第四日静默 + RelayVSR 显式画布）
+
+### K166 ★ H3-Tiny 的采样契约与 vpipe 现有 4/8 步家族**不同族**
+- H3-Tiny 17B/14B OKD **没有少数步蒸馏**，走 **50 步 + `simple` scheduler + 无 CFG（BasicGuider）**，且**不叠加 turbo LoRA**（README 明写）。few-step 版则用自家节点给出的 sigma 网格：`linspace(1, 0, steps+1)` @ **video shift 12**，默认 **6 步（≥4）**。
+- ⇒ 与本机现状的差异是**两层**：① 步数 50（本机 4/8 步配方不适用）；② **video shift 12**（本机 4 步/8 步配方不是 12）。
+- ⇒ **不要拿 H3-Tiny 的「不训练可用」当成「可以直接套本机 4 步加速」**。它的质量前提是 50 步全采样；若强行 6 步，必须用它的 few-step 权重，不是 17B pruned。
+- 参考生成参数（README）：文本编码器与 VAE 用 `Comfy-Org/MiniMax-H3`，DiT 放 `models/diffusion_models/`。
+
+### K160 ★ 上游第 4 日静默（快照，须逐日复查）
+- HEAD 仍 **a6a1f53**（`pushed_at 2026-11-23T11:20:51Z`，**满 2 天未动**）；release 最新仍 **v0.1.110（2026-11-01）→ 落后 main 24 天**；issue **14 条全开**（最新仍 #59 / 11-16 / 0 评论）；**PR = 0**；仓库 269 star / 27 fork / 36,920 KB（与上轮完全一致）。
+- 官方 `docs/` 目录 2026-11-25 复查仍**无任何 H3-Tiny 相关文档**（`grep -li "h3-tiny" docs/` 空），MINIMAX-H3.md 的 pruned 段落只描述 **[1025, 8]** 曲线形式。
+- 上游代码里 `pruned` 仅作为「ComfyUI 曲线形式」的识别标志（`adaln_t_table` 存在即 pruned），**不区分 50 块原版与 42 块剪枝版** → 这正是 K163 的 gate 成因。
+
+### K167 ★ LightX2V RelayVSR x4 支持显式输出画布（#1735，2026-11-19）
+- `8bbaabd`「feat(relayvsr): accept an explicit output size for x4」：此前 x4 的输出尺寸只能由 `sr_ratio` 推（两轴同倍），新增可直接指定画布。动机原文举的例子正是 **MiniMax-H3 的 16:9 768P = 1344×768（area cap 768×1344）**，两轴倍率不同。
+- 与本机关系：vpipe 的 `video-to-rgb` 有 `output_width/output_height` 成对参数（`stages/audio-video/video-to-rgb-stage.cc:326-350`），但 **relayvsr-upscale 本身无显式画布参数** → 若要「先超分再压回固定画布」，需在流水线里串一个 video-to-rgb 或 resize 步骤。属**生态印证**，非本机新能力。
+- LightX2V 近 8 条 commit（11-19 ~ 11-23）中与 H3 相关仅 2 条：#1749（causal 音频 9 chunk，K158）与 #1743（`minimax_h3_image` 推理复用 DiT conditioning + tiled VAE 加速，+89/−18，**图像侧非视频侧**）。
+
+## 2026-11-25 追加（第 29 轮 · Turbo Fusion 与采样契约冲突 + 第 5 日静默）
+
+### K169 ★★★ LightX2V「Turbo Fusion」三源融合适配器（2026-11-24 18:50 UTC）
+- 融合配方（4 步与 8 步**共用**，只换基座 ckpt）：**LightX2V cm2200 蒸馏 ckpt ×1.0 + Pika Ref2VA Flex ×0.4 + Larry Turbo v4 step-600 EMA ×0.4**。
+- **推理期不再叠三个适配器**（模型卡原话：Download one variant, do not add the component LoRAs on top）。
+- 变体（HF = ModelScope，逐位同字节）：
+  | 变体 | 4 步 | 8 步 |
+  |---|---|---|
+  | Full | 3,778,242,236 | 3,778,245,950 |
+  | Full `_comfyui` | 5,209,509,820 | 5,209,509,820 |
+  | Lite r32 | 665,148,804 | 665,148,812 |
+  | Lite r32 `_comfyui` | 808,241,732 | 808,241,732 |
+  | `pruned/…_pruned_comfyui` | 5,220,193,444 | 5,220,193,444 |
+  | `pruned/…_lite_r32_pruned_comfyui` | **818,925,468** | 818,925,468 |
+- **采样契约：Euler + video flow shift 12 + audio flow shift 3**。
+- ⚠️ **与本机现役配方冲突**：`scripts/dance-woman-768p.vpipeline` 是 lightx2v ref2va-8step-768p + `video_shift 6.0 / audio_shift 3.0`。**直接换槽不改 shift = 用错轨迹**，结论不可归因。
+- 8 步与 4 步的 Full 差 3,714 B 却**不是同一文件**（基座 ckpt 不同）→ `ls -l` 不可判同，须比 `__metadata__.recipe` / `source_sha256`。
+
+### K168 ★ 上游第 5 日静默（快照，须逐日复查；口径已改）
+- HEAD `a6a1f53`：`commit.author.date 2026-11-23T09:54:27Z` / `pushed_at 11-23T11:20:51Z` → 至 2026-11-25 04:30 为 **1.77 天 / 1.73 天**。
+- **口径修正**：上轮记「满 2 天」偏早。此后统一写「距 HEAD commit `<date>` 已 N.NN 天」，不再用「第 N 日」。
+- release 最新 **v0.1.110（11-01）→ 落后 main 24 天**；issue 14 全开（无一条 updated 晚于创建日）；PR=0；269 star / 27 fork / 36,920 KB。
+
+### K176 ★ 社区「自建融合」成惯例（非官方，待复现）
+- HF 11-24 六小时内新增 ~15 个 H3 仓库；`ibyteohdear/MiniMax-H3-Pruned-DMD-FL2VA-Turbo-Fused`（434 dl）与 `-Pruned-LightX8-hybrid-Fused`（452 dl）**都是 pruned + 融合**形态。
+- ⇒ 社区默认按 **pruned 基座**发布融合适配器。本机若跟进，pruned 通路是主干道。
+- ⚠️ 二手来源，**待复现**，不并入已验证能力。
+
+### 新迹象（非 H3，与本机量化路线同族）
+- **stable-diffusion.cpp #2403**「support immediate LoRA merges for INT8 weights」（2026-11-23，改 `src/core/metal/int8.metal`）：**在 Metal 上把 LoRA 直接合并进 int8 权重**。本机 `lora-fuse` 只走 `fp8::decode_bf16` → f32，**int8 基座 + LoRA 融合是缺口**，与 P44（pruned_int8 + Fusion LoRA）同一个工程问题。
+
+## 2026-11-25 追加（第 30 轮 · Kijai 混合量化包 + W4A8 实装确认）
+
+### K179 ★★★ `Kijai/MiniMax-H3-experimental` 的 pruned W4A8 档比 Comfy-Org int8 小 44%
+- 仓库 31 文件，`2026-11-24T07:43` 更新，likes 715。两个 DiT 主文件（零下载读头实测）：
+
+| 文件 | 字节 | GiB | 结构 |
+|---|---|---|---|
+| `minimax_h3_ref2va_pruned_w4a8_mixed` | 11,770,657,048 | **10.96** | 50 块、`adaln_t_table [1025,8]` F32、208 量化层（**200 w4a8 + 8 int8_tensorwise**）、AdaLN `F16 [96768,8]` |
+| `minimax_h3_fl2va_pruned_w4a8_mixed` | 12,540,858,008 | **11.68** | 同上，量化记录放 **header `_quantization_metadata`**（200 层），**无** `.comfy_quant` 旁挂 tensor |
+
+- 对照 Comfy-Org `ref2va_pruned_int8_convrot` = **19.53 GiB（20,970,379,616 B）** ⇒ W4A8 档少下 **9.20 GB / 8.57 GiB**，37 GiB 磁盘下从「勉强」变「宽裕」。
+- 8 个 int8 层 = `token_refiner.blocks.0.{attn.out_proj,attn.qkv_proj,mlp.fc1,mlp.fc2}` ×2 → **「mixed」= 两套格式混在一个文件里**，不是单一格式。
+- 采样契约同 LightX2V 线：Euler + **video shift 12** + audio 3（改槽必须连 shift 一起改，见 K169）。
+
+### K180 ★★ 同一家族的两种量化记录布局（新坑，第三次「同名不同构」）
+| 布局 | 记录位置 | 本机读取路径 |
+|---|---|---|
+| ref2va 版 | 每层旁挂 `<layer>.comfy_quant`（U8 tensor，89 B JSON） | `declared_format_` 第一分支（读 tensor 文本） |
+| fl2va 版 | header `__metadata__._quantization_metadata.layers[<layer>]` | `declared_format_` 第二分支（读 metadata） |
+- 两分支都在 `generative-models/shared/fp8-layout.cc:79-121`，**都能读**；但**只看文件里有没有 `.comfy_quant` 会误判** fl2va 版「无量化记录」。
+- ⇒ 纪律：判量化格式必须**同时**看 tensor 旁挂 + header metadata 两处。
+
+### K178 ★★★ 本机已装 App（0.1 / `9db5dd7*0`，2026-11-14 构建）二进制里已含完整 pruned + W4A8 路径
+- `strings "/Applications/Vpipe Manager.app/Contents/Frameworks/libvpipe.0.dylib"` 实测命中：
+  - `w4a8_to_i8` / `w4a8_convrot_dequant`（W4A8 展宽 kernel）、`asym_w4a8_int8`
+  - `h3_adaln_pruned_f16` / `h3_adaln_pruned_res_f16`（pruned 8 宽曲线 kernel）
+  - `'{}' carries AdaLN curve branches but no curve table…`（缺表报错）
+  - `a pruned AdaLN of {} x {} (adaln_t_table) is not the 8-wide curve this model reads`（**16 宽拒绝的原文**）
+  - `carries ComfyUI weight diffs on the AdaLN (adaln_proj.linear.diff / .diff_b)`（`.diff_b` 支持）
+- 上游侧对应 commit = `41d2789`（2026-11-12，W4A8 + pruned kernel 引入），**早于本机 build 日期** → 已编译进去。
+- ⇒ **P44 不需要重编译源码**，直接手工 `hf_dir` 指目录即可试（K174 的 catalog 缺失仍成立）。

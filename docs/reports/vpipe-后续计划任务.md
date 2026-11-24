@@ -1,15 +1,18 @@
 # vpipe 后续计划任务清单
 
 > 基于 GitHub `tgo-app-dev/vpipe`（`main` @ `4dc36b7`，**2026-11-16**；**已装 App `0.1 (9db5dd7*0)` 落后 12 个 commit，但本地源码树 `33cda00` 只落后 2 个** —— 见第 2 轮修订）、官方 `docs/MINIMAX-H3-zh-cn.md`（+ 英文版 `docs/MINIMAX-H3.md` 249 KB）、官方 release、issue（**至少 59 条**），以及 YouTube/社区实测资料整理
-> 生成时间：2026-11-14 · **最近更新：2026-11-25 02:30（第 28 轮 · H3-Tiny INT8 权重头零下载实测 → 本机 pruned AdaLN 宽度硬 gate + 上游第 4 日静默）**
+> 生成时间：2026-11-14 · **最近更新：2026-11-25 06:30（第 29 轮 · 本机已发布二进制 pruned/W4A8 通路实装确认 + Kijai W4A8 混合档把 P44 下载量砍半 + FastH3-VSA「权重齐、PR 齐、只差合入」）**
 > 机器：Mac mini M5 Pro / 24 GB / 15 核 / macOS 27.2
 
 ---
 
-## 状态看板（2026-11-25 02:30 更新）
+## 状态看板（2026-11-25 06:30 更新）
 
 | 轮次 | 状态 | 摘要 |
 |---|---|---|
+| **第 29 轮 · 2026-11-25 06:30 夜间知识同步（本机二进制实装确认 + W4A8 混合档 + VSA 缺口分级）** | ✅ **完成（P39 无头 CLI 第 6 次链路：06:30 槽准时触发；04:30 段未 sync 未推进，本轮补完闭环）** | 上游零增量（HEAD a6a1f53 = 距 commit **2.81 天**；release v0.1.110 落后 **24 天**；issue 14 全开 0 回复；PR=0；**270 star** +1）。**★★★ K178 本机 11-14 构建的 `libvpipe.0.dylib` 早已含 `h3_adaln_pruned_f16` / `w4a8_to_i8`** → 「本机不支持 pruned/W4A8」注销；**★★★ K179 Kijai `pruned_w4a8_mixed` 仅 10.96 GiB**（vs Comfy-Org int8 19.53 GiB）→ P44 下载量砍 47%；K180 同家族两种量化记录布局；**★★★ K181 FastH3-VSA 权重 21.33 GiB 已落地，但 issue #56（Able to merge 34 天）未合 → 本机整文件拒绝**；K182 官方仓误合/revert；K183 Comfy-Org 收 ControlNet Union；K184 社区 latent 域时间修复（待复现）。**新增 P45（VSA 跟踪）**；**修技能包分叉坑**（18.38.6 坑①）。详见报告 18.38 节 |
+
+| **第 29 轮 · 2026-11-25 04:30 夜间知识同步（Turbo Fusion 融合适配器 + 本机 pruned 通路分层）** | ✅ **完成（P39 无头 CLI 第 5 次完整链路：04:30 槽准时触发、检索→固化→报告→sync→release 闭环）** | 上游静默第 5 日（HEAD a6a1f53 = 距 commit 1.77 天 / release v0.1.110 落后 **24 天** / issue 14 全开 / PR=0 / 269 star）。**★★★ K169「Turbo Fusion」**：LightX2V + Pika Flex + Larry v4 合成单 LoRA，4/8 步共用配方，**video shift 12**（与本机现役 6.0 冲突）；**★★★ K170/K171「pruned 通路分层」**：设 8 宽 + `.diff_b` 在本机可读（源码三道门逐一核对），只有 16 宽（H3-Tiny）被拒 → **K163 收窄**；K172 pruned_int8 19.53 GiB；K173 文档已把 pruned 写成一等支持；K174 catalog 仍无条目；K175 Lite r32 谱能量≠画质；K176 社区自建融合成惯例。**新增 P44（Fusion-pruned 本机实测，下轮首选）**。详见报告 18.38 节 |
 | **第 28 轮 · 2026-11-25 02:30 夜间知识同步（H3-Tiny INT8 权重头零下载实测 + 上游第 4 日静默）** | ✅ **完成（P39 无头 CLI 第 4 次完整链路：02:30 槽准时触发、检索→固化→报告→sync→release 闭环）** | 上游静默第 4 日（HEAD a6a1f53 满 2 天未动、release v0.1.110 落后 **24 天**、issue 14 全开、PR=0、269 star 逐位同上轮）。**★★★ 本轮方法突破：用 HTTP Range 只读 safetensors header（0 下载）**——K162（H3-Tiny 四个 INT8 文件的 42 块 / `adaln_t_table [1025,16]` / 14B INT8 FFN 9984 / FewStep 双段低秩全量结构）；**K163（本机 pruned AdaLN 硬 gate：`time_dim != 8` 即 fail，非「缺 catalog」而是「loader 不认」）**；K164（14B INT8 9984 ≠ bf16 9792，ConvRot group 256 对齐）；K165（Tiny17B 与官方 pruned 50 块仅差「块数+曲线宽」两处）；K166（H3-Tiny 走 50 步/shift12，与本机 4/8 步不同赛道）；K167（LightX2V #1735 RelayVSR x4 显式画布）。P42 前置重写。详见报告 18.37 节 |
 | **第 27 轮 · 2026-11-25 00:30 夜间知识同步（上游第 3 日静默 + 官方迭代方向量化）** | ✅ **完成（P39 无头 CLI 第 3 次完整链路：00:30 槽准时触发、守卫 RUN/R=27、检索→固化→报告→sync→release 闭环）** | 上游静默第 3 日（HEAD a6a1f53 两天未动、release v0.1.110 落后 **24 天**、issue 14 全开 0 回复 0 处理、PR=0、269 star）。K155（★★H3-Tiny 剪枝家族：AdaLN rank8 + 删 8/50 块 + FFN 9792，17B 不训练可用，INT8 18.1 GB）；K156（★★**官方 4 步线 10-20 后 36 天冻结、8 步线 v1.2 结构性变更不可换槽**）；K157（★★**本机 catalog 无 Tiny/causal 条目**）；K158（★LightX2V 因果流式音频历史 9 chunk）；K159（★ComfyUI MPS warp 绕法可迁移）。新增 **P42**。详见报告 18.36 节 |
 | **第 27 轮 · 2026-11-25 00:30 夜间知识同步（上游第 3 日静默 + 官方迭代方向量化）** | ✅ **完成（P39 无头 CLI 第 3 次完整链路：00:30 槽准时触发、守卫 RUN/R=27、检索→固化→报告→sync→release 闭环）** | 上游静默第 3 日（HEAD a6a1f53 两天未动、release v0.1.110 落后 **24 天**、issue 14 全开 0 回复 0 处理、PR=0、269 star）。K155（★★H3-Tiny 剪枝家族：AdaLN rank8 + 删 8/50 块 + FFN 9792，17B 不训练可用，INT8 18.1 GB）；K156（★★**官方 4 步线 10-20 后 36 天冻结、8 步线 v1.2 结构性变更不可换槽**）；K157（★★**本机 catalog 无 Tiny/causal 条目**）；K158（★LightX2V 因果流式音频历史 9 chunk）；K159（★ComfyUI MPS warp 绕法可迁移）。新增 **P42**。详见报告 18.36 节 |
@@ -38,10 +41,12 @@
 | **第 8 轮 · 2026-11-18 23:50 夜间知识同步** | ✅ **完成（vpipe 支持 DiT 分布式运行 + H3 索引修复 + PDD 规约固化）** | 检索 5 源。**增量**：① vpipe 支持多 Mac 拆分 DiT 推理；② 修复 150k+ 行长序列索引溢出；③ PDD 采样器必须固定 euler/CFG 1.0；④ lightx2v 768p 官方 shift 修正为 6.0/3.0。**实验**：无。详见报告第 **18.8** 节 |
 | **第 8 轮 · 2026-11-18 23:50 夜间知识同步** | ✅ **完成（★★★ P22 判决：FlashVSR 原生 Metal 4× 超分真机跑通 + 「它是细节生成器，不是保真放大器」）** | 检索 **18 类源**（GitHub API × 5：commits/releases/**issues+PR**/**branches**/**owner 全部仓库** + ModelScope API × 2 + **本地源码 × 5**：`flashvsr-model-config-stage.cc` / `flashvsr-src-encoder-stage.cc` / `flashvsr-family.h` / `model-registry.cc` / `flashvsr-src-encoder` + 上游官方文档 × 2（`platform.minimax.io` 模型页 + self-host 指南）+ SiliconFlow 公告 + 社区 × 10）。**上游仍零增量**（HEAD `4dc36b7` / release v0.1.110 / 31 issue / **0 PR** / **1 branch** / #55 开放 30 天 0 评论）；ModelScope `lightx2v/Minimax-h3-Turbo` 仍 31 文件 / 26 safetensors。**★ 四个关键增量**：① **★ P22 判决（见下）**；② **★ MiniMax H3 Max = fal.ai 托管、权重未开源**（官方模型页 + 3 源印证）→ 「生态有」但只有托管形态；③ **★ SiliconFlow 2026-11-10 上线 MiniMax-H3 官方 API**（`duration` 5–15 s / `resolution` 480p|768p / `images` 用 `role`），且 **`negative_prompt` / `image_size` 传入不报错但被忽略** → **跨生态印证「静默失效」是通病，不是 vpipe 专利**；④ **★ 官方 self-host 指南明写 H3 部署基线「excludes H3-Context-IR and the complete 2K Workflow」** → **第 1 轮「2K 未开源」是官方口径，不是本实验室的悲观**。**实验（P22 · FlashVSR v1.1，25 帧 / 1280×768 / 45.5 s）**：**★ 本实验室第一次真机跑通上游自带原生 Metal 视频超分**（拖了 3 轮，本轮磁盘回升到 32 GiB 才解锁）。**★ 三条量化判决**：**① 它确实生成了插值给不出的细节**（纹理量 13.00 → 163.80 = **12.6×** / +1160%，且纹理/噪点比 153.7 **高于**真值 144.3 → 是结构化毛发纹理不是噪点）；**② 但它不是「还原」而是「编造」**（对原始 768p 的 SSIM **比纯插值低 0.0506**、PSNR **低 4.05 dB**；真值纹理量的 **1.76×** 就是编造量）；**③ 代价是时序不稳**（frame diff **+37.4%**，HF jitter 0.3066→0.3410，**比真值本身还高 6.1%**）。**★ 复现性判决**：`framemd5` **不同**（不逐位相同）但**指标漂移 ≈ 0**（+0.02%/0.00%/+0.01%/−0.00%）—— 原因：**flashvsr 家族的 sampler/scheduler/negative 全部惰性** → **`autotune` 无可调对象、日志无回显** → **修订第 3 轮 11.1 的适用范围**。**★ LFM3-VL 复核**：Q1场景 ✅ / Q2 纹理粗判 **❌ 说反了**（已知缺陷 ② 再现）/ Q3 1:1 判读 ✅ **正确指出「原图里没有的、像 AI 编造的纹理」** / Q4 运动漏检。详见报告第 **18.6** 节 |
 
-### 待验证登记（第 28 轮 · 2026-11-25 02:30 更新）
+### 待验证登记（第 29 轮 · 2026-11-25 06:30 更新）
 
 | 任务 | 优先级 | 前置 | 说明 |
 |---|---|---|---|
+| **P44 ★ Fusion-pruned 本机实测（W4A8 档）** | **高（下轮首选）** | 前置：清 `minimax_h3_fl2va_bf16.safetensors.part`（18.3 GB 半成品）→ 余 55 GiB；下 `Kijai/MiniMax-H3-experimental:minimax_h3_ref2va_pruned_w4a8_mixed`（**11,770,657,048 B / 10.96 GiB**）+ `lightx2v/Minimax-H3-Turbo-Fusion:pruned/…_4step_lite_r32_pruned_comfyui`（818,925,468 B）；**pipeline 的 `video_shift` 必须 6.0 → 12.0、`audio_shift` 保持 3.0** | **K178** 本机 dylib 已含 `w4a8_to_i8` + `h3_adaln_pruned_f16` → **无需重编译**；**K179** W4A8 档比 Comfy-Org int8（19.53 GiB）少下 9.20 GB；**K180** fl2va/ref2va 两套记录布局本机都能读；**K174** catalog 无条目 → 必须手工 `hf_dir`；**K171** 唯一硬条件是 DiT 为 pruned 形式。**成本重估**：下载 15–25 min + 生成 29 min ≈ 55–60 min。对照臂（可选）：Comfy-Org `ref2va_pruned_int8_convrot`。**注意**：mixed 档是 200 层 w4a8 + 8 层 int8 混装，勿按文件判格式 |
+| **P45 ★ FastH3-VSA（gate_compress）缺口跟踪** | 低 | 无（只盯 issue #56） | **K181**：`Kijai/…:minimax_h3_fastvideo_vsa_datafree_1300step_4step_int8_convrot`（21.33 GiB / 1082 tensors / 250 层 int8_tensorwise）已落地社区，但本机 `grep gate_compress` = **0**，`untranslatable_tensor()` 对无 native 名 tensor **整文件拒绝**。上游 **issue #56**（`AugustRush/vpipe:omniref-vsa`，15 文件 746 行，GitHub 报 **Able to merge**，2026-10-22，**0 评论 / 已 34 天**）的失败原因与实测逐字一致。⇒ 与 P42 不同类：**不需改 kernel，只需名字映射合入**。合入后本机需更新 build 才能跑 |
 | **P42 H3-Tiny 剪枝家族本机可行性** | 中 | ⛔ **阻塞（K163 重写）**：不只是「catalog 无 h3_tiny 条目」，而是 **loader 硬 gate** ——`metal-minimax-h3-transformer.cc:830` 要求 `pruned() && time_dim == 8`，而 `time_dim` 取自 `adaln_t_table` 第 2 维；H3-Tiny 是 **[1025,16]** → 加载即 fail。Metal kernel `h3_adaln_pruned_f16` 亦硬编码 `k<8` | **K162 权重头实测**：42 块（0–41）、`[1025,16]` F32、`adaln_proj.linear.weight [96768,16]`；14B INT8 FFN **9984**（bf16 是 9792，ConvRot group 256 对齐）；FewStep 版无 `adaln_t_table`，改双段 `.linear_1 [8,2688] + .linear_2 [96768,8]`。**K165**：与官方 pruned（50 块 / [1025,8]）在 qkv/out_proj/fc1/fc2 上逐形状一致 → **只差「块数自适应 + AdaLN 宽度参数化」**。**下一步不需要下载**：① 向上游提 issue/PR 支持任意宽 pruned 曲线；② 或本机打补丁把常量 8 改参数（kernel + 校验双改，`.h:138-142` 已有 `curve_grid` 变量可复用）。**不建议自行改源码**（会与上游 a6a1f53 冲突） |
 | **P39 定时任务会话空壳根治** | 高 | ✅ **实质闭环（2026-11-25 02:30，第 28 轮第 4 次完整链路）**：launchd + 无头 CLI 连跑 4 轮（R=26 / R=27 / R=28）。04:30 槽曾实测因 `Upstream response stream was interrupted` 失败、兜底正确删锁不推进（K154） | 方案=launchd + codebuddy 无头 CLI 独立进程绕开会话层。已破四关：K145(bundle 分派)/K146(模型 ID 别名)/K147(CLI 僵死占锁+看门狗)/K154(流中断兜底)。**残留风险：上游长连接偶发中断，无重试机制** → 见 P41。详见报告 18.30–18.37 |
 | **P40 4 步适配器「运动场景」验证 + v1.3 换槽 A/B** | 中 | 待验证（合并两项）。**K156 限定**：4 步线自 10-20（v1.3）后冻结 36 天，换槽 A/B 价值下降；8 步 v1.2 是结构性变更、**不可**换槽。**K166 新增**：H3-Tiny 的 50 步/shift12 与本路线不同赛道，不可混比 | ①**K152**：社区称 4 步在快/大运动会糊成拖影（二手待复现）；本机 18.21 的「4 步细节能量 170.6 > 8 步」是**静态/慢速夹具**，需运动夹具复测定稿。②**K151/K156**：v1.3 与 v1.2 字节级同构可换槽，但 4 步线已冻结 → **优先做运动夹具复测，换槽降为可选**。**成本**：+1.38 GB 下载 + ~29 min 生成 |
@@ -56,6 +61,45 @@
 | **P31 sgm_uniform/beta 网格 vs 默认 5s 片实测** | 中 | 无 | P28 只测了静态夹具；动态场景的 σ 细扰是否同场景待验 |
 | ~~**P33 RelayVSR 接缝周期判据定标**~~ → **已完成（18.25）：判据重大修订** | — | — | ★★★ 124 帧原片本身 peak_excess 1.970/f_ratio 4.331 **强于**超分片 1.921/3.562（同 peak_k=11）→ 脉动是源片固有非超分接缝，推翻 K104 归因。绝对阈值作废，判据改为超分/原片比值（强制加原片对照臂）；本轮比值 0.82<1 无超分脉动。 |
 | **P35 768p 重生成高清化 Negative 复盘** | 低 | 无 | K123 已定论「重生成高分辨率 + 恒定码率 = 更糊且换场景」；高清化统一走 RelayVSR 2×（K124）。本项仅条目留存，无需实验 |
+
+## 每日知识增量（2026-11-25 06:30 · 第 29 轮 · 06:30 段）
+
+> 本节由夜间自动任务累积写入（**只追加**）。完整版见 `vpipe-daily-knowledge.md` 第 29 轮续；主报告对应第 **18.38** 节。
+> ★ 本轮由 **P39 launchd + 无头 CLI** 执行（第 6 次链路）。知识编号 **K178–K184**（接 04:30 段的 K168–K177）。
+
+| # | 知识 | 来源 | 日期 | 对既有结论的影响 |
+|---|---|---|---|---|
+| **K178** | ★★★ **本机已装 App 二进制早已含 pruned + W4A8 通路**：`libvpipe.0.dylib`（`0.1 / 9db5dd7*0`，11-14 构建）`strings` 命中 `w4a8_to_i8` / `w4a8_convrot_dequant` / `asym_w4a8_int8` / `h3_adaln_pruned_f16` / `h3_adaln_pruned_res_f16` / 拒绝 16 宽原文；上游对应 commit `41d2789`（11-12）早于 build 日 → **已编译进去，P44 无需重编译** | `strings` + `git log -S` | 2026-11-25 | **K171 升级为「发布二进制也通」**；「本机不支持 pruned/W4A8」注销 |
+| **K179** | ★★★ **Kijai `pruned_w4a8_mixed` 是本机最小可塞候选**：ref2va **11,770,657,048 B（10.96 GiB）** / fl2va 12,540,858,008 B；50 块、`[1025,8]`、AdaLN F16、**200 w4a8 + 8 int8_tensorwise**（token_refiner）。vs Comfy-Org int8 pruned 19.53 GiB → **少下 9.20 GB** | HF Range + tree | 2026-11-25 | **P44 下载量砍 47%**；磁盘余量 16 GiB → 25 GiB |
+| **K180** | ★★ **同家族两种量化记录布局**：ref2va 每层旁挂 `.comfy_quant`（U8 tensor）；fl2va **只在 header `_quantization_metadata`**；本机两路都能读（`fp8-layout.cc:79-121`） | 两头对照 + 源码 | 2026-11-25 | 「同名不同构」**第三次**；判格式须双处并查 |
+| **K181** | ★★★ **FastH3-VSA 权重已落地（21.33 GiB／1082 tensors，250 层 int8，每块 +`to_gate_compress` `[7168,5376]`）但本机整文件拒绝**：`grep gate_compress`=0，`untranslatable_tensor()` 全拒；上游 **issue #56**（15 文件 746 行，**Able to merge 34 天**，0 评论）失败原因逐字一致 | HF 头 + 源码 + issue #56 | 2026-11-25 | **缺口分级**：VSA = 权重齐 + PR 齐 + 只差合入（**不需改 kernel**） |
+| **K182** | ★ 官方仓 11-24「误合 PR #112 → **12 分钟** revert」；非技术变更，权重零影响 | HF commits | 2026-11-24 | 纪律：`lastModified` ≠ 新权重，须看 tree sha/体积 |
+| **K183** | ★ Comfy-Org 官方镜像 `model_patches/` 已收 H3 ControlNet Union 四档（8.38/4.53/4.22/2.30 GB）；本机支持仍 **0** | tree + grep | 2026-11-25 | 生态地位升级（此前仅 alibaba-pai 原始仓） |
+| **K184** | ★ 社区「latent 域时间修复」独立赛道（17 帧块运动检测 + 局部 2×/3× 膨胀后二次采样，不解码到像素）；本机无对应 stage | HF README | 2026-11-24 | **待复现**；与像素域超分不同层 |
+
+**更正**：上轮「ModelScope 的 `pruned/` 是空目录」**作废** —— `repo/files` 不递归，按 `Root=pruned` 查四个文件全在（含 818,925,468 B），与 HF 同字节。
+
+**本轮实验**：无（生成测试与零下载实测均无新增；读头结果直接并入 K179/K181）。P44 需 60+ min 连续窗，本轮 90 min 内无法安全跑完 sync + release。
+
+## 每日知识增量（2026-11-25 04:30 · 第 29 轮）
+
+> 本节由夜间自动任务累积写入（**只追加**）。完整版见 `vpipe-daily-knowledge.md` 第 29 轮；主报告对应第 **18.38** 节。
+> ★ 本轮由 **P39 launchd + 无头 CLI** 执行（第 5 次完整链路闭环）。
+
+| # | 知识 | 来源 | 日期 | 对既有结论的影响 |
+|---|---|---|---|---|
+| **K168** | ★ 上游第 5 日静默（**口径修正**）：HEAD a6a1f53，距 `commit.author.date 11-23T09:54:27Z` **1.77 天**（上轮「满 2 天」偏早）；release **v0.1.110 落后 24 天**；issue 14 全开（无一条 updated 晚于创建日）；PR=0；269 star / 36,920 KB | GitHub API 全套 | 2026-11-25 | 零增量；时间口径改为「距 HEAD commit N.NN 天」 |
+| **K169** | ★★★ **LightX2V「Turbo Fusion」融合适配器**：LightX2V cm2200 ×1.0 + Pika Ref2VA Flex ×0.4 + Larry v4 step-600 EMA ×0.4 → **单个 LoRA**，4/8 步共用配方；8 变体（Full 3.78 GB / ComfyUI 5.21 GB / Lite-r32 665 MB / pruned-lite 818 MB）；**Euler + video shift 12 + audio shift 3** | HF 模型卡 + tree API + ModelScope | 2026-11-24 | **★ 与本机现役冲突**：`dance-woman-768p` 用 shift **6.0** → 不可原样换槽（P44） |
+| **K170** | ★★★ **Fusion 三布局权重头零下载实测**：Full=`[32,2688]` AdaLN（完整模型）+ `[96768,32]`；ComfyUI 777 tensors（qkv `[960,5376]` 块对角 + 每模块 alpha）；**pruned = `[32,8]` + `diff_b [96768]` F32** | HF Range | 2026-11-25 | pruned 恰好是**本机支持的 8 宽** |
+| **K171** | ★★★ **本机加载 Fusion-pruned 的三道门均通**：① `bind_pruned_adaln_` 仅 `c.pruned()` 时调（`.cc:4834/4897`）；② `.diff_b` 靠 `file_touches` **子串匹配**命中 `.diff`（`runtime-lora.cc:890`），`[96768]==D` 过校验（`:4537`）；③ `.alpha` 是每模块标量。**唯一硬条件 = DiT 必须 pruned**（released 基座会静默丢弃 AdaLN 分支） | 本地源码 + K170 头 | 2026-11-25 | **K163 收窄**：拒的是 16 宽，不是 pruned |
+| **K172** | ★★ Comfy-Org pruned 体积：`ref2va_pruned_int8_convrot` **19.53 GiB** / fp8 19.52 / bf16 37.46 / w6a8 14.89（按名拒绝）；对照未剪枝 int8 31.70 GiB、bf16 61.72 GiB | HF tree API | 2026-11-25 | P44 的确定下载量 |
+| **K173** | ★★ 本机 `docs/MINIMAX-H3.md:2529-2600` 已把 pruned 写成**一等支持**（`adaln_t_table 1025×8`、`[96768,8]`、无 SiLU、f32 求和）并规定三类 LoRA 处理（转换过/全模型训练经基 U 搬移/改时间嵌入走 released MLP） | 本地 docs（d72c22f） | 2026-11-25 | **推翻 K157 的一半**：不是「不认 pruned」 |
+| **K174** | ★ `model-catalog.cc` 仍无 pruned DiT 条目（全文仅 1 处 `pruned`，是注释）→ pruned 只能手工 `hf_dir` | 本地源码 `:2502` | 2026-11-25 | K157 保留（catalog 层） |
+| **K175** | ★ Fusion Lite r32 = QR-product truncated SVD，保留谱能量 98.41%/97.80%，**卡面自注「权重空间统计，非感知质量」** | HF 模型卡 | 2026-11-24 | 单指标不可作结论（与本机双判纪律一致） |
+| **K176** | ★ 社区自建融合成惯例（11-24 六小时 ~15 个 H3 仓库，两个 pruned+fused 各 400+ 下载）→ **默认按 pruned 基座发布** | HF 搜索 API | 2026-11-24 | 二手，待复现；生态信号 |
+| **K177** | ★ H3-Tiny 仓现状：HF 12 文件 / 14,156 下载 / 22 likes / lastModified 11-24T11:53；**ModelScope 无此仓**（record not found） | HF + ModelScope API | 2026-11-25 | K150 的 HF↔MS 逐位比对不适用 Tiny（单源） |
+
+**本轮实验**：无生成实验；有零下载文件级实测（K170/K171，3 个头 + ~230 KB JSON，<3 min / 0 磁盘）。P44 需 20.97 GB + 0.52 GB 下载 + 29 min 生成 → 超预算，登记下轮首选。新增 **P44**。
 
 ## 每日知识增量（2026-11-25 02:30 · 第 28 轮）
 
