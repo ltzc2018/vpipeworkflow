@@ -5673,3 +5673,97 @@ ModelScope 文件 API 里 `README.md` 的 `CommittedDate = 2026-11-24 14:36`，�
 - **P41**：runner 在「cb_exit=0 但 round 未推进」时自动重试 1 次。需用户确认后改脚本。
 - **P36**：pi-H3 外部复现热度 +77%（57,282 下载），但本机仍受「catalog 支持 + 权重账」双前置阻塞。
 - **磁盘**：`minimax_h3_fl2va_bf16.safetensors.part`（18.3 GB 半成品）仍占位，未清理（待用户决定）。当前 37 GiB 剩余，足以支撑 8 步 v1.2 对照。
+
+### 18.37 2026-11-25 02:30 —— 第 28 轮：★★★ 零下载读权重头把「社区有」变成「本机 loader 认不认」的实测 + pruned AdaLN 宽度硬 gate + 上游第 4 日静默
+
+> 本轮由 **P39 launchd + codebuddy 无头 CLI** 执行（slot=02:30）。无生成实验，但完成了本报告首次「**不下载权重也能判定能不能跑**」的结构级验证。
+
+#### 18.37.1 检索范围
+
+| 源 | 端点 | 结果 |
+|---|---|---|
+| vpipe 上游 | `commits?per_page=5` / `releases?per_page=3` / `search/issues is:open` / `pulls state=open` / `repos` | **第 4 日静默**：HEAD `a6a1f53`、pushed_at 2026-11-23T11:20:51Z（满 2 天未动）、release `v0.1.110`（11-01，落后 24 天）、issue 14 全开、PR 0、269 star / 36,920 KB |
+| vpipe 官方 docs | 本地 `repo/vpipe/docs/`（grep `h3-tiny`） | **无任何 H3-Tiny 文档**；`MINIMAX-H3.md` 的 pruned 段只描述 `[1025, 8]` |
+| vpipe 本地源码 | `repo/vpipe` @ `d72c22f`（`model-catalog.cc` / `metal-minimax-h3-transformer.cc` / `minimax_h3_regenerate.metal`） | **K163 根因**：pruned AdaLN 硬要求 8 宽 |
+| **H3-Tiny 权重（新手段）** | HF `resolve/main` + **HTTP Range 0-7 / 8-(7+len)**，四个 INT8 + 一个 bf16 文件头 | **K162/K164/K165**：全部张量名/shape/dtype/metadata，**0 下载** |
+| H3-Tiny 仓库 | `fuyi25/MiniMax-H3-Tiny` commits/detail/contents | `408d92a`（11-24 11:51，+198/−0，加 INT8 ckpt + 量化脚本）；47 star |
+| H3-Tiny 项目页 | `fuyi25.github.io/MiniMax-H3-Tiny`（WebFetch） | 方法完整数字（AdaLN 13.0B→37M、误差 1–3e-5、删块 6–11/13/15、FFN 14336→9792 音频权重 2×）；**明确无 VRAM/延迟/质量指标表**（论文 coming soon） |
+| HF 模型页 | `H3-Tiny/MiniMax-H3-Tiny-ComfyUI`（WebFetch） | 4 文件体积 18.1/18.1/15.1/18.1 GB；14,156 月下载 / 22 likes；W8A8 + Hadamard rotation |
+| Comfy-Org pruned | `Comfy-Org/MiniMax-H3` 文件 API + 权重头 | 50 块 / `[1025,8]` / 932 tensors（对照组） |
+| ModelScope | `lightx2v/Minimax-h3-Turbo` 文件 API | 31 文件 / 26 safetensors 无变化；4 步 v1.0 10-20、8 步 v1.2 11-12（**K156 维持**） |
+| LightX2V | commits ×8 + detail ×2 | `e574493`(K158 已记) / `6ef8487` #1743 `/`8bbaabd` #1735 |
+| ComfyUI | commits ×8（跟随 301 到 `repositories/589831718`） | **无 H3**；新增 w3/w5 量化格式（#17938）、MPS deflicker（#17940 已记） |
+| stable-diffusion.cpp | commits ×6 | **无 H3**；LoRA F32 混合精度（#2383 已记） |
+| ModelTC/Minimax-H3-Turbo | commits ×4 | 仍 `02e26d5` / 2026-08-27 |
+| 社区 | WebSearch ×1 / Reddit ×1 | **双通道失效**（`Authentication required` / 「Prove your humanity」）→ 社区面零新增未知源 |
+
+#### 18.37.2 新增知识（K160–K167）
+
+| # | 一句话结论 | 来源 | 日期 | 与本机实测冲突 |
+|---|---|---|---|---|
+| **K160** | 上游第 4 日静默，且首次确认上游 `pruned` 标志**不区分** 50 块原版与 42 块剪枝版（只认 `adaln_t_table` 是否存在） | GitHub API + 本地源码 | 2026-11-25 | 无 |
+| **K161** | H3-Tiny INT8 ComfyUI 权重 11-24 正式发布：17B 三款各 **18.1 GB**、14B **15.1 GB**；W8A8+ConvRot group 256；H200 1344×768×243f DiT **~17 GB** 且**速度≈bf16** | `408d92a` + HF 页 | 2026-11-24 | 无可比对象（论文未发） |
+| **K162** | **零下载头实测**：42 主块、`adaln_t_table **[1025,16]**` F32、`adaln_proj.linear.weight [96768,16]`、14B INT8 FFN **[5376,9984]**、FewStep 版**无 t_table** 改双段低秩 | HF Range | 2026-11-25 | **冲突于「INT8=bf16 量化」直觉**（K164） |
+| **K163** | **本机硬 gate**：`time_dim`（取自 `adaln_t_table` 第 2 维）必须 == 8，16 即 fail；Metal kernel 硬编 `k<8` | 本地源码 + K162 头 | 2026-11-25 | **修正 K157 的层次**（catalog 是表层） |
+| **K164** | 14B 的 INT8（9984）与 bf16（9792）**不同构**（ConvRot group 256 对齐 pad） | 头对照 | 2026-11-25 | **冲突**：不能互拷/对拍 |
+| **K165** | 官方 pruned（50 块/[1025,8]）与 Tiny17B 在 qkv/out_proj/fc1/fc2 **逐形状一致**；差异只有块数与曲线宽 | 头对照 | 2026-11-25 | 无（正面证据） |
+| **K166** | H3-Tiny 走 **50 步 + simple + 无 CFG + 不叠 turbo LoRA**；few-step 版 shift **12**、默认 6 步 | README + `comfyui/__init__.py` | 2026-11-24 | **冲突于「不训练可用=可直接套 4 步加速」** |
+| **K167** | LightX2V `8bbaabd`：RelayVSR x4 支持显式输出画布，动机即 H3 的 1344×768 两轴不同倍率 | commit detail | 2026-11-19 | 本机 `relayvsr-upscale` 无此参数，需串 resize |
+
+#### 18.37.3 印证与冲突
+
+**印证**
+1. **K155 从「社区文档转述」升级为「文件级核实」**：README 说的「删 8 块 → 42 块」「FFN 收窄」「AdaLN 低秩」，在权重头里逐项对上。**方法三件套的数字与文件结构完全一致**。
+2. **K156 维持**：ModelScope 上 4 步 v1.0 仍 10-20、8 步 v1.2 仍 11-12，26 个 safetensors 日期无变化 → 官方两条线投入不对称的判断不变。
+3. **K157 保留但被分层**：catalog 确实无条目（表层），本轮发现更底层的 loader gate（K163）。
+
+**冲突**
+1. **★★ 冲突①（K157 的层次修正，非矛盾）**：K157 记「catalog 无 h3_tiny 条目」为阻塞。本轮发现**即使手工塞进 catalog 也会 fail**。处置：K157 保留，K163 为下层根因；P42 前置从「等上游采纳」改为「**等上游把 pruned AdaLN 泛化到任意宽**」——这是一次 kernel + 校验双改，成本高于「加个 catalog 条目」一个量级。
+2. **★★ 冲突②（量化直觉）**：14B 的 INT8 宽度 9984 ≠ bf16 9792。**「INT8 版 = bf16 版量化」是错的**。凡按 shape 判等价、或做 INT8↔bf16 对拷的地方必须比对实际 shape。处置：写成纪律（K164）。
+3. **★★ 冲突③（「不训练可用」的含义）**：K155 的「17B 剪完不训练可用」容易被读成「便宜又可用」。真实前提是 **50 步全采样 + shift 12 + 无 CFG**，与本机 4/8 步路线**不是同一赛道**。任何「H3-Tiny 比 Turbo 快」的说法必须先问「跑了几步、什么 shift」。处置：K166 明确限定。
+4. **⚠️ 潜在误读**：Tiny 文件 metadata 的 `params: 17054161792`（17.054B）、README 表「17.05B」、项目页「17.1B」三种口径。**引用须带来源**；文件 metadata 由量化脚本写入，最精确。
+
+#### 18.37.4 本轮实验
+
+**无生成实验**；**有零下载的文件级实测**（K162 / K164 / K165）。
+
+- **做法**：`Range: bytes=0-7` 取 safetensors 的 u64 头长度 → `Range: bytes=8-(7+len)` 取 JSON header（本轮 81,496 B），得到**全部张量名 + shape + dtype + 内嵌 `__metadata__`**。4 个 INT8 文件 + 1 个 bf16 文件，总计 <2 min，**磁盘占用 0**。
+- **为何这算实验而非检索**：它把「社区说本机可能跑不了」变成「**本机 loader 的具体哪一行会拒绝、因为哪个维度不匹配**」——这是可证伪的结构判定，不是二手转述。
+- **为何仍不跑生成**：K163 已判定即使下载 18.1 GB 也会在加载阶段 fail → **下载无收益**。磁盘 37 GiB 虽够，但会吃掉一半余量换零信息。
+- **副产品**：证明 `huggingface.co/.../resolve/main/...` 的 **Range 请求本机直连可用**（仅 JSON API 端点超时）→ 修正上轮「HF 全站不可达」的过宽结论。
+
+#### 18.37.5 技能包 / 脚本修改
+
+| 文件 | 改动 |
+|---|---|
+| `~/.workbuddy/skills/vpipe-model-prepare/references/h3-ecosystem-map.md` | **只追加**「2026-11-25 追加（第 28 轮）」：K161 INT8 发布细节 + Triton int32 溢出陷阱、K162 四文件头对照表、K163 硬 gate 定位（含文件行号）、K164 INT8/bf16 不同构、K165 与官方 pruned 的差异边界 |
+| `~/.workbuddy/skills/vpipe-model-prepare/references/768p-adapters.md` | **只追加**「2026-11-25 追加（第 28 轮）」：K166 采样契约（50 步/simple/无 CFG/shift 12）、K167 上游第 4 日静默快照、K167 LightX2V #1735/#1743 |
+| `report/vpipe-daily-knowledge.md` | 追加第 28 轮整节（K160–K167 + 印证/冲突 + 实验 + 5 条坑） |
+| `report/vpipe-后续计划任务.md` | 看板日期改 02:30；新增第 28 轮行置顶；**P42 前置重写**（loader gate）；新增 **P43**（零下载头核验常规化）；P39 标注「连跑 4 轮」 |
+| `report/vpipe-H3-部署与测试报告.md` | 本节 18.37（**13–17 节历史正文未改**） |
+| `scripts/*` | **本轮未改任何脚本**（P43 的 `safetensors-peek.py` 未建，待用户确认；P41 重试逻辑仍待确认） |
+
+#### 18.37.6 踩坑与结论
+
+**坑①：「零下载读权重头」是被低估的验证手段（本轮最大收获）**
+对 18 GB 的模型，`Range` 读 8 字节 + 81 KB JSON 就足以判定「本机 loader 会不会 fail、fail 在哪一行、因为哪个维度」。**比「先下再试」快三个数量级，且磁盘占用为 0**。前提是 safetensors 格式（GGUF/ckpt 不适用，但可读 GGUF 的元数据段做类似判断）。**这应该是此后评估任何候选权重的第一步**（已登记 P43）。
+
+**坑②：`hf-mirror.com` 会 308 永久重定向，而 `huggingface.co` 的 Range 请求直连反而通**
+上轮记「HF API 不可达」结论过宽。本轮实测：`/api/models/...` 与 `/tree/main` 超时（curl exit 28），但 `/resolve/main/...` + `Range` **直连成功**。⇒ **不可达的是 JSON API 端点，不是文件 CDN**。检索路径应分三流：① 指标/清单 → JSON API（或镜像 API，`hf-mirror.com/api/...` 可用）；② **权重头 → `huggingface.co/resolve/main` + Range**；③ 正文 → WebFetch。
+
+**坑③：社区搜索通道连续两轮全灭**
+WebSearch 返回 `Authentication required for web search`；Reddit 返回「Prove your humanity」。⇒ 本轮社区面**零新增未知源**，只有官方/仓库/权重文件三类一手源。**这是工具限制，不是社区无内容**。连续两轮同一症状，应考虑把「社区面」从 SOP 的必做项降为「通道可用时尽力」，并在报告里显式标注「社区面未覆盖」，避免读者误以为「社区无新内容」。
+
+**坑④：「同名不同构」第二次咬人，且这次更隐蔽**
+上轮是 `ConvRot` 后缀（pi-H3 vs Tiny）。本轮是 `minimax_h3_*_pruned_int8_convrot`（Comfy-Org，50 块，`[1025,8]`）与 `minimax_h3_tiny_*_int8_convrot`（Tiny，42 块，`[1025,16]`）——**文件名几乎一样、格式描述一样、张量名一样，只有 shape 不同**。查重必须比对 **shape**，不能比对名字。这也是为什么本轮必须读头而不能靠文件名判断。
+
+**坑⑤：`params` 一个模型三种口径**
+文件 metadata `17054161792`（17.054B）/ README 表 17.05B / 项目页 17.1B。14B 同理（13.976B / 13.98B / 14.0B）。**引用必须带来源**，且优先用文件 metadata（量化脚本直接写入，未经人工四舍五入）。
+
+#### 18.37.7 下一步
+
+- **P42（重写后）**：H3-Tiny 可行性**不再需要下载**。真正的前置是 ① 上游（或本机补丁）把 pruned AdaLN 的曲线宽度从常量 8 变成参数（`.h:138-142` 已有 `curve_grid` 变量，改动面不大但涉及 kernel `h3_adaln_pruned_f16` 的 `k<8` 循环与 `coords+t*8` 步长）；② 块数自适应（`:701` 已从权重 `count("blocks.")` 推断，**这一项本机已支持**，42 块应能过）。**建议先向上游提 issue，附本轮头数据**，不要自行改源码（会与 a6a1f53 演进冲突）。
+- **P43（新，低）**：把「零下载读头」固化为 `scripts/safetensors-peek.py`（输入 repo+filename，输出 tensors/blocks/adaln 宽度/FFN 宽度/metadata）。**待用户确认后建**。
+- **8 步 v1.2 对照（仍未登记编号）**：K156 说 4 步线冻结、8 步线在演进。这仍是本机最该做的一次对照（1.54 GB + 29 min），且**与 H3-Tiny 无关、不受本轮阻塞**。建议下一轮若时间宽裕优先做这个。
+- **P41**：runner 在「`cb_exit=0` 但 round 未推进」时自动重试 1 次。需用户确认后改脚本。
+- **磁盘**：`minimax_h3_fl2va_bf16.safetensors.part`（18.3 GB 半成品）仍占位，未清理（待用户决定）。当前 37 GiB。
