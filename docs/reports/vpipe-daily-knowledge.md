@@ -2227,3 +2227,34 @@ GitHub API（vpipe commits / releases / issues / PR search / repo meta；Lakonik
 - **K149 的口径漂移**：同一个 commit 在不同端点给出不同的「行数」，且 detail API 的 `files` 数组会被截断——**不能只看数组长度推文件总数**。
 - **K154 的进程误判**：看门狗子 shell 与主 runner 命令行完全相同，`ps | grep` 会看起来像双开。**判并发只看 `.auto-round.lock` 与守卫退出码 11**，不看进程数。
 - **磁盘**：`models/Comfy-Org/MiniMax-H3/diffusion_models/minimax_h3_fl2va_bf16.safetensors.part` 是 11-19 遗留的 **18.3 GB 半成品下载**（未完成、无同名完整文件）。当前剩 37 GiB 尚安全，但**建议清理**（未经用户确认不删，因可能是手动下载中断）。清理后可回收至 ~55 GiB。
+
+## 第 27 轮（2026-11-25 00:30 · 上游第 3 日静默 + 官方迭代方向首次量化 + H3-Tiny 剪枝家族进图谱 + 因果流式 9 chunk）
+
+> 本轮由 **P39 launchd + codebuddy 无头 CLI** 执行（slot=00:30，session `p39-0030-20261125-003000`，模型 `custom-local:deepseek-v4.1-flash`）。
+
+| # | 知识 | 来源 | 日期 | 对既有结论的影响 |
+|---|---|---|---|---|
+| **K155** | ★★ **H3-Tiny 结构化剪枝家族**（第三方）：AdaLN 低秩 rank-8（**13.0B/33.1B 参数在 AdaLN 投影**）+ 删 50 块中的 8 块（6–11/13/15）+ FFN 14336→9792 通道 + OKD 蒸馏 → 17B/14B；17B **剪完不训练即可用**（50 步），few-step 版默认 **6 步**。ComfyUI 单文件 bf16 34.2 GB / INT8 ConvRot **18.1 GB**（H200 243f 1344×768 DiT 仅 ~17 GB VRAM，速度≈bf16）。 | GitHub `fuyi25/MiniMax-H3-Tiny` + HF `H3-Tiny/*` | 2026-11-24 | 权重压缩路线再添一族（与 HyperFlow 13.7B / pi-H3 pruned 同族）；本机 24 GB 只有 INT8 18.1 GB 版本有磁盘可行性 → **P42** |
+| **K156** | ★★ **官方两条线投入不对称**：4 步线 **2026-10-20（v1.3）后 36 天冻结**；8 步线 **2026-11-12（v1.2）** 且 v1.2 是**结构性变更**（bf16 1,383,677,808→**1,543,291,302 B，+11.5%**）。README 于 **11-24 14:36** 单独更新，仍 ⭐ 推 v1.2（8 步）。 | ModelScope 文件 API（逐文件 size+CommitDate）+ HF 模型卡 | 2026-11-25 | 修正 K150「无 v1.4 即终版」的隐含判断：**4 步终版是 v1.3，8 步仍在演进到 v1.2**；8 步 v1.2 **不可**按 K151 换槽（结构变了） |
+| **K157** | ★★ **本机 catalog 对新路线零支持**：`model-catalog.cc` 内 `tiny` 全部是 TAE 预览解码器、**无 H3-Tiny / 剪枝 ckpt 条目**；`causal` 只在 Qwen/Z-Image 注释出现、**无 H3 因果流式条目**。本地树 HEAD 仍 `d72c22f`。 | 本地源码 `stages/model-catalog.cc` | 2026-11-25 | **「社区有」≠「vpipe 能用」**：Tiny 与 causal 两条路线本机均需等上游采纳或改源码 |
+| **K158** | ★ **LightX2V 因果流式扩到 9 chunk 音频历史**（#1749, `e5744932`, 11-23 merged）：新增 `audio_latest_chunk_num=9`（视频仍 2），`kv_cache_max_t_rope` 7→9；约束改为 `1<=latest<=audio_latest<=max_t_rope`；只影响 6 个 `*_realtime_768p*` causal 配置。 | LightX2V PR #1749 diff | 2026-11-23 | 音频长期连贯性优先于视频窗口——生态信号；本机无 causal 能力（K157），不采信为可用 |
+| **K159** | ★ **ComfyUI MPS deflicker warp 修复**（#17940, 11-23 merged）：MPS 不支持 `padding_mode="border"` → 改 clamp 坐标到 [−1,1] + `padding_mode="zeros"`（bilinear + align_corners 下与 border 等价），附等值单测。 | Comfy-Org/ComfyUI PR #17940 | 2026-11-23 | 与 vpipe 无直接关系，但「MPS 缺 border → clamp+zeros」是**可复用绕法**，可迁移到自研 warp/光流算子 |
+
+### 印证 / 冲突
+
+- **上游第 3 日静默（印证 K148/K135/K115）**：HEAD 仍 **a6a1f53**（pushed_at 2026-11-23T11:20:51Z，== 2 天未动）；最新 release 仍 **v0.1.110（11-01）→ 落后 main 24 天**；issue **14 条全开、全部 0 评论、updated_at 均在创建当日**（无一条被处理过）；**PR = 0**；仓库 **269 star / 27 fork / 36,920 KB**（star 从 266 → 269，+3）。
+- **★ 冲突风险（口径）**：官方 README 的「v1.2 更好」对比是 **8 步 v1.1 vs 8 步 v1.2**，**不含 4 步**。**不得**用它支持 K152 的「4 步不够」——那仍是社区二手口径（待复现）。K156 只证明「8 步线在演进」，不证明「4 步画质差」。
+- **印证 K150**：权重仓 downloads **1,793,803**（11-24 为 1,793,937，−134）→ 流量已进入平台期；likes 1.24k 持平；ModelScope 31 文件 / 26 safetensors / 75.80 GB 与 HF 一致。
+- **印证 K151**：本轮重新逐文件核对，4 步 v1.0–v1.3 仍全部 1,383,677,808 B；同时**明确 8 步 v1.2 例外**（1,543,291,302 B）→ K151 的「可换槽」结论**只适用 4 步家族**。
+- **零增量（须明日复查，K121 教训）**：`ModelTC/Minimax-H3-Turbo` 代码仓最新 commit 仍 **02e26d5（2026-08-27）**；stable-diffusion.cpp 近 5 条 commit（11-24，GGUF metadata / A1111 metadata / hires sigma / hidream speckle / lora F32）**含 1 条与 LoRA 混合精度相关（#2383「后端拒绝 mixed-type addition 时以 F32 相加」）但无 H3**；ComfyUI 近 5 条**无 H3**。
+
+### 本轮实验
+
+**无实验，仅知识同步。** 理由：①本轮为 P39 无头进程执行，硬超时 90 min 内须完成「检索 + 固化 + 两份报告 + sync + release」最小闭环；②唯一可复现项需 ≥18.1 GB 下载（Tiny INT8）或 1.38 GB（4 步 v1.3），且 Tiny 需 vpipe 先支持（K157 否）→ 均超预算，登记 **P42**。
+
+### 坑
+
+- **坑①（新，重要）：「latest commit date」不等于「内容变更」**。ModelScope 文件 API 里 `README.md` 的 `CommittedDate=2026-11-24 14:36` 会让人以为权重更新了；实际 26 个 safetensors 的日期**一个都没变**（最新 11-12）。**判权重是否更新必须只看 safetensors 的 CommitDate/size，不能看仓库级更新时间**。这与 K149（同一 commit 不同端点行数漂移）同族：**仓库级元数据是聚合值，不可当明细用**。
+- **坑②：HF API 在本机直连持续超时**（`/api/models/lightx2v/Minimax-h3-Turbo` 连续 3 次 28 s 超时；`/tree/main` 同样）。可用替代：**ModelScope 文件 API（含 size + CommitDate + sha256，比 HF tree 信息更全）** + **HF 网页（WebFetch 走代理）**。教训：HF 是「网页可读、API 不可达」，检索路径要按此分流。
+- **坑③：8 步 v1.2 的「字节增大」容易被误读为「更多权重」**。实际是同构家族里多了 159 MB（1,543,291,302 vs 1,383,677,808），更可能是新增了若干整块替换项（对应 a6a1f53 里「WHOLE replacements for others」那类适配器结构）。**未验证**，仅记为「结构性变更，不可换槽」。
+- **坑④：`grep` 关键词命中率会骗人**。本轮用 `ConvRot`/`convrot` 查重，命中 9 处，但**全部是 pi-H3 的 INT8 ConvRot 适配器**，与 H3-Tiny 的 `*_int8_convrot.safetensors` 是**不同对象的同名后缀**。查重必须先确认命中项的上下文对象。

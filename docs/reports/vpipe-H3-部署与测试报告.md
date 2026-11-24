@@ -5556,3 +5556,120 @@ detail 端点的 `files` 数组会被响应截断（本轮只拿到 ≥15 项，
 - **P41**（中）：runner 在「cb_exit=0 但 round 未推进」时自动重试 1 次，避免 4 槽连环空转。**需用户确认后改脚本**。
 - **P36/P37**：等 build 更新到 a6a1f53 与 prepare-pi-h3 权重账；K153 提供了「只微调末几 block」的降本依据，可与 P37 的 24 GB 显存账合并评估。
 - **磁盘**：`minimax_h3_fl2va_bf16.safetensors.part` 18.3 GB 是否清理，待用户决定。
+
+### 18.36 2026-11-25 00:30 —— 第 27 轮：★★ 官方两条蒸馏线迭代投入首次量化（4 步冻结 36 天 / 8 步结构性变更）+ ★★ H3-Tiny 结构化剪枝家族进图谱 + 本机 catalog 对新路线零支持
+
+> 执行方式：**P39 launchd + codebuddy 无头 CLI**（slot=00:30，session `p39-0030-20261125-003000`，模型 `custom-local:deepseek-v4.1-flash`），守卫 `check` → RUN(R=27) → 建锁。这是 P39 方案第 3 次完整链路闭环（R=26 → R=27）。
+
+#### 18.36.1 检索范围
+
+| # | 源 | 端点 / 方式 | 取数时间 | 结果 |
+|---|---|---|---|---|
+| 1 | vpipe 主仓 commits | `/commits?per_page=5` | 2026-11-25 00:3x | HEAD 仍 `a6a1f53`（无新 commit） |
+| 2 | vpipe releases | `/releases?per_page=3` | 同上 | 最新 **v0.1.110（2026-11-01）** |
+| 3 | vpipe open issues | `search/issues is:open` | 同上 | **14 条全开**，全部 `comments=0`、`updated_at`==创建日 |
+| 4 | vpipe open PRs | `/pulls?state=open` | 同上 | **0** |
+| 5 | vpipe repo 元信息 | `/repos/...` | 同上 | **269 star / 27 fork / 36,920 KB / pushed_at 2026-11-23T11:20:51Z** |
+| 6 | ModelScope 权重仓（**主源**） | `/repo/files?Revision=master&Root=` | 同上 | 31 文件 / 26 safetensors / **75,804,462,395 B**，逐文件 size+CommitDate+sha256 |
+| 7 | HF 权重仓（页面） | `huggingface.co/lightx2v/Minimax-h3-Turbo`（WebFetch） | 同上 | downloads **1,793,803** / likes **1.24k** / discussions 63 / Spaces 100 |
+| 8 | HF API（**不通**） | `/api/models/...`、`/tree/main` | 同上 | 连续 3 次 **28 s 超时** → 改用 ModelScope + 网页（见坑②） |
+| 9 | LightX2V commits/PR | `/commits?per_page=6` + `/pulls/{1729,1735,1737,1749}` | 同上 | 最新 **#1749 `e5744932`（11-23）** |
+| 10 | ModelTC/Minimax-H3-Turbo 代码仓 | `/commits?per_page=3` | 同上 | 最新仍 **02e26d5（2026-08-27）**，3 个月未动 |
+| 11 | H3-Tiny 仓库 | `fuyi25/MiniMax-H3-Tiny` repo + readme API + commits | 同上 | 44 star，最新 commit **408d92a（11-24 11:51，加 INT8 ckpt）** |
+| 12 | HF `H3-Tiny/MiniMax-H3-Tiny-ComfyUI` | `/tree/main`（WebFetch） | 同上 | **8 文件**（4 bf16 + 4 INT8 convrot），仓库 200 GB |
+| 13 | ComfyUI 上游 | `Comfy-Org/ComfyUI` `/commits?per_page=5` + PR 17940 | 同上 | 近 5 条**无 H3**；#17940 为 MPS deflicker 修复 |
+| 14 | stable-diffusion.cpp | `/commits?per_page=5` | 同上 | 近 5 条（11-24）**无 H3**，含 #2383 LoRA F32 相加 |
+| 15 | 社区二手（minimax3.com 复核） | WebFetch 原文 | 同上 | K152 口径原文复核：byline **2026-08-15**，唯一基准 RTX 5080 1035→487→193 s，**作者自述非受控**；原文有 4/6/8/20 步四档描述 |
+| 16 | pi-H3 HF 卡（复核） | WebFetch `Lakonik/pi-H3` | 同上 | downloads **57,282**（11-22 为 32,375 → **+77%**）/ likes 242 / 4 适配器 + INT8 ConvRot；`MAX_RAW_T = {2:0.93, 4:0.96}` |
+| 17 | 本地源码 `model-catalog.cc` | grep `tiny` / `causal` | 同上 | **无 H3-Tiny 条目、无 H3 causal 条目**（K157） |
+| 18 | 本机 P39 运行日志 | `logs/p39-run-0030-20261125-003000.log` | 同上 | 00:30:00 守卫退出码 0 → R=27 → CLI 启动 |
+
+**搜不到的**：WebSearch 在本会话返回 `Authentication required`（无 API 凭据）→ 社区面全部改用 WebFetch 直取已知 URL，**未新增未知社区源**（记为「未取到」而非「无」）。
+
+#### 18.36.2 新增知识（K155–K159）
+
+**K155 ★★ H3-Tiny（第三方结构化剪枝，首次进图谱）**
+- 三件套：① **AdaLN 低秩 rank-8**——每 block 的 AdaLN 投影占 **13.0B / 33.1B**，其输入是 timestep 的固定函数 → **无数据**拟合；② **结构性删块**——按各 block 对 video/audio token 的改变量排序、保护音频最依赖者，**删 50 块中的 8 块（6–11、13、15）**；③ **FFN 收窄**——14,336 → **9,792** 通道 + 输出投影重拟合 + **OKD**（33B teacher 蒸馏）→ 14B。
+- **17B 剪完不训练即可用**（50 步，README 原话 "works well straight out of pruning, with no training at all"）；few-step 版默认 **6 步（4–8）**。
+- ComfyUI 单文件：bf16 17B **34.2 GB** / 14B OKD **28.1 GB**；**INT8 ConvRot 17B 18.1 GB / 14B 15.1 GB**。H200 1344×768 / 243 帧：DiT **~17 GB VRAM**（vs 33 GB），采样速度≈bf16，构图运动保持。
+- **为什么对本实验室重要**：这是第一条给出「**AdaLN 占 13B / 删哪 8 块 / FFN 留几通道**」全部细节的剪枝工作——`AdaLN ≈ 13B` 与本报告 §1「AdaLN 烘焙 51 projections 13,216 MB」**独立互证**，把「为什么 AdaLN 烘焙能省 13 GB」从现象升级为结构化事实。
+
+**K156 ★★ 官方两条线的迭代投入不对称**
+| 线 | 最后版本 | 日期 | bf16 size | 距今 |
+|---|---|---|---|---|
+| 4 步 FL2VA | **v1.3** | 2026-10-20 | 1,383,677,808 | **36 天无更新** |
+| 8 步 FL2VA | **v1.2** | 2026-11-12 | **1,543,291,302**（+11.5%） | 13 天 |
+
+- **8 步 v1.2 是结构性变更**（comfyui 版 1,956,193,000 → 2,115,772,012 B）⇒ **不可**按 K151 换槽。
+- README 于 **2026-11-24 14:36** 单独更新（26 个 safetensors 日期一个未变）→ 仍 ⭐ 推 v1.2（8 步）。
+- ⚠️ **口径警示**：该对比是「8 步 v1.1 vs 8 步 v1.2」，**不含 4 步**，**不能**为 K152「4 步不够」背书。
+
+**K157 ★★ 本机 catalog 对新路线零支持**
+- `stages/model-catalog.cc`（本地树 HEAD `d72c22f`）：`tiny` 的 6 处命中**全部是 TAE 预览解码器**（`2D tiny preview decoder`）；`causal` 只在 Qwen-Image / Z-Image 注释中作为 `causal_condition` 出现。→ **H3-Tiny 与 H3 causal 流式，本机 vpipe 均无法直接跑**。
+
+**K158 ★ LightX2V 因果流式扩到 9 chunk 音频历史**
+- PR **#1749**（commit `e5744932`，2026-11-23 11:17 merged）：`CleanAttentionPolicy` 增 `audio_latest_chunk_num = 9`（视频 `latest_chunk_num` 仍 2），`kv_cache_max_t_rope` **7 → 9**；校验改为 `1 <= latest <= audio_latest <= kv_cache_max_t_rope`。
+- `kv_cache.py`：workspace capacity 按 `AUDIO_CHANNELS * audio_rows * (audio_latest − latest)` 扩容；`retain_history_for(index)` 替代 `finish_chunk(index)`。
+- 影响面：**仅 6 个 `configs/minimax_h3_causal/{5090,h100}/*realtime_768p*`**；离线 FL2VA/Ref2VA 无关。
+
+**K159 ★ ComfyUI MPS warp 绕法（可迁移）**
+- PR **#17940**（11-23 merged）：MPS 不支持 `padding_mode="border"` → clamp 归一化坐标到 **[−1,1]** + `padding_mode="zeros"`（`bilinear` + `align_corners=True` 下与 `border` 数学等价），非 MPS 保持原样，附等值单测。
+
+**附：pi-H3 下载量 +77%**（32,375 → 57,282，11-22→11-25）——外部复现热度在涨，而 vpipe 原生路线（K128/K129）本机仍未复现，**优先级应上调**。
+
+#### 18.36.3 印证与冲突
+
+**印证**
+1. **上游第 3 日静默**：HEAD `a6a1f53` 从 11-23 11:20 起**未动**（截止 11-25 00:30，约 **37 h**）；release v0.1.110 落后 main 从 22 天扩到 **24 天**；issue 14 条**每一条 `updated_at` 都等于 `created_at`** → 不是「零回复」，是**从未被触碰**（比 K115 的「状态维护滞后」更彻底：连读都没有痕迹）。star 266→269。
+2. **K155 与 §1 的 AdaLN 数字互证**：H3-Tiny 的「AdaLN 占 13.0B/33.1B」vs 本机日志「51 projections = 13,216 MB」→ 两个独立来源给出同一个 13 B 量级。
+3. **K150 平台期**：downloads 1,793,803（−134/日），likes 1.24k 持平 → 权重仓流量已饱和，与「版本冻结」一致。
+
+**冲突**
+1. **★ 口径冲突（K156 vs K150）**：K150 说「lastModified 11-16 → v1.3 为终版，无 v1.4」。本轮逐文件核对发现**仓库级 lastModified（11-24，来自 README）与权重日期（最新 11-12）不是一回事**。**修订**：K150 的结论对 **4 步线成立（v1.3 终版）**，但对 **8 步线不成立（v1.2 是 11-12 才出的结构性更新）**。历史正文不改，只在此登记细化。
+2. **★ 归属冲突（K152 复核）**：minimax3.com 原文明确 byline **2026-08-15**，而它引用的 larryvrh v4 / ModelTC 8 步默认配置都是 8 月语境。用它论证「2026-11 的 4 步 v1.3 不够」存在**时序错位**——它比的是**当时的 v1.0**。⇒ K152 的效力进一步降级：**从「社区二手待复现」降为「8 月语境的历史口径，与当前 v1.3 未必相关」**。
+3. **⚠️ 潜在误读**：8 步 v1.2 的字节增大（+159 MB）易被误读为「更多权重/更好」。实际**未验证**，仅能确认「结构变了、不可换槽」。**不采信为质量提升证据**。
+
+#### 18.36.4 本轮实验
+
+**无实验，仅知识同步。**
+- 理由：①硬超时 90 min，最小闭环优先；②P42（Tiny）受 **K157 阻塞**——vpipe 无 catalog 条目，下载 18.1 GB 也无处加载；③P40 的换槽 A/B 因 **K156**（4 步线冻结）价值下降，运动夹具复测需 ≥29 min 生成 + 现成运动素材，超预算。
+- 登记变化：**P40 降权**（换槽 A/B 改可选、保留运动复测）、**P42 新增**（Tiny，阻塞态）。
+
+#### 18.36.5 技能包 / 脚本修改
+
+| 文件 | 改动 |
+|---|---|
+| `~/.workbuddy/skills/vpipe-model-prepare/references/768p-adapters.md` | **只追加**「2026-11-25 追加（第 27 轮）」：K156 两条线迭代不对称（含 4 步/8 步日期+字节表）、8 步结构性变更不可换槽、K150 指标复核 |
+| `~/.workbuddy/skills/vpipe-model-prepare/references/h3-ecosystem-map.md` | **只追加**「2026-11-25 追加（第 27 轮）」：K155 H3-Tiny 完整方法三件套 + 体积表；K157 catalog 零支持；K158 因果流式；K159 MPS 绕法 |
+| `report/vpipe-daily-knowledge.md` | 追加第 27 轮整节（K155–K159 + 印证/冲突 + 实验 + 4 条坑） |
+| `report/vpipe-后续计划任务.md` | 看板日期改 00:30；新增第 27 轮行置顶；待验证登记新增 **P42**；**P40 降权**（换槽改可选）；P39 标注「连跑 3 轮」 |
+| `report/vpipe-H3-部署与测试报告.md` | 本节 18.36（**13–17 节历史正文未改**） |
+| `scripts/*` | **本轮未改任何脚本**（P41 重试逻辑仍待用户确认） |
+
+#### 18.36.6 踩坑与结论
+
+**坑①：仓库级「最后更新时间」≠ 权重更新（本轮最重要）**
+ModelScope 文件 API 里 `README.md` 的 `CommittedDate = 2026-11-24 14:36`，而 26 个 safetensors **最新只到 11-12**。若只看仓库级更新时间，会得出「昨天刚更新权重」的错误结论。**判据**：只看 `.safetensors` 的 `CommittedDate` + `Size`（或 `Sha256` 变化）。这与 K149（仓库级 `stats` vs 单 commit `detail`）同族：**聚合元数据不能当明细用**。
+
+**坑②：HF API 在本机不可达，但网页可达**
+`huggingface.co/api/...` 与 `/tree/main` 连续 3 次 28 s 超时（curl exit 28）；而 WebFetch 走代理能读到模型卡。**分流方案**：① 文件清单/size/日期 → **ModelScope 文件 API**（信息比 HF tree 更全，含 sha256）；② 指标/推荐语 → **HF 网页经 WebFetch**。教训：不要把「API 通」当作「站点通」的同义词，也不要把「API 不通」当作「信息取不到」。
+
+**坑③：同名后缀会骗过查重 grep**
+`ConvRot` / `convrot` 在仓库里命中 9 处，全部是 **pi-H3 的 INT8 适配器**；H3-Tiny 的 `*_int8_convrot.safetensors` 是**完全不同的对象**用了同一个后缀。查重命中后必须确认上下文对象，否则会把「新知识」误判为「已有知识」而漏记。
+
+**坑④：WebSearch 无凭据**
+本会话 WebSearch 返回 `Authentication required for web search`。社区面只能靠 WebFetch 直取已知 URL → **无法发现新来源**。本轮社区面因此**未新增任何未知源**，K152 的复核只能做「原文口径复读」，不能做「多源交叉」。**这是工具限制，不是「社区无新内容」**——须在下一轮用可用通道补。
+
+**结论**
+1. **官方已用脚投票选了 8 步线**：4 步线自 10-20 起 36 天冻结，8 步线 11-12 还做了结构性更新。本机两轮实验（18.21 静态夹具 4 步细节能量更高）**在静态场景仍然成立**，但「4 步是主力」这一战略判断**需要重新评估**——一条停止迭代的分支不该承担主力角色。→ 建议下一轮用 8 步 v1.2 做一次对照（需 1.54 GB 下载，**登记而非本轮执行**）。
+2. **「社区有 ≠ vpipe 能用」需要成为固定纪律**：H3-Tiny（18.1 GB INT8，看着很适合 24 GB 机器）与 LightX2V causal 流式，本机 catalog **都没有条目**。此前 P36（pi-H3）也是同一情形。**任何「新路线可用」的判断，第一步必须是 grep 本地 catalog**，不是看社区宣传。
+3. **P39 已稳定**：连跑 3 轮（R=26 / R=27）完整链路，无空壳、无僵死、无假成功。4 个槽位中 00:30 与 06:30 均实测成功；04:30 一次失败已由 K154 定性为传输层偶发。**P39 可从「高优先级」降为「维护态」**，风险只剩 P41（流中断无重试）。
+4. **文档层面的最大收获是「口径纪律」**：本轮三个坑（仓库级时间、API 可达性、同名后缀）全部属于**元数据陷阱**，与 K149/K113 构成同一家族。**元数据必须带端点 + 取数日期 + 对象限定**，这条纪律本轮被第四次验证。
+
+#### 18.36.7 下一步
+
+- **P42（新，中）**：H3-Tiny 可行性——**第一步不是下载**，而是确认 ① 上游是否把 Tiny 认成 pruned 变体（catalog 有无计划）；② INT8 ConvRot 是否依赖 ComfyUI 专用 kernel（若依赖，vpipe Metal 路径不适用）。**两步都不需要磁盘**。
+- **8 步 v1.2 对照（建议，未登记编号）**：4 步线已冻结（K156），应验证 8 步 v1.2 相对本机 8 步 v1.0 的实际收益（1.54 GB 下载 + 29 min）。**这比 P40 的 4 步换槽更有信息量**。
+- **P41**：runner 在「cb_exit=0 但 round 未推进」时自动重试 1 次。需用户确认后改脚本。
+- **P36**：pi-H3 外部复现热度 +77%（57,282 下载），但本机仍受「catalog 支持 + 权重账」双前置阻塞。
+- **磁盘**：`minimax_h3_fl2va_bf16.safetensors.part`（18.3 GB 半成品）仍占位，未清理（待用户决定）。当前 37 GiB 剩余，足以支撑 8 步 v1.2 对照。
