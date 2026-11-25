@@ -960,3 +960,51 @@ ModelScope `lightx2v/Minimax-h3-Turbo` 现有 **31 个文件 / 27 个 safetensor
   - 分片头实测：**176 tensors/片、无 `adaln_t_table`**，AdaLN 已烘进 `norm_out.folded_bias [10752]`；`config.json`：`adaln_rank 8 / hidden_size 5376 / num_layers 50 / text_dim 5120`。
 - **本机判据**：`stages/model-catalog.cc:2502` 原文「`pruned` DiTs (a different model, not a different packing of this one)」；`WeightSet::open()` → `MetalLlamaWeights::open_model(dir)` 走单文件 / GGUF，**无 diffusers 分片目录（`diffusion_pytorch_model-0000K-of-0000N` + `index.json`）读取路径** ⇒ **看着像 H3、本机打不开**（第 4 类缺口，前三类：16 宽 Tiny / VSA `gate_compress` / GGUF）。
 - **旁挂件缺口（K205）**：官方 pruned 基座 `transformer/adaln_affine.safetensors` = `adaln_basis F32 [8,2688]` + `adaln_mean F32 [2688]`（header 仅 184 B），本机全树 `grep -ri "adaln_affine|adaln_basis|adaln_mean"` = **0**。⇒ 8 宽曲线的**基与均值是旁挂的**，此前只比 `adaln_t_table [1025,8]` 会漏。
+
+### 第 32 轮（2026-11-26 06:30）：**Fusion pruned 的 alpha 判决 = 按原样 1.0** / w6a8 双拒 / VAE int8 第三盲区
+
+#### 1）★★★ Fusion pruned 适配器：alpha == rank，`mul ≡ 1.0`（P44 第③前置关闭）
+
+- **文件**：`lightx2v/MiniMax-H3-Turbo-Fusion:pruned/minimax_h3_ref2v_turbo_fusion_4step_v1.0_pruned_comfyui.safetensors`（**5,220,193,444 B / 828 tensors**，BF16 467 + F32 361；`lite_r32` 版 **818,925,468 B**，HF 与 ModelScope 逐字节同）。
+- **逐模块 alpha / rank 实测（4 步 full 档）**：
+
+| 模块 | alpha | rank (`lora_A` 第 0 维) | mul = alpha/rank |
+|---|---:|---:|---:|
+| `blocks.N.adaln_proj.linear` | 32.0 | 32 | **1.00** |
+| `blocks.N.attn.out_proj` | 320.0 | 320 | **1.00** |
+| `blocks.N.mlp.fc1` | 320.0 | 320 | **1.00** |
+| `blocks.N.mlp.fc2` | 320.0 | 320 | **1.00** |
+| `blocks.N.attn.qkv_proj` | 960.0 | 960 | **1.00**（= 320 × 3，metadata `qkv_fusion: "…alpha multiplied by 3"`） |
+
+- `__metadata__.output_alpha_counts = {"32.0":51,"320.0":156,"960.0":52}`、`default_training_alpha = 320.0`、`default_training_rank = 320`、`alpha_policy = "per-module alpha tensors take precedence over CLI default"`。
+- **⇒ 结论**：这属 **K188 的「倍率」语义**，乘数**恰好 1.0**，**不需要任何折算**。P44 从「3 条前置」降为「2 条」。
+- **⚠️ 反例警示**：rank 是**逐模块三档**（32 / 320 / 960，极差 30×）。任何「整个适配器一个 rank」的记账方式都会算错——`sibling_alpha()` 那条「多 rank 逐模块」的路径在这里是必须的。
+- **`lite_r32` 档不同**：`output_rank_counts = {"32":207,"96":52}`、`output_alpha_counts = {"32.0":207,"96.0":52}`（同样 mul = 1.0），rank 只有 32 / 96 两档。**选档时不要拿 full 档的 alpha 表套 lite 档。**
+
+#### 2）★★ Fusion pruned 的 AdaLN 修正：`diff_b` + LoRA 因子分工，无 `.diff`
+
+- 51 个 `diff_b`（50 块 + `final_layer`），`F32 [96768]` / `F32 [10752]`；**`.diff` 权重补丁 = 0 个**。
+- 同层并存 `lora_A [r,8]` + `lora_B [D,r]` + `.alpha`（F32）。
+- metadata：`adaln_conversion: "A'=A@P; diff_b=(alpha/r)*B@A@mean; original B and alpha preserved"`、`adaln_precision: "FP32 A and diff_b; all other tensors retain source dtype"`。
+- **本机契约吻合**：`bind_pruned_adaln_` 的 needle 用 `find`（命中 `diff_b`），后缀判定 `ends(".diff")` 对 `diff_b` 为假 → 走 is_b 分支**只写 bias 半区**（`dst += D*8`）；weight 半区由普通 LoRA 因子承担，**两半不重叠**。
+
+#### 3）★★★ `pruned_w6a8` 是双重拒绝（不是一条门）
+
+- `Comfy-Org/MiniMax-H3:diffusion_models/minimax_h3_ref2va_pruned_w6a8.safetensors` = **15,983,746,636 B / 1151 tensors**。
+- `comfy_quant = {"format":"w6a8_int8","group_size":32,"convrot":true,"convrot_groupsize":256}`；权重 `I8 [21504,4032]`（6 bit 打包），旁挂 `weight_s_rel F8_E4M3 [21504,168]`（= K/32）+ `weight_s_channel F32 [21504]`。
+- **两道门**：① `fp8-layout.cc:326` 按名拒绝 `w6a8_int8`；② 即便去掉名字门，I8 路径的 scale 校验（`:438-448`）只接受「1 个」或「每行 1 个」，**K/32 块 scale 会被「BLOCK-scaled encoding」拒**。
+- **⇒ 「换个文件名试试」这条路彻底没有价值**。
+
+#### 4）★★ 校准：CoFFmeteor 融合 int8 基座（契约全符合，但是真人素材）
+
+- `Coffmeteor/MiniMaxH3-Realism-Turbo-Remix:int8/minimaxh3RealismTurbo_v10INT8.safetensors`，**20,967,649,144 B / 932 tensors**。
+- `model.diffusion_model.` 全前缀 + `adaln_t_table F32 [1025,8]` + `qkv_proj I8 [21504,5376]` + `weight_scale F32 [21504,1]`（逐行）+ `comfy_quant {"format":"int8_tensorwise","convrot":true,"convrot_groupsize":256}` + 50 块 + `audio_patch_proj`/`audio_out` 齐 + **无 `time_embedder`**（pruned 形态）⇒ 本机四条判据全过。
+- **⚠️ 只记存在性，不进能力表**：Singularity + Turbo + Realism + Motion 融合 + **真人 YouTube 微调**（`source.json` 明写），属真人素材；`__metadata__.required_prompt_prefix = "r34l1sm"`（**本机不读此键，触发词须手动加进 prompt**）。作者默认设置：960×544 → 1632×928、8+3 步、24 fps。
+
+#### 5）★★★ 第三条量化盲区：VAE int8_convrot（比 K199 更危险）
+
+- 社区件（Kijai `wip/` + 根目录）：`lightvae_lite` **1,036,943,392 B**、`lynnreal_light` **2,137,493,384 B**、`mt_video` **2,811,065,896 B**、官方 `video_vae_int8_convrot` **3,171,670,912 B**。README 自报 **decode ~2×**（需 ComfyUI 0.36.0）。
+- 头实测：**I8/U8 各 48**、标量 `weight_scale`、`comfy_quant {"format":"int8_tensorwise","convrot":true,"convrot_groupsize":256}`。
+- **本机 VAE 契约**：`linear_()` 读 **`.scales` + `.biases`**（仿射量化；`_quant_bits` 4/8、`_quant_group` 默认 64，来自 config 的 `quantization.{bits,group_size}`），**不认** ComfyUI 的 `weight_scale` / `comfy_quant`。
+- **⇒ 失效形态**：`_quant_bits == 0` 时直接走 dense 路径拿 I8 张量 → **把整数码当像素值 → 画质崩塌且无错误日志**。比 K199（LoRA 因子静默 `_skipped`）更危险。
+- **P48**：① `linear_()` 加 comfy 命名分支；② 转换脚本解成 BF16（lite VAE 只 1.04 GB → 解出约 4 GB，本机可接受）。

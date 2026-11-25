@@ -477,3 +477,60 @@
   2. **比 ClipProj 离本机更远**：ClipProj 是「**无 mlp**」变体（sd.cpp 的 `ClipProjConnector` 明确写「不支持 `-mlp` 残差变体」），Qwen3.5 是「**带 mlp**」。
   3. 两个方案都要求「**单 tap + 一次性投影**」，本机是「**N 个 tap 沿 hidden 维拼接 → 一次投影**」（K190）——tap 数不同，不是改名能通。
 - **状态**：**待复现**。登记 P46，**优先级维持中、期望下调**。
+
+## 2026-11-26 追加（第 32 轮 · 「时调制剪枝」成独立工艺线 + 本机第 5 类不可读形态 + ref LoRA 轻量路线）
+
+### K210 ★★★ WaveCut 风格「时调制剪枝」：把 AdaLN 换成 one-hot 时编码 + 投影
+
+- **方法源**：`iamwavecut/MiniMax-H3-Image-Pruned`（GitHub，2026-11-10，0 star，描述「MiniMax-H3-Image without unused weights（135 → 94 GB, bit-identical images）」）。做法：在**固定采样步**上预先算出时调制，用 **one-hot 时编码器 + 投影**替换整张时调制网络。
+- **ComfyUI 参考图路径版**：`Jianqiao1/MiniMax-H3-Image-Lossless-Pruned-ComfyUI`（2026-11-25 18:40）。
+  - bf16：`minimax_h3_image_wavecut_style_pruned_reference_bf16.safetensors` **40,234,634,888 B**（66.3 → 40.2 GB）。
+  - int8 ConvRot：`…_reference_int8_convrot.safetensors` **20,979,299,938 B**（→ 21.0 GB）。
+  - 作者自评（ComfyUI 0.45.0 / RTX 5090 / 4096² / Euler CFG1 / **六步**）：bf16 **5/5 逐像素相同（MAE 0.0000 / PSNR ∞）**；int8 **MAE 9.1674 / PSNR 21.833 dB / 0/5 相同**。对照 Comfy-Org：bf16 22.703 dB、int8 22.178 dB。
+  - **关键限制（作者自述）**：只在**参考图路径**上像素等价（含纯黑参考图）；纯 T2I 路径**不等价**，因为原模型在有/无参考时舍入不同。**所有比较用 ComfyUI，不用 diffusers**。
+  - **定量风格 sigma 表**：`1.0, 0.9675236940383911, 0.8875485062599182, 0.75, 0.5327739119529724, 0.23200887441635132, 0.0`（写进 `ManualSigmas`）。
+- **⚠️ 待复现**（社区二手 + 作者自测，未见第三方复现）。
+
+### K211 ★★★ 本机第 5 类「看着像 H3、打不开」：宽 8 AdaLN + 无前缀 + 无曲线表
+
+| | bf16 件 | int8 件 |
+|---|---|---|
+| tensors / 字节 | 531 / 40,234,634,888 | 981 / 20,979,299,938 |
+| 前缀 | **无** `model.diffusion_model.` | **无** |
+| `adaln_t_table` | **无** | **无** |
+| AdaLN 投影 | `blocks.N.adaln_proj.linear.weight BF16 [96768, 8]` | 同（BF16） |
+| `time_embedder` | **极窄**：`proj_in [16,256]`、`proj_out [8,16]` | 同 |
+| 额外 | — | `blocks.N.attn.comfy_attention.config`（`[{"attention":"comfy_kitchen_int8"}]`，本机 grep = 0） |
+
+- **本机判据链**（`metal-minimax-h3-transformer.cc:640-661`）：
+  - `comfy_saved` = `is_comfy_saved_dit_file()`（要求有 `model.diffusion_model.` / `diffusion_model.` 全前缀）**或** （`has("adaln_t_table")` 且 `has("blocks.0.attn.qkv_proj.weight")`）。
+  - 本件三条都不满足 → 直接 fail **「is neither a Comfy-Org H3 component, an H3 DiT ComfyUI saved, nor one in the diffusers naming」**。
+- **第 5 类的命名**：这类是「**one-hot 剪枝形态**」——宽 8 的 AdaLN + 极窄 `time_embedder` + 无曲线表，本机**没有任何识别分支**（既不是 pruned 曲线形态，也不是 full-model 形态）。
+- **为何不是「加个 adaln_t_table.bin 就能读」**：本机 pruned 分支要求 `curve_grid >= 2` 且 `time_dim == 8`（`:831`），而 `curve_grid` 只能来自 `adaln_t_table`；本件的 `time_embedder.proj_out [8,16]` 说明它的「8」是**输出维度**不是曲线网格。语义不同，**不能靠补一个旁挂表绕过**。
+
+### K216 ★★ 社区另辟的 FL2VA→Ref2VA 轻量路线：「ref LoRA」
+
+- `Kijai/MiniMax-H3-experimental` README 原文：**「ref lora is the difference between fl2va and ref2va, completely experimental, I don't even know if it has a use case at this point.」**
+- `wip/` 下另有 `minimax_h3_ref2va_pruned_w6a8_g32.safetensor`（指向 `Comfy-Org/comfy-kitchen` PR **#191**）。
+- **与本机现象的关系**：本机两个 partition 的 transformer config **字节相同**、行为不同（见 `metal-minimax-h3-transformer.cc:434-446` 的注释）。社区用「就差一个 LoRA」解释同一现象。**待复现**——若成立，则 FL2VA 单份下载可覆盖两任务，能省一半磁盘。
+
+### Kajai `wip/` 与根目录的量化 VAE 全谱（K217 的来源）
+
+| 文件 | 字节 | 说明 |
+|---|---:|---|
+| `minimax_h3_lightvae_lite_encoder_fp16.safetensors` | 203,172,976 | lite VAE 的编码器（fp16） |
+| `minimax_h3_lightvae_lite_vae_int8_convrot.safetensors` | 1,036,943,392 | **lite VAE 解码器 int8**（最小候选） |
+| `minimax_h3_lynnreal_light_vae_int8_convrot.safetensors` | 2,137,493,384 | LynnReal light VAE（来源 `stdstu123/LynnReal-Onmi-light-vae`，自报 1.3× faster） |
+| `minimax_h3_mt_video_vae_int8_convrot.safetensors` | 2,811,065,896 | mt video VAE |
+| `minimax_h3_video_vae_int8_convrot.safetensors` | 3,171,670,912 | 官方 VAE 的 int8 版 |
+
+- README：「int8_convrot VAE needs ComfyUI 0.36.0 for maximum speed benefit / It speeds up VAE decode times by ~2x」。
+- **本机不认**（K217）：VAE 走 `.scales`/`.biases` 仿射量化，不是 `.weight_scale`/`comfy_quant`。
+
+### 上游与生态快照（第 8 日静默，逐日复查）
+
+- vpipe：HEAD `a6a1f53`（11-23 09:54）、release **v0.1.110**（11-01，落后 **26 天**）、issue 14 全开、PR 0、273 star / 27 fork。
+- sd.cpp：`52491bd` #2423 DGL 内联媒体预览 → H3 相关仍只有 11-25 `5fa203c` ClipProj(no mlp)。
+- ComfyUI：`f40a4fbb` frontend 1.59.15 / `a2103ae6` Meshy / `b27006af` Recraft，无 H3。
+- LightX2V：`83a424a`（README 文案）。
+- 社区新仓：`SOLRICKS/3D-Animation-Style-MiniMax-H3`（rank16 step1250 LoRA + 5 份 V3 workflow）、`Coffmeteor/MiniMaxH3-Realism-Turbo-Remix`（908 dl）、`pmczip/MiniMaxH3_RefMod`（1,634 dl）。

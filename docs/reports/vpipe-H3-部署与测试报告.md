@@ -6100,3 +6100,106 @@ K181 记「权重齐、PR 齐、只差合入」。本轮：fork 停在 `fd0b0e2 
 - **P46（扩写、期望下调）**：两个换编码器方案都需「单 tap 一次性投影」，且成片 PSNR 14.8 dB。
 - **P43（仍未建）**：`safetensors-peek.py`，三条需求（全量 metadata / 纯 stdlib 幅度统计 / 按模块聚合 alpha 与 rank）。
 - **SOP（仍未改）**：写入「HF 搜索 API 替代 WebSearch」「hf-mirror 只取元数据、权重走直连」「commits 端点 301 走 `repositories/<id>`」「`.alpha` 双语义体检」四条。
+
+### 18.41 2026-11-26 06:30 —— 第 32 轮：★★★ P44 第③前置判死（Fusion pruned 的 alpha 全体 == rank，`mul ≡ 1.0`）+ ★★★ WaveCut 时调制剪枝两件本机皆拒（第 5 类不可读形态）+ ★★★ VAE int8 是本机第三条量化盲区（错值而非跳过）
+
+> 本轮由 **P39 launchd + codebuddy 无头 CLI** 执行（slot=06:30，守卫 R=32）。
+> **编号说明**：SOP 模板写「18.32」，但 18.32 已被 2026-11-24 01:00 的历史节占用（18.31–18.40 均已按轮次递增落位）；为不重号，本轮顺延为 **18.41**（知识编号 **K209–K219**，接上轮 K208）。
+> **与上轮的关系**：18.40 把「2K 后处理通路」与「int8 适配器盲区」摆清，并把「核 Fusion LoRA 的 alpha 语义」留成 P44 第三条前置。**本轮把这条前置直接判死**（alpha 全体等于 rank，乘数 1.0），同时把 11-25 单日涌现的**「时调制剪枝」**这一整条新工艺线判了本机可读性——**bf16 与 int8 两个文件都打不开，只有「融合进基座」的 int8 件契约全符合**；并在 VAE 侧发现**第三条**量化盲区，且其失效形态是**错值**而非跳过。
+
+#### 18.41.1 检索范围
+
+| 源 | 端点 | 结果 |
+|---|---|---|
+| vpipe 上游 | `commits?per_page=5` / `repos` / `releases?per_page=3` / `search/issues is:issue is:open` / `search/issues is:pr` | **零增量**：HEAD `a6a1f53`（`author.date 11-23T09:54:27Z`、`pushed_at 11-23T11:20:51Z` → 至抓取约 **3.4 天**）；release **v0.1.110（11-01）落后 26 天**；issue **14 全开**（#59/#58/#56/#55 均 0 评论）；**PR total_count = 0**；**273 star / 27 fork / 36,920 KB** |
+| LightX2V 主线 | `commits?per_page=6` | 最新仍 `83a424a`（11-25 07:07，README 文案）；实质变更仍是上轮 `7fc25cd`（#1730） |
+| stable-diffusion.cpp | `commits?per_page=6` | 最新 `52491bd` #2423 DGL 内联媒体预览；**H3 相关仍只有 11-25 的 `5fa203c` ClipProj(no mlp)**（#2410） |
+| ComfyUI | `repositories/589831718/commits?per_page=6` | `f40a4fbb` frontend 1.59.15 / `a2103ae6` Meshy task ids STRING / `b27006af` Recraft Vectorizer / `0d0e1051` GB300 int8（上轮）→ **无 H3** |
+| ModelScope | `lightx2v/Minimax-h3-Turbo` 31 项；`Minimax-H3-Turbo-Fusion` 48 项（递归） | 零增量；`pruned/…_4step_v1.0_lite_r32_pruned_comfyui` **818,925,468 B 与 HF 逐字节同** |
+| HF 社区搜索 | `hf-mirror.com/api/models?search=minimax_h3` + `search=minimax-h3`（各 `sort=lastModified` 25 条） | **K218**：11-25～11-26 续增，重心未变（后处理 / 换编码器 / 融合进基座），新增「风格化 LoRA 集」 |
+| WaveCut 方法仓 | GitHub `iamwavecut/MiniMax-H3-Image-Pruned` repo API + README | **K210**：135 → 94 GB、bit-identical、Diffusers/Transformers 双栈构建脚本（README 正文为空，方法描述取自衍生仓引用） |
+| 衍生仓（bf16 + int8） | `Jianqiao1/MiniMax-H3-Image-Lossless-Pruned-ComfyUI` tree + README 全文 + Range 读头 ×2 | **K210/K211**：40,234,634,888 B（531 tensors）/ 20,979,299,938 B（981 tensors）；作者指标表 5/5 pixel-identical |
+| Fusion 适配器 | `pruned/…_4step_v1.0_pruned_comfyui` + `…_lite_r32_pruned_comfyui` Range 读头 + 逐模块 `.alpha`/`lora_A` 切片 | **K212/K213**：alpha == rank（32/320/960）；`diff_b` 51 个、`.diff` 0 个 |
+| Comfy-Org pruned 基座 | `ref2va_pruned_w6a8` / `ref2va_pruned_int8_convrot` Range 读头 | **K214**：w6a8 双拒；int8_convrot 的 `comfy_quant` / 逐行 scale 原文 |
+| Coffmeteor 融合基座 | `int8/minimaxh3RealismTurbo_v10INT8.safetensors` Range 读头 + `catalog.json` + `source.json` + `int8/README.md` | **K215**：契约全符合；**真人素材** |
+| Kijai experimental | `tree/main` + README raw + `lightvae_lite_vae_int8_convrot` / `ref2va_pruned_w4a8_mixed` / `fl2va_pruned_w4a8_mixed` 读头 | **K216/K217**：ref LoRA 声明；4 个 int8 VAE；W4A8 三兄弟形状 |
+| 本机源码 | `metal-minimax-h3-transformer.cc:580-661 / 831 / 4100-4130 / 4480-4560 / 4690-4900 / 6075-6135`、`minimax-h3-diffusers-layout.cc`（`is_comfy_saved_dit_file` / `comfy_prefix_` / `untranslatable_tensor`）、`shared/fp8-layout.cc:60-460`、`metal-minimax-h3-video-vae.cc:824-890 / 1350-1375`、`shared/runtime-lora.cc:865-895` | K211/K213/K214/K217 的本机侧判据 |
+| 本机磁盘 | `df -h /` | **38 GiB 可用**（较上轮 37 GiB 回升 1 GiB） |
+| 社区搜索 | WebSearch | **本轮试了 1 次**（「MiniMax H3 vpipe video_shift 12 ref2va 768p 实测」）→ 仍 `Authentication required for web search`，**连续第 8 轮失效**；社区面由 HF 搜索 API + README raw + tree API 完整补位 |
+
+#### 18.41.2 新增知识（K209–K219）
+
+| # | 一句话结论 | 来源 | 日期 | 与本机实测冲突 |
+|---|---|---|---|---|
+| **K209** | 上游静默第 8 日：HEAD `a6a1f53`（≈3.4 天）、release 落后 **26 天**、issue 14 全开、PR=0、273 star 逐位同上轮 | GitHub API | 2026-11-26 | 否（零增量） |
+| **K210** | ★★★ 「时调制剪枝（WaveCut 风格 / one-hot 时编码）」成独立工艺线：AdaLN 在固定采样步上预计算，换成 one-hot 编码 + 投影。H3-Image **135→94 GB** 逐像素相同；ComfyUI 参考图路径版 **66.3→40.2 GB**，作者自测 **5/5 pixel-identical**；int8 版 21.0 GB 但 **PSNR 21.833 dB / 0/5** | GitHub repo + README 指标表 | 2026-11-25 | **待复现**（ComfyUI 0.45.0 / RTX 5090 / 4096² / Euler CFG1 六步 / 全黑参考图） |
+| **K211** | ★★★ **两个 WaveCut 件本机皆拒载**：无 `model.diffusion_model.` 前缀、无 `adaln_t_table`、AdaLN 宽 8（`[96768,8]`）、`time_embedder` 极窄（`proj_in [16,256]` / `proj_out [8,16]`）⇒ `comfy_saved` 两条判据全不满足；int8 件另带 `comfy_attention.config`（本机 grep=0） | HF 读头 ×2 + 本地 `:640-661` | 2026-11-26 | **是**：新增「第 5 类看着像 H3 打不开」= **one-hot 剪枝形态**；**不能靠补 `adaln_t_table.bin` 绕过**（那个 8 是 `proj_out` 输出维，非曲线网格） |
+| **K212** | ★★★ **P44 第③前置判死**：Fusion pruned 逐模块 `alpha == rank` —— adaln **32/32**、out_proj+fc1+fc2 **320/320**、qkv **960/960**（=320×3）⇒ **`mul ≡ 1.0`** | 逐模块切片 + `__metadata__` | 2026-11-26 | **是**（K188/K200 第三态）；**rank 三档极差 30×**，`lite_r32` 是另一套（32/96） |
+| **K213** | ★★ Fusion pruned 的 AdaLN 修正是「**51 个 `diff_b` + LoRA 因子**」分工（`.diff` 补丁 = 0）；本机 `bind_pruned_adaln_` 走 is_b 分支只写 bias 半区，与 LoRA 因子不重叠 | Range 读头 + `:4501-4560` | 2026-11-26 | 否（印证 K170/K171） |
+| **K214** | ★★★ **`pruned_w6a8` 双拒**：`format=w6a8_int8 group_size=32` + `I8 [21504,4032]` + `weight_s_rel F8_E4M3 [21504,168]`（K/32）⇒ ① 按名拒（`fp8-layout.cc:326`）；② 布局拒（I8 scale 只接受 1 个或每行 1 个，`:438-448`） | Range 读头 + 本地源码 | 2026-11-26 | **是**（K172 升级） |
+| **K215** | ★★★ **社区融合 int8 基座首次契约全符合**（932 tensors / 全前缀 / `adaln_t_table` / 逐行 `weight_scale` / ConvRot 256 / 50 块 / 无 `time_embedder`）——**但属真人 YouTube 微调素材**，触发词 `r34l1sm` 本机不读 | Range 读头 + `catalog.json`/`source.json` | 2026-11-26 | 否；价值在「证明本机契约可容纳社区自融」 |
+| **K216** | ★★ 社区「ref LoRA」＝ FL2VA→Ref2VA 差分（作者自称 completely experimental），`wip/…_ref2va_pruned_w6a8_g32` 指向 `comfy-kitchen` PR #191 | README raw | 2026-11-26 | **待复现**；若成立可省一半磁盘 |
+| **K217** | ★★★ **VAE int8_convrot 是本机第三条量化盲区，且失效是「错值」**：社区件用 `weight_scale` + `comfy_quant`，本机 VAE 只认 `.scales`+`.biases`（`_quant_bits` 4/8、`_quant_group` 64）⇒ I8 码被当值 → 画质崩塌、日志无错 | HF 读头 + `metal-minimax-h3-video-vae.cc:852-870 / 1362` | 2026-11-26 | **是**（新缺口 P48） |
+| **K218** | ★ 社区续增：SOLRICKS 3D 动画风格 LoRA（rank16/step1250 + 5 份 workflow）、Coffmeteor 908 dl、pmczip 1,634 dl、SOLRICKS Upscaler 5,706 dl 居首 | HF 搜索 API | 2026-11-26 | 否 |
+| **K219** | ★ sd.cpp / ComfyUI / LightX2V 三线零增量；ModelScope 两仓逐项不变 | GitHub API ×3 + ModelScope ×2 | 2026-11-26 | 否（明日复查） |
+
+#### 18.41.3 印证与冲突
+
+- **★★★ 判决（P44 第③前置关闭）**：上两轮把「核 Fusion LoRA 的 alpha 语义」列为 P44 必备前置，理由是「K188 的 8 vs 128」与「K200 的 3.96e-4」两种互斥语义无法预判。本轮逐模块实测 **alpha 全体等于 rank**（`adaln 32/32`、`out_proj/fc1/fc2 320/320`、`qkv 960/960` = 320×3）⇒ `mul = alpha/rank ≡ 1.0`，**按原样绑定即可**。⇒ **P44 只剩两条前置**（下载 11.77 GB + 0.82 GB；`video_shift 6.0 → 12.0`），且**已无未知变量**。
+- **★★ 印证（K188/K200 的第三态）**：`alpha` 至今已见三种现场值——**整数倍率且不等于 rank**（K188：v1.0 `alpha 128` → v1.3 `alpha 8`，rank 不变 ⇒ 强度降到 1/16）、**整数倍率且恰好等于 rank**（本轮 Fusion，`mul ≡ 1.0`）、**1e-4 量级量化 scale**（K200 SOLRICKS）。⇒ 「读 alpha」的正确姿势是**先 `struct.unpack('<f')` 取 float，再看量级**，而不是判断「是不是整数」。
+- **★★★ 冲突（「社区 int8 件都能读」不成立）**：K215 证明融合 int8 基座契约全符合；但 K211 证明**同一波**社区件里的 WaveCut bf16 与 int8 两个文件**本机都拒载**。区别不在 int8，而在**文件形态**（是否有前缀 / 是否有曲线表）。⇒ 「社区有」与「本机读」必须**逐件判头**，不能按作者或发布时间归类。
+- **★★★ 冲突（量化盲区从两条变三条）**：18.40 的 K199 是「适配器因子 I8 静默跳过」；本轮 K214 是「w6a8 名+布局双拒」、K217 是「**VAE int8 命名契约不同，且失效是把码当值**」。⇒ 本机量化账本应是**四栏**：基座 FP8、基座 int8/W4A8、适配器、**VAE**；且**危险度排序**：VAE（错值）> 适配器（静默跳过）> w6a8（明确拒绝）。
+- **★★ 印证（K172 强化）**：`pruned_w6a8` 此前只记「文档明写按名拒绝」；本轮读头证明 `group_size 32` 的**块量化**布局本身也不被 I8 路径接受。⇒ 「换个名试试」这条路彻底没有价值。
+- **★★ 印证（K191 家族扩写）**：Fusion 的 rank 三档（32 / 320 / 960）说明 **rank 是逐模块、逐目标的**；与 K191 的「4 步 / 8 步同头不同体」是同一件事的两面。
+- **零增量（须明日复查，K121 教训）**：vpipe 上游第 8 日（273 star 不变）；LightX2V `83a424a`；sd.cpp `52491bd`（H3 侧仍 `5fa203c`）；ComfyUI `f40a4fbb`；ModelScope 两仓逐项不变；Comfy-Org `MiniMax-H3` 仓 `modified 2026-11-15` 不变。
+
+#### 18.41.4 本轮实验
+
+**无生成实验**。零下载实测 **11 次 Range 请求**（K210 的 README、K211 ×3、K212 ×2、K213 合并、K214、K215、K216、K217），磁盘占用 **0**，累计约 **9 min**。
+
+不跑 P44 的理由（本轮比上轮更弱，但仍成立）：
+1. **时间**：06:30 起动，检索阶段已用约 35 min（硬超时 90 min）。P44 = 下 11.77 GB（约 25 min）+ 改 shift + 124 帧生成（约 29 min）≈ **55 min**，**必然挤掉两份报告与 sync / release**。
+2. **本轮最大价值在「判死」而非「开跑」**：K212 消掉了最后一个不确定性，P44 现在是**完全确定的两前置实验**——正是应该放在**有完整 90 min 窗**的槽位（如 00:30 或 02:30 槽）做的事。
+3. **磁盘 38 GiB 技术上可行**（下 11.8 GiB 后余 26 GiB），**不是磁盘拦住的**。
+
+#### 18.41.5 技能包脚本修改
+
+- `~/.workbuddy/skills/vpipe-model-prepare/references/768p-adapters.md`：新增「第 32 轮」小节，含 ① Fusion pruned 的 alpha/rank 实测表（5 类模块 × mul）、② `lite_r32` 档独立的 rank/alpha 表、③ Fusion AdaLN 修正的 `diff_b`+LoRA 分工、④ `pruned_w6a8` 双拒的格式原文、⑤ Coffmeteor 融合基座的四条判据（含真人素材警示与 `required_prompt_prefix` 坑）、⑥ VAE int8 第三盲区的本机契约对照。**66,263 → 71,575 B**。
+- `~/.workbuddy/skills/vpipe-model-prepare/references/h3-ecosystem-map.md`：新增「2026-11-26 追加（第 32 轮）」小节，含 ① WaveCut 时调制剪枝的方法与三份文件的指标表、② 本机第 5 类不可读形态的判据链表（含「为何不能补旁挂表绕过」）、③ ref LoRA 路线、④ Kijai `wip/` 与根目录的 5 个量化 VAE 全谱、⑤ 上游与生态快照。**45,015 → 50,542 B**。
+- **双源同步**：两份文件已 `cp` 到 `vpipe-lab/skills/vpipe-model-prepare/references/`，`shasum -a 1` 两侧一致（`27fa508d…` / `5bfd310f…`）。
+- **补齐一个历史分叉**：开工前校验发现 `vpipe-reference-to-video/references/h3-prompt-guide.md` **只在安装侧存在**（lab 侧缺失，2026-11-20 固化后一直没同步），本轮补拷并校验（`598c11d1…`）。⇒ 双源校验脚本应覆盖「只在一边存在」的情况，`nightly_sync.sh` 只单向复制 `vpipe-lab/skills/`，**安装侧独有文件不会上云**。
+- **本轮未改脚本**：`scripts/` 下无变动；`safetensors-peek.py`（P43）仍未建。
+
+#### 18.41.6 踩坑与结论
+
+**坑①（新）：HF `tree/main` 对大仓的 `lastModified` 会整列缺失。**
+本轮 `Comfy-Org/MiniMax-H3/diffusion_models` 12 个文件全部**没有** `lastModified` 字段（不是 null，是键不存在）。⇒ 判「文件是否新上传」不能靠 tree，要看 `api/models/<id>` 的 `lastModified`（本轮仍 `2026-11-15`）或逐文件 `commits/main`。
+
+**坑②（新）：`hf-mirror.com/<repo>/raw/main/README.md` 对部分仓返回一行 `Temporary Redirect. Redirecting to ...`。**
+本轮 `lightx2v/Minimax-H3-Turbo-Fusion` 命中；`curl -sL` 跟到 `huggingface.co` 后内容**仍为空**。⇒ README 改走 `huggingface.co/<repo>/raw/main/...` 直连，镜像只用于**搜索与 tree**（与既有的「权重直连」分流合并为一条：**只有搜索/tree 走镜像**）。
+
+**坑③（复现并纠正口径）：`w6a8` 此前只有体积、没有格式证据。**
+全报告 `grep -c "w6a8"` 仅 1 处（K172，「按名拒绝」）。本轮读头才拿到 `comfy_quant` 原文（`group_size 32` + `I8 [21504,4032]` + `weight_s_rel [21504,168]`）。⇒ **结论落库时必须连"拒绝的具体判据"一起写**，否则下一轮无法区分「是名字问题还是布局问题」，会重复试探。
+
+**坑④（新）：`blocks.N.attn.comfy_attention.config` 落在「不认识但不致命」的灰区。**
+本机全树 `grep -rn "comfy_attention"` = **0**；它也不在 `fp8-layout.cc:is_aux_name` 的 aux 后缀表里。⇒ 单个未知 tensor **不会**导致整件拒载（拒载来自前缀/曲线表判据）。排查时**先判整件可读性判据**，别把「有个不认识的头」当成第一障碍。
+
+**坑⑤（新）：`time_embedder` 的极窄形状是「one-hot 剪枝」的指纹，但容易被误读成「配置错」。**
+WaveCut 件 `proj_in [16,256]` / `proj_out [8,16]`，而全模型件是 `[5376,256]` / `[5376,5376]`-量级。⇒ 见到 `time_embedder` 输出只有 8/16 维，应立刻判「这是 one-hot 时编码」，**并核对是否还有 `adaln_t_table`**（没有 ⇒ 本机必拒）；**不要**试图用「补一个 `adaln_t_table.bin`」绕过——本机 pruned 分支要求 `curve_grid >= 2` 且 `time_dim == 8`，而这里的 8 是 `proj_out` 的输出维，语义不同。
+
+**结论**
+1. **P44 现在是「无未知变量」的实验**（K212）：两条前置（下载 11.77 + 0.82 GB、`video_shift` 6→12）、一条已知 alpha 语义（mul 1.0）。⇒ **应放到有完整 90 min 窗的槽位**，而不是继续在 06:30 这种「检索吃掉一半时间」的槽位硬塞。
+2. **「时调制剪枝」是本月第三条独立工艺线**（K210），且在 H3-**Image** 上做到了**逐像素零代价**；但它的 ComfyUI 导出形态（无前缀 + 无曲线表 + 宽 8 AdaLN）**正好落进本机识别分支的空档**（K211）。⇒ 这不是「暂不支持新模型」而是「**同一族的新打包形态**」，属 P49，**不建议本机私改**（与 P42 同类，等上游）。
+3. **量化账本必须四栏，且按危险度排序**（K199/K214/K217）：**VAE（错值）> 适配器（静默跳过）> w6a8（明确拒绝）**。P48 应优先于 P47——因为 VAE 的失效**没有任何日志**且画质直接崩塌。
+4. **「社区有」≠「本机读」这条纪律要再加一层**（K215 vs K211）：同一天、同一波、甚至同一个作者的产物，可读性可以完全不同；**判据是文件形态（前缀 / 曲线表 / AdaLN 宽度），不是体积或 int8 与否**。
+5. **双源技能包的隐性漏洞被补上**（18.41.5）：`h3-prompt-guide.md` 在 lab 侧缺失近一周，`nightly_sync.sh` 的单向复制覆盖不到。⇒ 若要让「安装侧独有内容」上云，需把 sync 的源改为安装侧（**待用户拍板，仍未改脚本**）。
+
+#### 18.41.7 下一步
+
+- **P44（前置 2 条，无未知变量）**：① 下 `Kijai/…:minimax_h3_ref2va_pruned_w4a8_mixed`（**11,770,657,048 B**）+ `Fusion:pruned/…_4step_v1.0_lite_r32_pruned_comfyui`（**818,925,468 B**）；② `video_shift 6.0 → 12.0`。**建议排给有完整窗的槽位**（下载 25 min + 生成 29 min + 报告/SYNC 余量）。
+- **P48（新，优先级中，**应先于 P47**）VAE int8_convrot**：三条路——① `linear_()` 加 comfy 命名分支；② **转换脚本解成 BF16**（lite VAE 1.04 GB → 约 4 GB，可先验「lite VAE 画质是否可接受」）；③ 等上游。
+- **P47（扩写）**：三处盲区（适配器 / w6a8 / VAE）。最低成本仍是加 warning，但**VAE 那条必须优先修**。
+- **P49（新，低）**：one-hot 时调制剪枝形态的可读性 —— 属上游架构变体，**不建议本机私改**。
+- **P50（新，低，跟踪）**：「ref LoRA」＝ FL2VA→Ref2VA 差分，若成立可省一半磁盘。
+- **P43（仍未建）**：`safetensors-peek.py`，**第四条需求**：把 `comfy_quant` JSON 解析成结构化字段（format / convrot / group_size），否则「名拒 vs 布局拒」每次都要手读。
+- **SOP（仍未改）**：累计 **5 条**待写入（HF 搜索替代 WebSearch / hf-mirror 只用于搜索与 tree / commits 端点 301 走 `repositories/<id>` / `.alpha` 三态体检 / **tree 的 `lastModified` 缺失 + raw README 走直连**）。
