@@ -931,3 +931,32 @@ ModelScope `lightx2v/Minimax-h3-Turbo` 现有 **31 个文件 / 27 个 safetensor
 - ⇒ **换 LoRA 槽前必读三件：`__metadata__.alpha`、`lora_A` 第 0 维（rank）、是否带 per-module `.alpha`**。只看体积/形状会把 v1.3 当 v1.0 用，等效强度掉到 1/16。
 
 **4）Fusion pruned 的 4 步 / 8 步 lite_r32（K191）**：828 tensors / header 100,232 B / key 与 shape 全同，**权重体抽样 sha 全不同**；`pruned_table_sha256` 两者相同（同基座同 AdaLN 表）。选档时按「步数」取文件，不能按体积判同。
+
+### 第 31 轮（2026-11-26 04:30）：2K refine 的本机通路 / int8 适配器盲区 / alpha 两种语义
+
+#### 1）本机 2K latent-upscale 是「一等能力」，社区件只是官方权重的 F16 转存（K198）
+
+- **本机实现**：`stages/latent-upscale-stage.cc`（`type_name = "latent-upscale"`，参数 `scale` / `width` / `height` / `align`）+ `generative-models/minimax-h3/metal-minimax-h3-latent-upscaler.{h,cc}`。
+- **网络结构**：`conv_in 24→512 (3×3×3)` → in stack 12 个 ResBlock（输入尺寸）+ 6 个 TemporalConv（dwconv kernel 5）→ 三线性 resize（**帧数不变**）→ out stack 同构 → `GroupNorm → SiLU → 3×3×3`。GroupNorm **按整条片统计**，所以必须**一次跑完整片**（不能切片）。
+- **归一化**：默认 `Normalize::kRelease`（**双重归一**）——因为 ComfyUI 节点是拿原始 latent 调它，而 Open-H3 的 latent 已经是白化的。`kOnce` 才是节点本意。
+- **精度**：默认 **F16**（残差峰约 8e3，f16 够用且精度是 bf16 的 4 倍）；`VPIPE_H3UP_BF16=1` 切 bf16；**f16 出非有限值会自动回退 bf16 重跑**（`upscale()` 内建 fallback）。
+- **catalog 两条条目**：`Open-H3-Regenerate-2K` 与 `-IC`，`files = {"latent_upsampler/minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors", ...}`，`model_type = "minimax-h3-latent-upscaler"`。
+- **社区对照（2026-11-26 读头）**：`SOLRICKS/MiniMax-H3-Upscaler:minimax_h3_latent_upscaler_3d_conv_v1_fp16.safetensors`（690,592,672 B）与官方 `Efficient-Large-Model/Open-H3-Regenerate-2K:latent_upsampler/…_bf16.safetensors`（690,592,992 B）**322 tensors、key 集、shape 逐一致（onlyA 0 / onlyB 0），唯一差异 dtype BF16 → F16**（header 32,552 → 32,232 B）。
+- **⇒ 纪律**：看到社区「新」upscaler 先做双读头比对，**同 key 同 shape 就是同一份权重的转存**，不必当新能力。2K 的真正缺口是 **refiner LoRA**（Open-H3 r256/576 或 SOLRICKS 的 int8 打包）。
+
+#### 2）int8 **适配器因子**是第二条量化盲区，且是静默的（K199/K200/K201）
+
+- **基座 vs 适配器是两条独立通路**：基座 int8/W4A8 走 `shared/fp8-layout.cc`（`int8_tensorwise` / `asym_w4a8_int8`，K178 的 `w4a8_to_i8`）；**LoRA 因子走 `shared/runtime-lora.cc`**，`take_()` / `take_f32_()` **只分支 BF16 / F16 / F32**（`:502-517`、`:537-546`）。
+- `fp8::format_of()`（`shared/fp8.h:76-88`）对 `"I8"` **显式返回 `kNone`**（注释原文：`kNone for any other dtype (I8 among them)`）⇒ I8 因子取空 → `++_skipped` → **该模块静默不生效**，日志无错。
+- **样本**：`SOLRICKS/MiniMax-H3-Upscaler:h3_upscale_refiner_int8.safetensors`（1,884,199,184 B / **624 tensors = 208 模块 × (lora_A I8 + lora_B I8 + alpha F32)**，50 块 + token_refiner 2 块）。
+- **`.alpha` 语义第二例（K200）**：该件 metadata 写 `quantization: "int8_per_tensor_scales_in_lora_alpha_v1"`，`alpha` 是**量化 scale**（实测 `blocks.48.mlp.fc2 = 3.956e-4`、`blocks.15.attn.out_proj = 1.800e-4`），与 K188 的**整数倍率**（128 / 8）**语义相反**。且 rank **逐模块不同**（159 / 185 / 200 / 258 / 338 / 513）。
+- **⇒ 换槽体检三件升级为四件**：① `__metadata__.alpha` 或 per-module `.alpha`；② **先判语义（整数倍率 vs 量化 scale，看量级 + metadata 的 `quantization` 键）**；③ rank（`lora_A` 第 0 维，**可能逐模块不同**）；④ 因子 dtype（**I8 会被静默跳过**）。
+- **量化代价（K201，引用必带）**：`manifest.json` 自报 `converted_pairs 208`、相对 Frobenius median **0.0824** / mean 0.0875 / p95 **0.1432** / max **0.2841**，作者标 `visual_quality_metric: false`、`additional_training: false`。
+
+#### 3）「融合进基座」的全量 diffusers 仓本机打不开（K204/K205）
+
+- `ibyteohdear/MiniMax-H3-Pruned-{DMD-FL2VA-Turbo,LigthX8-hybrid}-Fused`：各 4 分片 ≈ **40.2 GB**，基座 `multimodalart/MiniMax-H3-Pruned/transformer`，方法 `load_lora_adapter → pin scaling → fuse_lora → strip peft → sharded save`。
+  - `DMD-FL2VA-Turbo`：`LoRA alpha 15.156 / rank 16 / Fusion scale 0.897 / 363 层`；`LightX8-hybrid`：`alpha 48 / rank 48 / scale 1 / 312 层`。
+  - 分片头实测：**176 tensors/片、无 `adaln_t_table`**，AdaLN 已烘进 `norm_out.folded_bias [10752]`；`config.json`：`adaln_rank 8 / hidden_size 5376 / num_layers 50 / text_dim 5120`。
+- **本机判据**：`stages/model-catalog.cc:2502` 原文「`pruned` DiTs (a different model, not a different packing of this one)」；`WeightSet::open()` → `MetalLlamaWeights::open_model(dir)` 走单文件 / GGUF，**无 diffusers 分片目录（`diffusion_pytorch_model-0000K-of-0000N` + `index.json`）读取路径** ⇒ **看着像 H3、本机打不开**（第 4 类缺口，前三类：16 宽 Tiny / VSA `gate_compress` / GGUF）。
+- **旁挂件缺口（K205）**：官方 pruned 基座 `transformer/adaln_affine.safetensors` = `adaln_basis F32 [8,2688]` + `adaln_mean F32 [2688]`（header 仅 184 B），本机全树 `grep -ri "adaln_affine|adaln_basis|adaln_mean"` = **0**。⇒ 8 宽曲线的**基与均值是旁挂的**，此前只比 `adaln_t_table [1025,8]` 会漏。

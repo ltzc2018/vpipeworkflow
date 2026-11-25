@@ -5995,3 +5995,108 @@ K181 记「权重齐、PR 齐、只差合入」。本轮：fork 停在 `fd0b0e2 
 - **P45（措辞已改）**：fork 停在 10-21，合入前需 rebase 一个月演进；PR 数为 0。
 - **P43（仍未建）**：`scripts/safetensors-peek.py`，新增两条需求（打印 `__metadata__` 全量、纯 stdlib 幅度统计）。
 - **P40（已补前置）**：换槽 A/B 前核 `__metadata__.alpha`，否则 v1.3 会被误判为「变差」。
+
+### 18.40 2026-11-26 04:30 —— 第 31 轮：★★★ 本机 2K latent-upscale 链路「放大件本就有、缺的只是 refiner」+ ★★★ int8 适配器因子是本机第二条（且静默的）量化盲区 + ★★ Qwen3.5-9B 换编码器 hidden-state 余弦 0.95 却只换来成片 PSNR 14.8 dB
+
+> 本轮由 **P39 launchd + codebuddy 无头 CLI** 执行（slot=04:30，守卫 R=31）。
+> **编号说明**：SOP 模板写「18.31」，但 18.31 已被 2026-11-24（18.30 之后）的历史节占用，18.31–18.39 均已按轮次递增落位；为不重号，本轮顺延为 **18.40**（知识编号 K197–K208，接上轮 K196）。
+> **与上轮的关系**：18.39 把「换编码器」与「蒸馏 shift」两条线各推一步，但两条都停在「本机契约不符 / 只是卡面」。本轮把**视频侧后处理**这条线补上——社区 11-25 单日把 Open-H3-Regenerate-2K 的 2K refine 打包成 ComfyUI 节点，而本机的 latent-upgrade 通路**早就在**；同时发现上轮「文本编码器可换」这条杠杆的**第二个方案，成片指标只有 14.8 dB**。
+
+#### 18.40.1 检索范围
+
+| 源 | 端点 | 结果 |
+|---|---|---|
+| vpipe 上游 | `commits?per_page=5` / `repos` / `releases?per_page=3` / `search/issues is:issue is:open&sort=created` / `search/issues is:pr` | **零增量**：HEAD `a6a1f53`（`author.date 11-23T09:54:27Z`、`pushed_at 11-23T11:20:51Z` → 至抓取约 **2.4 天**）；release **v0.1.110（11-01）落后 25 天**；issue **14 全开**；**PR total_count = 0**；**273 star / 27 fork / 36,920 KB** |
+| vpipe issue 明细 | `issues/59` / `issues/56` | **K208**：两者 `updated_at == created_at`，0 评论 → 「零触碰」 |
+| LightX2V 主线 | `commits?per_page=6` | 最新仍 `83a424a`（11-25 07:07，README 文案）；实质变更即上轮 `7fc25cd`（#1730） |
+| stable-diffusion.cpp | `commits?per_page=5` | `52491bd` #2423 DGL 内联媒体预览 / `82c19c8` #2420 取消 DGL 任务 / `c33eebc` #2367 server `--api-key`·`--cors-origins`；`5fa203c` ClipProj（上轮）；**无 H3 主体新增** |
+| ComfyUI | `repositories/589831718/commits?per_page=5`（`repos/...` 已 301） | 11-25 五条：#17987 Meshy task ids / Recraft Vectorizer / **#17973 GB300 不走 int8 linear** / #17970 frontend 回滚 / #17966 MCP flag，**无 H3** |
+| ModelScope | `lightx2v/Minimax-h3-Turbo` 31 项；`Minimax-H3-Turbo-Fusion` 15 项 | **零增量**；`pruned/…_4step_lite_r32_pruned_comfyui` **818,925,468 B 与 HF 逐字节同** |
+| HF 社区搜索 | `hf-mirror.com/api/models?search=minimax_h3` + `search=minimax-h3`（各 `sort=lastModified` 20 条） | **K207**：11-25 单日 ≥20 个新仓，重心转向「后处理 / 换编码器 / 融合进基座」 |
+| SOLRICKS 超分仓 | `tree/main` + `manifest.json` + Range 读头 ×2 + `.alpha` 切片 ×6 | **K198/K199/K200/K201**：upscaler 与官方 bf16 **322 tensors / key / shape 全同、仅 dtype 差**；refiner int8 LoRA 624 tensors = 208×(I8+I8+F32) |
+| Open-H3-Regenerate-2K | `tree/main/latent_upsampler` + Range 读头 1 | 官方 bf16 upscaler **690,592,992 B / 322 tensors / BF16**，与本机 catalog 文件名逐字同 |
+| Qwen3.5 换编码器仓 | `tree/main` + Range 读头 ×2（投影 9 张量 / LoRA 530 张量）+ README 指标表 | **K202/K203**：`W[4096,5120]` + MLP 残差、rank32 / tap20；text cos 0.9507 但视频 PSNR 14.764 dB |
+| `ibyteohdear` Fused 仓 | `tree/main` + `diffusion_pytorch_model-00001` Range 读头 + `fusion_metadata.txt` + `config.json` | **K204**：4 分片 ≈40.2 GB 全量 diffusers、176 tensors/片、无 `adaln_t_table`、AdaLN 烘进 `folded_bias[10752]` |
+| `multimodalart/MiniMax-H3-Pruned` | `api/models` + `transformer/adaln_affine.safetensors` Range 读头 | **K205**：`adaln_basis F32 [8,2688]` + `adaln_mean F32 [2688]`，本机 grep = 0 |
+| `jh27kim` Ref2VA | `tree/main/ref2va/iter1500` | **K206**：gated，`ref2va_lora_r256_iter1500` 2,767,272,416 B |
+| 本机源码 | `stages/latent-upscale-stage.cc` / `generative-models/minimax-h3/metal-minimax-h3-latent-upscaler.{h,cc}` / `stages/model-catalog.cc:2749-2832` / `shared/runtime-lora.cc:484-560` / `shared/fp8.h:70-90` / `shared/fp8-layout.cc:308-380` / `weight-set.cc:77` | **K198/K199/K200/K204/K205** 的本机侧判据 |
+| 本机磁盘 | `df -h /` + `find vpipe-lab -name "*.part"` | **37 GiB 可用；无任何 `.part`** → 上轮 P44 前置①作废 |
+| 社区搜索 | WebSearch | 按第 30 轮建议**本轮未再尝试**（连续 7 轮失效）；社区面由 HF 搜索 API + README raw + tree API 完整补位 |
+
+#### 18.40.2 新增知识（K197–K208）
+
+| # | 一句话结论 | 来源 | 日期 | 与本机实测冲突 |
+|---|---|---|---|---|
+| **K197** | 上游静默第 7 日：HEAD `a6a1f53`（2.4 天）、release 落后 25 天、issue 14 全开、PR = 0、273 star 逐位同上轮 | GitHub API | 2026-11-25 | 否（零增量） |
+| **K198** | ★★★ 本机 2K latent-upscale 链路**早已完整**（stage + 3D-conv 网络 + catalog 两条条目），社区 SOLRICKS 件是官方 bf16 的 F16 转存（322 tensors / key / shape 全同，onlyA 0 / onlyB 0） | 本机源码 + HF 双读头 | 2026-11-26 | **是**：「本机不支持 2K」作废 |
+| **K199** | ★★★ int8 **适配器因子**零支持：`take_()`/`take_f32_()` 只认 BF16/F16/F32，`format_of("I8")` 返回 `kNone` → I8 因子取空、`++_skipped`、**静默失效** | `runtime-lora.cc:484-560` + `fp8.h:70-90` + HF 读头 | 2026-11-26 | **是**：基座 int8 通路 ≠ 适配器 int8 通路 |
+| **K200** | ★★ `alpha` 有两种互斥语义：K188 的整数倍率（128/8）vs SOLRICKS 的量化 scale（3.96e-4），且 rank 逐模块不同（159–513） | HF Range 读 208 个 `.alpha` | 2026-11-26 | **是**（K188 纪律扩写） |
+| **K201** | ★★ SOLRICKS 自报量化代价：median 0.0824 / mean 0.0875 / p95 0.1432 / max 0.2841 相对 Frobenius，`visual_quality_metric: false`、`additional_training: false` | `manifest.json` | 2026-11-26 | 否（纪律：体积与误差同引） |
+| **K202** | ★★★ 第二个换编码器方案 Qwen3.5-9B：投影 9 张量全 F32（**带 MLP 残差** `[8192,4096]`+`[5120,8192]`）、LoRA 530 张量 / rank32 / 34 模块 / BF16 / 全部 `model.language_model.layers.*` | HF 读头 ×2 + GitHub | 2026-11-26 | **是**：本机契约四条全不符，且比 ClipProj 更远（带 mlp） |
+| **K203** | ★★★ 编码器对齐 ≠ 成片对齐：text cos 0.9507 / overall 0.9193，但视频 **PSNR 12.877 → 14.764 dB**、FrameCorr 0.441 → 0.631；4 参考差例 11.104 dB | 该仓 README | 2026-11-26 | 否（待复现）；与本机「纹理量/SSIM 双判」同族 |
+| **K204** | ★★ `ibyteohdear` 两个 Fused 全量 pruned diffusers 仓（各 ≈40.2 GB）：176 tensors/片、无 `adaln_t_table`、AdaLN 烘进 `norm_out.folded_bias[10752]` | HF 读头 + metadata | 2026-11-26 | **是**：`WeightSet::open` 无 diffusers 分片目录读取 → 打不开的第 4 类 |
+| **K205** | ★★ 官方 pruned 基座旁挂 `transformer/adaln_affine.safetensors`（`adaln_basis F32 [8,2688]` + `adaln_mean F32 [2688]`），本机 grep = 0 | HF 读头 + grep | 2026-11-26 | **是**（新缺口，影响 P44 若用 diffusers 基座） |
+| **K206** | ★ `jh27kim/MiniMax-H3-Ref2VA-4step` gated 但目录可读：`ref2va_lora_r256_iter1500.safetensors` 2.77 GB，r256 / iter1500 与官方 dCM 对齐 | HF tree | 2026-11-25 | 否（只记存在性） |
+| **K207** | ★ 11-25 单日 H3 衍生新仓 ≥20 个；生态重心转向「后处理 / 换编码器 / 融合进基座」 | HF 搜索 API | 2026-11-26 | 否 |
+| **K208** | ★ issue #59 / #56 `updated_at == created_at`，0 评论 → 「零触碰」而非「零回复」 | GitHub issue API | 2026-11-26 | 否 |
+
+#### 18.40.3 印证与冲突
+
+- **★★★ 冲突①（P44 前置①作废）**：上一轮把「清 18.3 GB 半成品 `minimax_h3_fl2va_bf16.safetensors.part`」列为 P44 第一条前置。本轮 `find vpipe-lab -name "*.part"` = **空**，`du -sh` 仅 1.7 G，磁盘 **37 GiB 可用**。⇒ 前置白做了，PR 里的前置清单应删这一条（P44 4 条 → 3 条）。这也是「历史前置会过期」的第 1 次记录：**前置条件本身也要每轮复核**。
+- **★★★ 冲突②（「本机不支持 2K」的旧印象）**：`latent-upscale` stage 与 `minimax-h3-latent-upscaler` 网络在本机是**一等公民**，catalog 两条条目（`-2K` / `-2K-IC`）都指向官方 bf16 文件；社区那份 upscaler 与官方**逐键同 shape、只差 BF16→F16**（头 32,552 → 32,232 B）。⇒ 2K 的缺口**只在 refiner LoRA 侧**（Open-H3 r256/576，或 SOLRICKS 的 int8 打包）。
+- **★★★ 冲突③（基座量化 vs 适配器量化）**：K178 的 `w4a8_to_i8` 与 `fp8-layout.cc` 的 `int8_tensorwise` 是**基座权重**的通路；LoRA 因子走 `runtime-lora.cc`，`format_of("I8") = kNone` ⇒ **I8 因子被跳过且不报错**。⇒ 新缺口 P47。这条也解释了此前「社区 int8 LoRA 用了却看不出效果」的可能原因（**待复现**）。
+- **★★ 冲突④（alpha 语义第二次分裂）**：K188 = 整数倍率（128/8，折 1 或 1/16）；K200 = 量化 scale（3.96e-4，折约 1e-6）。同一字段 `.alpha`，语义相反。⇒ 读 alpha 先看**量级**与 metadata 的 `quantization` 键。
+- **印证（K194 / K203，强）**：两次都由作者自己给出「中间表示对齐很好、成片指标很差」的证据（ClipProj：图像分数与 32B 无可分辨差异；Qwen3.5：cos 0.95 但 PSNR 14.8 dB）。⇒ 本机「纹理量 + SSIM + 编造量」三件套的判据方向正确，**不引入 hidden-state 相似度作为验收指标**。
+- **零增量（须明日复查）**：vpipe 上游第 7 日；LightX2V `83a424a`；sd.cpp 三条（#2423/#2420/#2367）全在 DGL/server 侧；ComfyUI 五条全在 partner nodes/frontend；ModelScope 两个仓逐项不变。
+- **一条边界观察（非 H3）**：ComfyUI `0d0e105`「Don't do int8 linears in int8 on GB300」与 sd.cpp 的 `--api-key` 同期出现，说明 11-25 是整个生态在「int8 语义」与「服务化」上同时收敛——与本机 K178/K199 的 int8 话题同向。
+
+#### 18.40.4 本轮实验
+
+**无生成实验，也无新增零下载实测之外的实验**。本轮零下载实测共 14 次 Range 请求（K198/K199/K200/K202/K204/K205），磁盘占用 0，累计约 8 min。
+
+不跑 P44 的理由（写明，便于下轮决策）：
+1. **时间**：04:30 起动，检索阶段已用约 35 min（硬超时 90 min）。P44 = 下 10.96 GiB + 818 MB（约 25 min）+ 改 shift + 124 帧生成（约 29 min）≈ 55 min，**必然挤掉 sync / release**。
+2. **变量数**：K200 刚证明 `alpha` 有两种语义，P44 的 Fusion LoRA（`default_training_alpha 32.0`）属于哪一种**尚未判定**；此时开跑会变成「基座 + LoRA + shift + alpha 语义」四变量同动，结论不可归因（K188 的教训）。
+3. **成本已降但收益未升**：前置①作废让 P44 更便宜，但仍需完整时间窗。
+
+不跑「单独跑一次 latent-upscale」的理由：K198 已证明**能加载**，而画质需要**对照**（refiner 前后），单跑只能验通路。⇒ 并入 P44 作为第二臂。
+
+#### 18.40.5 技能包 / 脚本修改
+
+- **本轮未新增脚本**（P43 的 `scripts/safetensors-peek.py` 仍未建，本轮又手写 14 次读头；需求新增第三条：**按模块聚合**——`.alpha` 逐个读 + rank 逐模块统计）。
+- **技能包**：`~/.workbuddy/skills/vpipe-model-prepare/references/768p-adapters.md` 追加「第 31 轮：2K refine 与本机 latent-upscale 通路 / int8 适配器因子盲区 / alpha 两种语义」一节；`h3-ecosystem-map.md` 追加「换编码器第二方案 Qwen3.5-9B + 作者自评 PSNR 14.8 dB」一节。**两份文件写入后与 `vpipe-lab/skills/` 对应副本逐字节校验**（见 18.40.6 坑①）。
+- `nightly_sync.sh` **未改**（技能包源仍是 `vpipe-lab/skills/`，需用户拍板才改）。
+
+#### 18.40.6 踩坑与结论
+
+**坑①（沿用上轮，本轮已按纪律执行）：技能包仍是「双源」。** 写入 `~/.workbuddy/skills/…` 后必须 `cp` 到 `vpipe-lab/skills/…` 并 `wc -c` 对齐，否则 nightly_sync 推上去的仍是旧内容。本轮已双向同步并校验（768p-adapters.md / h3-ecosystem-map.md）。
+
+**坑②（新）：GitHub `repos/<owner>/<name>/commits` 会对「已转移/改名的仓」返回 301 的 JSON 体。**
+本轮 `repos/comfyanonymous/ComfyUI/commits?per_page=5` 返回 `{"message":"Moved Permanently","url":"https://api.github.com/repositories/589831718/commits?per_page=5"}`，`json.load` 成功但结果是 dict → 切片抛 `TypeError: unhashable type: 'slice'`。⇒ 必须走 `repositories/<id>`（或 `curl -L`）。
+
+**坑③（新）：HF 镜像对个别仓的 commit 端点返回 `{"error":"Invalid username or password."}`。**
+本轮 `ModelTC/Minimax-h3-Turbo` 命中。这**既不表示仓不存在、也不表示 gated**，只是镜像不代理该仓的 commit 端点。⇒ 判「仓还在不在」用 `api/models/<id>`；commit 详情走 `huggingface.co` 直连或放弃。
+
+**坑④（新）：家目录无界 `find` 会被 SIGTERM。**
+`find ~ -name "*.safetensors" -maxdepth 6` 直接被杀（无输出、exit 143）。⇒ 只列已知路径（`~/.vpipe`、lab 目录）。
+
+**坑⑤（新）：`.alpha` 是 F32 小标量，必须按 float 解。**
+若沿用 K188 的「整数 alpha」思维做 `int()`，SOLRICKS 的 3.96e-4 会得 0 → `mul = 0` → 整份 LoRA 静默无效，且**日志无任何错**。⇒ 先 `struct.unpack('<f')`，再按量级判语义。
+
+**坑⑥（新）：Python 3.9 用 heredoc 喂含中文的脚本会 `SyntaxError: Non-UTF-8 code starting with '\xe3'`。**
+本轮实际发生一次（写报告正文的 `python3 - <<'PYEOF'`）。⇒ 中文字面量脚本先 `Write` 成 `.py` / `.md` 文件再执行，或首行加编码声明。
+
+**结论**
+1. **2K 后处理是本机被低估的一段**（K198）：`latent-upscale` + 3D-conv 网络 + 两条 catalog 条目全在，社区件甚至就是官方权重的 F16 转存。**真正缺的只有 refiner LoRA**，且它属于「有现成权重、本机可读」的一类（不是 Tiny/VSA 那种要改 kernel 的）。
+2. **量化支持必须分「基座」与「适配器」两栏看**（K199）：基座 int8/W4A8 已实装，适配器 int8 **零支持且静默**。这是继 K178 之后本机量化账本的第二个关键分层。
+3. **`alpha` 已不能只按「倍率」理解**（K188/K200 两次）：现场有两种互斥语义，必须靠量级 + metadata 判定。**换任何槽（基座或 LoRA）前，先跑一遍 alpha 体检。**
+4. **换编码器的期望值应下调**（K202/K203）：两个社区方案（ClipProj 无 mlp、Qwen3.5-9B 带 mlp）都要求「单 tap + 一次性投影」，与本机 N-tap 不同；且成片 PSNR 只有 14.8 dB。**24 GB 腾 11 GB 的收益是真的，但质量代价也是真的。**
+5. **前置条件也会过期**（K197 反面）：上轮列的第一条前置（清 18.3 GB 半成品）本轮实测已不存在。⇒ PR 里的前置清单要**每轮复核**，不能累积成「历史包袱」。
+
+#### 18.40.7 下一步
+
+- **P44（前置 3 条，仍为首选）**：① 下 `Kijai/…:minimax_h3_ref2va_pruned_w4a8_mixed`（10.96 GiB）+ Fusion `pruned/…_4step_lite_r32_pruned_comfyui`（818,925,468 B）；② `video_shift 6.0 → 12.0`；③ **alpha 体检**（先判整数倍率 vs 量化 scale）。**第二臂（可选）**：用 K198 的 latent-upscale 做 refiner 前后对照。
+- **P47（新，低）**：`runtime-lora.cc` 加 I8 因子分支，或**至少加一条 warning**（当前静默 `_skipped`）。
+- **P46（扩写、期望下调）**：两个换编码器方案都需「单 tap 一次性投影」，且成片 PSNR 14.8 dB。
+- **P43（仍未建）**：`safetensors-peek.py`，三条需求（全量 metadata / 纯 stdlib 幅度统计 / 按模块聚合 alpha 与 rank）。
+- **SOP（仍未改）**：写入「HF 搜索 API 替代 WebSearch」「hf-mirror 只取元数据、权重走直连」「commits 端点 301 走 `repositories/<id>`」「`.alpha` 双语义体检」四条。

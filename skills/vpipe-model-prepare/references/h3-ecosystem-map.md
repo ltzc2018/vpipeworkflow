@@ -452,3 +452,28 @@
   - 但 metadata 声明 5 处 **graft**：`zspatial_graft`（Z-Image-Turbo 的 `q_norm`，块 30–49，dose 0.5）、`qnorm_graft`（LTX-2.5 `attn1.q_norm`，均值归一 ×1.9340，块 30–48，dose 1.0）、`qnorm_pin`（块 49 rms 5.0）、`adaln_splice none (fl2va throughout)`、`quant_format int8_tensorwise convrot groupsize 256`。
   - ⇒ **「同名不同构」第 5 次，且这次 shape 都一样**：判「能不能跑」要看键集+shape，判「是什么东西」**必须读 metadata 的 graft 声明**。画质差异不可归因到「模型名」。
   - 卡面自述的副作用（**待复现**）：「快动作更有爆发力」但「快速动作可能出现撕裂/拖影/物体被带走」。
+
+### K202/K203 ★★★ 换编码器的第二个社区方案：Qwen3.5-9B + 投影（带 MLP）+ rank32 LoRA —— 但成片 PSNR 只有 14.76 dB
+
+- **仓**：`Alissonerdx/Qwen3.5-9B-Minimax-H3`（2026-11-25 18:54），配套节点 `alisson-anjos/ComfyUI-Qwen3.5-H3`（2026-11-24 建，13 star）。
+- **投影（`minimax_h3_qwen3.5_9b_projection.safetensors`，header 1,304 B）**：**9 张量全 F32**
+  - `W [4096,5120]`（4096 → 5120）
+  - `mean_in/std_in [4096]`、`mean_out/std_out [5120]`
+  - **`mlp.0.weight [8192,4096]` + `mlp.0.bias [8192]`、`mlp.2.weight [5120,8192]` + `mlp.2.bias [5120]`** ← **带 MLP 残差**
+  - metadata：`tap 20`、`epochs_completed 3`、`n_train_prompts 1138`
+- **LoRA（`minimax_h3_qwen3.5_9b_lora.safetensors`，header 65,056 B）**：**530 tensors / rank 32 / 34 个线性模块 / BF16**，全部 `model.language_model.layers.*` 前缀（含 `linear_attn.in_proj_{a,b,qkv,z}`、`o_proj`、`gate/up/down_proj`，另加 `model.visual.merger.linear_fc{1,2}`）。
+- **作者自评指标（引用必带全表）**：
+
+| 变体 | text cos | vision cos | overall | 视频 PSNR | FrameCorr |
+|---|---|---|---|---|---|
+| 仅投影（无 LoRA） | 0.8919 | 0.7873 | 0.8396 | **12.877 dB** | 0.4410 |
+| 联合 Epoch1 | 0.9417 | 0.8801 | 0.9109 | — | — |
+| 联合 Epoch2 | 0.9492 | 0.8867 | 0.9180 | — | — |
+| **联合 Epoch3（当前）** | **0.9507** | **0.8879** | **0.9193** | **14.764 dB** | **0.6310** |
+
+- 差例：case04（4 参考）PSNR **11.104 dB** / corr 0.4808；case03（3 参考）14.743 / 0.3852。
+- **⇒ 三条结论**：
+  1. **hidden-state 余弦 0.95 只换来成片的 14.8 dB** —— 「编码器对齐 ≠ 成片对齐」。与本机「纹理量 + SSIM + 编造量」三件套同方向：**中间表示不是验收指标**。
+  2. **比 ClipProj 离本机更远**：ClipProj 是「**无 mlp**」变体（sd.cpp 的 `ClipProjConnector` 明确写「不支持 `-mlp` 残差变体」），Qwen3.5 是「**带 mlp**」。
+  3. 两个方案都要求「**单 tap + 一次性投影**」，本机是「**N 个 tap 沿 hidden 维拼接 → 一次投影**」（K190）——tap 数不同，不是改名能通。
+- **状态**：**待复现**。登记 P46，**优先级维持中、期望下调**。
