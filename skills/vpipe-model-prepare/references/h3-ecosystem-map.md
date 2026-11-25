@@ -418,3 +418,37 @@
 - `BobMcoy/Minimax-H3-Temporal-Latent-Upscaler`（11-21 建，11-24 更新，v2.1）：不解码到像素，直接在**首轮 sampler 的 latent 输出**上按 17 帧块检测快运动，只对运动块做 2×/3× 时间膨胀后二次采样，再回收原帧数与 Pass-1 音频；另有 1.5× 空间超分。
 - 与本机关系：**vpipe 无 latent 时间膨胀 stage**（`grep -ri latent.*upscal` 无命中）。这是「采样后再修」路线，与本机 RelayVSR/FlashVSR 的「像素域超分」是**不同层**。
 - ⚠️ 二手来源 + 仅 ComfyUI 节点，**待复现**，不并入已验证能力。
+
+### K189/K190 ★★★ 文本编码器替代赛道：ClipProj（sd.cpp 已实现，本机契约不符）
+
+> 来源：`leejet/stable-diffusion.cpp` commit `5fa203c`（#2410，2026-11-25 16:29，4 文件 +166/−7）；`NicoLab28/ClipProj-MiniMax-H3` README + `mmh3-4b-ClipProj-v3.1` 权重头（HTTP Range）。
+
+**1）它是什么**：一条**线性投影**把 **Qwen3-VL-4B/8B** 的 hidden 映射到 H3 DiT 要的 **5120 维**，替掉 **Qwen3-VL-32B**。显存 **15.7 GB → 4.5 GB**（4B int8）。不改变 DiT / VAE / 采样器。
+
+**2）sd.cpp 侧实现要点**：`ClipProjConnector`（`input_dim 2560` → `output_dim 5120`）；张量 `W / mean_in / std_in / mean_out / std_out / sink_out`；**只读单层 tap 24**（对照：P-H3 读 `{13,19,25,31,37}` 五层，32B 读 50）；`sink_out` 替换首 token；**不支持 `-mlp` 残差变体**（`else if` 排在 P-H3 之后）。
+
+**3）本机为什么装不上（四条全不满足）**：
+
+| 契约项 | 本机要求 | ClipProj 实际 |
+|---|---|---|
+| 类名 | `_class_name == "PH3ImageTextConnector"`（`p-h3-image.h:46`） | 无 `config.json`，单文件 6 张量 |
+| 位置 | `text_encoder/` 旁的 `text_connector/config.json`（`minimax-h3-text-encoder.cc:451`） | 无目录结构 |
+| 张量名 | `proj.weight` / `input_mean` / `input_std` / `output_mean` / `output_std` / `sink_embedding`（`:668-690`） | `W / mean_in / std_in / mean_out / std_out / sink_out` |
+| dtype/shape | 全 **F32**；`proj.weight` 为 `[taps*hidden × outw]` 展平 | 全 **F16**；`W [2560,5120]` 二维 |
+
+- 结构上也不同：本机是「**N 个 tap 沿 hidden 维拼接 → 一次投影**」，ClipProj 是「**单 tap → 一次投影**」。不是改名能通的差异。
+- 权重头实测：`tap 24`、`d_in 2560`、`d_out 5120`、`n_train_prompts 3331`、`n_train_tokens 8,471,247`、`cos_test 0.6874`、`r2_test 0.4755`。
+
+**4）作者的自我限定（引用时必须带上）**：v3.1 图像分数与 v3 **完全重叠**，与 32B 也「无可分辨差异」——**这不等于相同**（余弦对可数属性是盲的）。32B 换 seed 就重读 75 音素里 5.8 个，v3.1 是 6.4–7.0 ⇒「换编码器 ≈ 重掷一次 seed」。多语种音素错误 −29%（西/法/德/意 −60~74%）。
+
+**5）本机可走的路**：① 打包适配（改名 + 转 F32 + 造 `text_connector/config.json`，`hidden_state_indices: [24]`）——**但单 tap 与 N-tap 拼接是否语义等价，必须先读 `connector_config_` 与 `_proj` 的乘法规约**；② 等上游。收益：24 GB 机器腾 ~11 GB。**登记为 P46，未实施。**
+
+### K192/K193 ★★ 社区 11-25 两条「新形态权重」：GGUF 家族（本机无路径）与 graft 调优 int8（键集全同）
+
+- **`Infinity-io/MiniMax-H3-GGUF`**（11-25 02:21 建，83 dl）：`minimax_h3_{fl2va,ref2va}_pruned-{Q2_K 6.7 / Q3_K 8.7 / Q4_K 11.4 / Q5_0 13.9 / Q6_K 16.6 / Q8_0 21.4} GB` + `UD-Q2_K_XL 8.1 / UD-Q3_K_XL 9.6`。
+  - **本机 H3 无 GGUF 加载路径**：`repo/vpipe/generative-models/minimax-h3/` 下 `gguf` 命中 **0**（全树 56 处 gguf 均在 LLM/图像侧）⇒ 记为缺口，不并入能力。
+- **`yichengup/minimax_h3-tyc-zs05-ltxqnorm-int8-convrot`**（11-25 08:46，1,141 dl，**20.97 GB**，卡面自述「官方 pruned 的调优变体，**未训练**」）：
+  - **与 Comfy-Org `ref2va_pruned_int8_convrot` 逐键相同**（932/932，`only in tyc = 0`、`only in base = 0`），`adaln_t_table [1025,8]` F32 → **本机 loader 不会拒**。
+  - 但 metadata 声明 5 处 **graft**：`zspatial_graft`（Z-Image-Turbo 的 `q_norm`，块 30–49，dose 0.5）、`qnorm_graft`（LTX-2.5 `attn1.q_norm`，均值归一 ×1.9340，块 30–48，dose 1.0）、`qnorm_pin`（块 49 rms 5.0）、`adaln_splice none (fl2va throughout)`、`quant_format int8_tensorwise convrot groupsize 256`。
+  - ⇒ **「同名不同构」第 5 次，且这次 shape 都一样**：判「能不能跑」要看键集+shape，判「是什么东西」**必须读 metadata 的 graft 声明**。画质差异不可归因到「模型名」。
+  - 卡面自述的副作用（**待复现**）：「快动作更有爆发力」但「快速动作可能出现撕裂/拖影/物体被带走」。

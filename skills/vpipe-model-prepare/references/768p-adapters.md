@@ -894,3 +894,40 @@ ModelScope `lightx2v/Minimax-h3-Turbo` 现有 **31 个文件 / 27 个 safetensor
   - `carries ComfyUI weight diffs on the AdaLN (adaln_proj.linear.diff / .diff_b)`（`.diff_b` 支持）
 - 上游侧对应 commit = `41d2789`（2026-11-12，W4A8 + pruned kernel 引入），**早于本机 build 日期** → 已编译进去。
 - ⇒ **P44 不需要重编译源码**，直接手工 `hf_dir` 指目录即可试（K174 的 catalog 缺失仍成立）。
+
+### K185–K188 ★★★ LightX2V 官方 H3 蒸馏 best practices（2026-11-25 `7fc25cd` / PR #1730）+ 4 步家族 alpha 变迁
+
+> 来源：GitHub `ModelTC/lightx2v` commit `7fc25cddd61ffbace4e9be98e64618822468ba4a`（`lightx2v_train/docs/minimax_h3_distill.md` 全文 + 6 个 yaml 全量）；权重头取自 HF `resolve/main` + HTTP Range（0 下载）。
+
+**1）官方改成了「双任务 × 两阶段」**
+
+| 阶段 | 任务 | iters | LoRA | shift (video/audio) | LR |
+|---|---|---|---|---|---|
+| dCM | FL2AV | 1500 | rank/alpha **128/128**，AdaLN 与 norm_out 覆盖 **16/16** | **6.0 / 3.0** | student **2e-5**（AdamW 0.0/0.999，wd 0.01） |
+| dCM | Ref2AV | 1500 | 同上 | **12.0 / 3.0** | 同上 |
+| PDMD+GAN | FL2AV | 3000 | 同上 | rollout 6.0，**1500 步后切 12.0** | student 5e-5 / fake 4e-6 |
+| PDMD+GAN | Ref2AV | 3000 | 同上 | rollout **12.0 / 3.0**（无调度） | 同上 |
+
+- dCM 细节：`total_steps 48` / `skip_steps 1` / `loss_scale 100.0` / `ema_decay 0.999` / video·audio loss weight **0.8/0.8** / 32 GPU FSDP2 / 每 500 存 2 个。
+- PDMD 细节：`fake_update_ratio 5`（→ **2500 fake : 500 student**）/ GAN `generator 0.005 / discriminator 0.01` / `feature_block 49` / `head_hidden_dim 1024` / `head_temporal_bins 4` / `critic_video_threshold 0.95` / `critic_audio_floor 0.85` / 每 100 存 2 个。
+- 数据契约：`cache_dataset` + `meta.json`，**124 帧 @ 24 fps**，FL2AV **768×1344** / Ref2AV **1344×768**。
+
+**2）结论（对本机直接可用）**
+
+- **shift 6 vs 12 不是画质偏好，是任务分家**：FL2AV 线 6/3、Ref2AV 线 12/3。本机任何 **ref2va** 配方用 `video_shift 6.0` 都偏离官方 Ref2AV 蒸馏分布。
+- **AdaLN 的 LoRA rank 是 16**（不是 128）→ 与本机 `pruned` 8 宽曲线 + `[96768,8]` 的形状家族一致，说明官方也在「主 rank 128 + AdaLN 低秩」这条路上。
+
+**3）4 步 768p 家族：形状同构、强度变了 16 倍（K188）**
+
+| 文件 | header | tensors | `__metadata__.alpha` | `lora_B` mean\|w\| | max |
+|---|---|---|---|---|---|
+| `fl2v_turbo_4step_v1.0_768p_bf16` | 81,768 B | 624 | **128** | 0.002028 | 0.0347 |
+| `fl2v_turbo_4step_v1.1_768p_bf16` | 81,768 B | 624 | **128** | — | — |
+| `fl2v_turbo_4step_v1.2_768p_bf16` | 81,768 B | 624 | **8** | 0.001995 | 0.0277 |
+| `fl2v_turbo_4step_v1.3_768p_bf16` | 81,768 B | 624 | **8** | 0.001913 | 0.0173 |
+
+- **key 集与 shape/offsets 四者完全一致**（逐键比对 True），rank 恒 128；**只有 `__metadata__.alpha` 变了**。
+- 本机 `generative-models/shared/runtime-lora.cc:324-333` 读 `__metadata__.alpha`，`:445-452` 折成 `mul = alpha / rank`。
+- ⇒ **换 LoRA 槽前必读三件：`__metadata__.alpha`、`lora_A` 第 0 维（rank）、是否带 per-module `.alpha`**。只看体积/形状会把 v1.3 当 v1.0 用，等效强度掉到 1/16。
+
+**4）Fusion pruned 的 4 步 / 8 步 lite_r32（K191）**：828 tensors / header 100,232 B / key 与 shape 全同，**权重体抽样 sha 全不同**；`pruned_table_sha256` 两者相同（同基座同 AdaLN 表）。选档时按「步数」取文件，不能按体积判同。

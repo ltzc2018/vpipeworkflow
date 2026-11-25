@@ -5869,3 +5869,129 @@ WebSearch 返回 `Authentication required for web search`；Reddit 返回「Prov
 - **P43（仍旧未建）**：`scripts/safetensors-peek.py`。本轮又手写 4 次读头脚本，**每次都在重复踩坑③④**。落地它能一次性消掉这些坑。
 - **同步链路（需用户拍板）**：把 `nightly_sync.sh` 的源从 `vpipe-lab/skills/` 改为 `~/.workbuddy/skills/`，或**每次 sync 前对两边做并集**。本轮未改脚本（涉及发布路径，属结构性变更）。
 - **P42（Tiny）**：维持「等上游把 pruned AdaLN 泛化到任意宽」。**不要**为了它改源码（会与 `a6a1f53` 演进冲突）。
+
+### 18.39 2026-11-26 02:30 —— 第 30 轮：★★★ 官方 H3 蒸馏 best practices 把「shift 6 vs 12」定性为任务分家 + ★★★ 4 步适配器 alpha 从 128 掉到 8（形状全同、强度 1/16）+ ★★ ClipProj 文本编码器路线可供但本机 connector 契约四条全不符
+
+> 本轮由 **P39 launchd + codebuddy 无头 CLI** 执行（slot=02:30，守卫 R=30）。
+> **编号说明**：SOP 模板写的是「18.30」，但 18.30 已被 2026-11-24（第 25 轮续）占用，且 18.31–18.38 也已按轮次递增落位；为保持不重号，本轮顺延为 **18.39**（知识编号 K185–K196，接上轮 K184）。
+> **与上轮的关系**：18.38 解决的是「P44 的**成本**」（W4A8 档 10.96 GiB）与「**能不能加载**」（二进制已含通路）。本轮解决的是「**换槽时采样契约从哪来**」——答案不是某张模型卡，而是 LightX2V 当天发布的**官方蒸馏训练配方**；同时首次发现 4 步家族 **v1.3 的 alpha 与 v1.0 差 16 倍**，把 K151 的「可直接换槽」收窄。
+
+#### 18.39.1 检索范围
+
+| 源 | 端点 | 结果 |
+|---|---|---|
+| vpipe 上游 | `commits?per_page=5` / `releases?per_page=3` / `search/issues is:open` / `search/issues is:pr` / `repos` / `pulls?state=all` | **零增量**：HEAD `a6a1f53`（`commit.author.date 11-23T09:54:27Z`、`pushed_at 11-23T11:20:51Z` → 至抓取时刻 `11-25T18:36Z` 为 **2.36 / 2.30 天**）；release 最新 **v0.1.110（11-01）** 落后 **24 天**；issue **14 条全开**（#59 11-16 / 0 评论；#55 仅创建后 10 分钟自更新）；**PR total_count = 0**；**273 star**（+3）/ 27 fork / 36,920 KB |
+| LightX2V 主线 | `commits?per_page=6` + `7fc25cd` 全文（19 文件 +2629/−202） | **K186/K187**：官方 H3 蒸馏 best practices（dCM → PDMD+GAN 双阶段、FL2AV/Ref2AV 双任务、shift 6/3 与 12/3） |
+| LightX2V 权重仓 | `lightx2v/Minimax-h3-Turbo`：`tree/main`（31 文件）+ `commits/main` + **HTTP Range 读头 ×4 + 权重切片 ×6** | **K188**：4 步 v1.0/v1.1 `alpha=128`、v1.2/v1.3 `alpha=8`，形状逐键全同 |
+| Fusion 仓 | `lightx2v/Minimax-H3-Turbo-Fusion`：`tree/main/pruned` + Range 读头 ×2 + 切片 ×4 | **K191**：4 步/8 步 lite_r32 同头（828 tensors / 100,232 B）不同体 |
+| stable-diffusion.cpp | `commits?per_page=8` + `5fa203c` 全文 + `f296cb0` 全文 | **K189** ClipProj-MiniMax-H3（#2410）；**K196** RelayVSR KV graph-cut（#2419） |
+| ClipProj 仓 | `hf-mirror` 元数据 + README raw（18,996 B）+ `mmh3-4b-ClipProj-v3.1` Range 读头 | **K194** 作者自评边界；权重头 `tap 24 / d_in 2560 / d_out 5120 / cos 0.6874 / r2 0.4755` |
+| vpipe 本地源码 | `repo/vpipe` @ `d72c22f`：`p-h3-image.{h,cc}` / `minimax-h3-text-encoder.cc`（`:191-250 / :451 / :664-700`）/ `shared/runtime-lora.cc`（`:300-340 / :445-452`）/ `docs/MINIMAX-H3.md`（`:3680-3690`） | **K190** connector 四条契约；**K188** 的 alpha 折算式 |
+| 上游 fork | `repos/AugustRush/vpipe` + `/branches` + `/commits?sha=omniref-vsa` | **K195**：fork `pushed_at 10-22`，分支最新 commit `fd0b0e2 / 2026-10-21` → 35 天未推送 |
+| Comfy-Org 官方镜像 | `tree/main/diffusion_models` | 六档体积与 K172 逐位一致（66.28 / 34.04 / 40.23 / 20.96 / 20.97 / 15.98 GB） |
+| 社区 HF 搜索 | `hf-mirror.com/api/models?search=minimax-h3&sort=lastModified&direction=-1&limit=30` | **K192/K193**：11-25 单日新增约 30 仓（GGUF 家族 / tuned int8 / 大量 4 步 ref2va 与 LoRA） |
+| ComfyUI | `commits?per_page=8` | 11-25 五条（Meshy / Recraft / GB300 int8 / frontend 回滚 / MCP flag），**无 H3** |
+| ModelScope | `lightx2v/Minimax-H3-Turbo-Fusion` 文件 API | `pruned/` 在 ModelScope **仍只报目录 `Size=0`**（HF 有 4 个文件）→ 上轮「ModelScope pruned 有内容」的判断需再核（本次按 `Root=` 顶层查） |
+| 社区搜索 | WebSearch ×1 | **连续第 5 轮失效**（`Authentication required for web search`）→ 社区面由 HF 搜索 + README raw + tree API 补位 |
+
+#### 18.39.2 新增知识（K185–K196）
+
+| # | 一句话结论 | 来源 | 日期 | 与本机实测冲突 |
+|---|---|---|---|---|
+| **K185** | 上游第 6 日静默；release 落后 24 天；issue 14 全开；PR=0；273 star（+3） | GitHub API ×5 | 2026-11-25 | 无 |
+| **K186** | LightX2V 官方 H3 蒸馏 best practices：dCM（1500 iters / LoRA 128·AdaLN 16 / LR 2e-5 / 48 steps / loss_scale 100 / EMA 0.999）→ PDMD+GAN（3000 iters / 2500 fake : 500 student / student 5e-5 / fake 4e-6 / GAN 0.005:0.01 / feature_block 49） | commit `7fc25cd` | 2026-11-25 | 无 —— 官方首次给出超参账本 |
+| **K187** | 官方 shift 契约：**FL2AV 6/3、Ref2AV 12/3**；FL2AV 的 PDMD 在 1500 步处 6.0→12.0 | 6 个训练 yaml | 2026-11-25 | **冲突于本机现役 ref2va 配方（6.0）** |
+| **K188** | 4 步 768p 四版本 **形状逐键全同**（624 tensors / header 81,768 B / key+shape+offsets 全等），但 `__metadata__.alpha`：**v1.0/v1.1 = 128，v1.2/v1.3 = 8**；`lora_B` max 0.0347 → 0.0173 | HF Range ×10 | 2026-11-25 | **修正 K151**（可直接换槽 → 必核 alpha） |
+| **K189** | sd.cpp 实现 ClipProj：线性投影让 Qwen3-VL-4B/8B 替代 32B，显存 15.7→4.5 GB；单 tap 24；不支持 `-mlp` | commit `5fa203c` | 2026-11-25 | 无 —— 第三方生态首次做 H3 文本编码器替换 |
+| **K190** | **本机 connector 契约四条全不符**（类名/路径/张量名+F32/一维展平），且本机 N-tap 拼接 vs ClipProj 单 tap | 本机源码 + 权重头 | 2026-11-25 | **否证「本机 connector 可通用」的外推** |
+| **K191** | Fusion pruned 4/8 步 lite_r32：同头（828 tensors / 100,232 B / key+shape 全等）、**体不同**（两段抽样 sha 全不同），`pruned_table_sha256` 相同 | HF Range ×6 | 2026-11-25 | 无 —— 「字节同构」家族第 4 次 |
+| **K192** | 社区 GGUF 家族（Q2_K 6.7 → Q8_0 21.4 GB + UD-Q2_K_XL 8.1 / UD-Q3_K_XL 9.6）；**本机 H3 无 GGUF 路径** | HF 搜索 + tree | 2026-11-25 | 无 —— 记为缺口 |
+| **K193** | `yichengup` tuned int8 与官方 pruned_int8 **逐键相同（932/932）**，metadata 声明 5 处 graft | HF Range + 键集比对 | 2026-11-25 | 「同名不同构」第 5 次，**连 shape 都一样** |
+| **K194** | ClipProj 自评：图像分数与 32B「无可分辨差异 ≠ 相同」；换编码器 ≈ 重掷一次 seed（32B 自身 5.8/75 音素波动 vs v3.1 的 6.4–7.0） | README + 头 | 2026-11-25 | 印证「单指标不可作保真结论」 |
+| **K195** | issue #56 的真实形态：fork 停在 **2026-10-21**（35 天未推送），upstream PR 数 = 0 | GitHub API ×4 | 2026-11-25 | **修正 K181 / P45 的「只差合入」** |
+| **K196** | sd.cpp 修 RelayVSR KV graph-cut 命名缺陷 + DGL OOM 上抛（14 文件 +129/−60） | commit `f296cb0` | 2026-11-25 | 无迁移价值（本机无 graph-cut） |
+
+#### 18.39.3 印证与冲突
+
+**★★★ 冲突①（K151 收窄 —— 本轮最重要）**
+
+K151 记「4 步全版本字节同构 → v1.3 可原槽 A/B」。本轮实测：
+
+| 文件（768p bf16） | header | tensors | `__metadata__.alpha` | `lora_B` mean\|w\| | max |
+|---|---|---|---|---|---|
+| `4step_v1.0` | 81,768 B | 624 | **128** | 0.002028 | 0.0347 |
+| `4step_v1.1` | 81,768 B | 624 | **128** | — | — |
+| `4step_v1.2` | 81,768 B | 624 | **8** | 0.001995 | 0.0277 |
+| `4step_v1.3` | 81,768 B | 624 | **8** | 0.001913 | 0.0173 |
+
+四个文件的 **key 集、每个 tensor 的 shape、data_offsets 全部逐键相同**（脚本比对 `na == nb` → True），文件体积只差 0–8 B。**唯一变的是 `alpha`**，而本机 `runtime-lora.cc:324-333` 正是把 `__metadata__.alpha` 读成 `_meta_alpha`、`:445-452` 折成 `mul = alpha / rank`（rank 恒 128）。⇒ 若把 v1.3 直接塞进 v1.0 的槽，**等效强度只有 1/16**；片子会是「几乎没有 Turbo 效果」而非「新版本效果」，**任何 A/B 都会得出反向结论**。
+
+**处置**：K151 改写为「**形状同构，可直接换槽，但必须同时核对 `__metadata__.alpha`**」；P40 的前置加一条 alpha 核对（已写入看板）。
+
+**★★ 冲突②（K169 从「卡面」升级为「训练分布」）**
+
+K169 依 Fusion 模型卡记「Ref2VA 用 video shift 12」。本轮 K187 从**官方训练 yaml** 拿到同一条，并给出更完整的形状：Ref2AV 的 dCM 与 PDMD **全程 12/3**，FL2AV 才是 **6/3**（且 PDMD 里在 1500 步处切到 12）。⇒ **shift 6 vs 12 不是画质偏好，是任务分家（FL2AV vs Ref2AV）**。本机现役 `dance-woman-768p` 用 `video_shift 6.0` 跑 ref2va，偏离官方 Ref2AV 蒸馏分布。P44 改 shift 由此不再是「照卡面猜」。
+
+**★★ 冲突③（P45 的阻塞层级）**
+
+K181 记「权重齐、PR 齐、只差合入」。本轮：fork 停在 `fd0b0e2 / 2026-10-21`，`pushed_at 10-22` → **35 天未推送**；upstream 已前进到 `a6a1f53`；且 **upstream PR total_count = 0**（从未以 PR 形式提交，只存在于 fork 分支）。⇒ 真实成本是「**rebase 一个月演进 + 走 PR 流程**」，不是「点 Merge」。已改 P45 措辞。
+
+**★ 冲突④（「本机有 connector」的范围）**
+
+既有认知「本机支持 P-H3-Image connector」易被外推为「本机支持 connector 机制」。K190 证明契约被四重锁死（类名 / 目录 / 6 个张量名 + F32 / 一维展平），ClipProj 四条全不满足；且本机是 **N-tap 拼接 → 一次投影**，ClipProj 是 **单 tap → 一次投影**——不是改名能通的差异。⇒ 新增 P46。
+
+**零增量（须明日复查，K121 教训）**：vpipe 上游（第 6 日）、`lightx2v/Minimax-h3-Turbo` HF 仓（最新 commit 仍 `ff0edf4 / 11-24` 元数据，**无新权重**）、`ModelTC/lightx2v` 主线（最新 `83a424a` 仅 README 文案）、ComfyUI（11-25 五条，**无 H3**）。
+
+**新迹象（非 H3 但同族）**：ComfyUI `0d0e105`「Don't do int8 linears in int8 on GB300」（11-25 02:44）——int8 线性层在某些后端需**展宽**再算，与本机 W4A8 的 `w4a8_to_i8`（K178）是同一类「低位宽权重 + 高位宽累加」的取舍。sd.cpp 同日 #2419 修 RelayVSR graph-cut，说明**超分侧的 KV 复用缺陷是跨运行时的共性问题**（本机 RelayVSR 是整段计算，无此概念，不可迁移）。
+
+#### 18.39.4 本轮实验
+
+**无生成实验，仅知识同步 + 零下载文件级实测。**
+
+- **做了的**：`HTTP Range` 读 12 次（4 个 4 步头 + 1 个 8 步头 + 1 个 Fusion pruned 4 步 + 1 个 Fusion pruned 8 步 + 1 个 ClipProj + 1 个 tyc int8 + Comfy-Org 基座 1 个），另做 10 次权重切片抽样（`lora_B` 幅度统计 3 次、权重体 sha 7 次）。全部 **磁盘占用 0**，累计 < 8 min。
+- **为何不跑 P44**：① 时间（02:30 起动，检索已用 ~40 min；P44 = 清 18.3 GB + 下 11.77 GB + 改 shift + 124 帧生成 ≈ 55–60 min，必然挤掉 sync/release）；② **K188 刚刚证明「换槽前必须核 alpha」**——P44 本身要同时动 **三个变量**（基座换 pruned / LoRA 换 Fusion / shift 6→12），若此刻仓促跑，出片结论不可归因。⇒ 本轮把 P44 的**配方补全为 4 条前置**，并建议先跑「只换 shift」的对照臂。
+- **为何不跑 P40**：运动夹具未建（K152 依赖），且同受时间窗限制。
+
+#### 18.39.5 技能包与脚本修改
+
+| 文件 | 动作 | 内容 |
+|---|---|---|
+| `~/.workbuddy/skills/vpipe-model-prepare/references/768p-adapters.md` | 追加 | 新增「K185–K188」节：官方蒸馏两阶段超参表、shift 6/3 vs 12/3 的任务分家、4 步家族 alpha 变迁表（含 `lora_B` 幅度）、Fusion pruned 4/8 步同头不同体 |
+| `~/.workbuddy/skills/vpipe-model-prepare/references/h3-ecosystem-map.md` | 追加 | 新增「K189/K190」节（ClipProj 全文 + 本机四条契约不符对照表 + 作者自评边界）与「K192/K193」节（GGUF 家族 + tuned int8 的 5 处 graft） |
+| `vpipe-lab/skills/vpipe-model-prepare/references/*` | 同步 | 两处**做并集**后逐字节校验一致（`768p-adapters.md` 61,005 B、`h3-ecosystem-map.md` 42,758 B，lab 与安装版 SAME） |
+| `scripts/safetensors-peek.py` | **仍未建** | 本轮又手写 12 次读头/切片；新增两条需求：打印 `__metadata__` 全量、纯 stdlib 幅度统计（系统 python3 无 numpy） |
+
+**技能包分叉坑已修复（上轮坑①）**：本轮开工前校验三份关键 references 的 sha256，lab 与安装版**逐字节相同** → 说明上轮的并集合并生效，本轮只需在**同一基线上继续追加**，不再有方向性冲突。
+
+#### 18.39.6 踩坑与结论
+
+**坑①（新，重要）：`__metadata__.alpha` 是「同构换槽」的隐形开关。**
+四个 4 步文件 key/shape/offsets 全同、体积只差 0–8 B，**任何靠体积或形状的判等都会说「一样」**；只有读 header 的 `__metadata__` 才看得到 `128 → 8`。这是「字节同构」家族的**第 5 次**，也是第一次「同一家族内部**语义强度**变了」而不只是「不同模型」。⇒ 纪律：**换任何 LoRA 槽前读三件：`__metadata__.alpha`、rank（`lora_A` 第 0 维）、是否带 per-module `.alpha`**。
+
+**坑②：`hf-mirror.com` 的行为在本轮发生了分裂。**
+同一批请求里：`api/models?search=` 与 `api/models/<id>` **正常**；`resolve/main/...`（要 Range 的权重）返回 **HTTP 308 Permanent Redirect**（`urllib` 直接抛错），而**同一 URL 换 `huggingface.co` 直连可用**；`api/models/<id>/commits/main` 首次返回 list、**第二次返回 `{"error":"…challenge…"}`**；`api/models/<id>/commits/main/<path>` **一律 404**（即使文件真实存在）。⇒ 分流定稿：**① 元数据/搜索/文件清单 → hf-mirror；② 权重（含 Range） → huggingface.co 直连；③ commit 详情只取一次并落 `/tmp`，不要重复请求。**
+
+**坑③：HF 的 commit API 可能返回 dict 而不是 list。**
+第二次请求 `/commits/main` 返回 `{error, message, retry_after, challenge, bits}`，我按 list 切片 → `TypeError: unhashable type: 'slice'`（这个报错字面极具误导性）。⇒ 读 HF commit API 必须 `if isinstance(d, dict): 判 error`。
+
+**坑④：「这个权重哪天加的」镜像 API 答不了。** `/commits/main/<path>` 在 hf-mirror 上 404。只能走网页或放弃；**不要**由此推断「文件不存在」。
+
+**坑⑤：社区搜索连续第 5 轮失效**（`Authentication required for web search`）。本轮社区面仍靠 **HF 搜索 API（`lastModified` 倒序）+ README raw + tree API**，并因此拿到 K192/K193。**这已是稳定替代路径，建议正式写进 SOP**——连续 5 轮的经验，不该每轮再试一次 WebSearch。
+
+**坑⑥：系统 python3 没有 numpy**（`/Library/Developer/CommandLineTools/.../3.9`）。量 bf16 幅度只能 `struct.unpack('<H')` + `u<<16` 转 float。⇒ P43 若要做幅度统计，**必须纯 stdlib**（或检测到 numpy 再启用）。
+
+**坑⑦：ModelScope 的目录列举不递归这条，仍会反复咬人。** 本轮按 `Root=`（顶层）查 Fusion，`pruned` 只报 `Size=0` 的目录项；**这不代表空目录**（上轮用 `Root=pruned` 查过、有 4 个文件）。⇒ 结论：**看到 `Size=0` 只能判定「是目录」，不能判定「有没有内容」**。
+
+**结论**
+1. **官方终于给了 H3 蒸馏的账本**（K186/K187）——从此「shift 该用多少」「LoRA 该多大 rank」「AdaLN 该不该低秩」不再靠社区反推。**这也说明社区侧的 Fusion / Kijai / tuned 变体，全部是在这条官方线之上做打包，而非另立标准。**
+2. **「形状同构」的信任必须降到最低**（K188/K191/K193 三次同轮命中）：同一家族可以「键全同、shape 全同、体积差 8 B」，而实际差异藏在 `__metadata__`（alpha / graft / quant layout）。**判等要读 metadata，不是读结构。**
+3. **文本编码器是本机 24 GB 的下一个大杠杆**（K189/K190）：15.7 GB → 4.5 GB 等于把省下的 ~11 GB 全给 DiT/超分。但本机契约是「PH3-Image 专用 + N-tap」，**接 ClipProj 不是改名，是加一条分支**。
+4. **VSA 的「只差合入」是误判**（K195）——fork 停在一个月前的基线上，真实成本是 rebase。**P45 应继续压到最低优先级。**
+
+#### 18.39.7 下一步
+
+- **P44（配方补全，仍为首选）**：4 条前置 —— ① 清 18.3 GB 半成品 → 余 55 GiB；② 下 W4A8 10.96 GiB + Fusion pruned 4 步 818 MB；③ `video_shift 6.0 → 12.0`（K187）；④ 核 Fusion LoRA 的 alpha 语义（K191）。**建议先跑「只换 shift」对照臂**，避免三变量同动。
+- **P46（新，中）ClipProj 打包适配**：<1 GB 下载 + 读代码确认「单 tap 是否等价于 N-tap 拼接」，不改 kernel。收益 ~11 GB 显存。
+- **P45（措辞已改）**：fork 停在 10-21，合入前需 rebase 一个月演进；PR 数为 0。
+- **P43（仍未建）**：`scripts/safetensors-peek.py`，新增两条需求（打印 `__metadata__` 全量、纯 stdlib 幅度统计）。
+- **P40（已补前置）**：换槽 A/B 前核 `__metadata__.alpha`，否则 v1.3 会被误判为「变差」。
