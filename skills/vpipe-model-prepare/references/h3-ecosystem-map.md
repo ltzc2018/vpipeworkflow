@@ -590,3 +590,37 @@
 - **新坑：镜像上「不存在的文件」返回 404，但存在性判断不能只看 `resolve`** —— 本轮 `Jim507735/Minimax-H3-LongVideo` 的 `README.md` 与随机文件名**都返回 404**，
   而 `api/models/<id>` 报 3 个 siblings ⇒ 该仓只有 3 个非 README 文件。**判「仓空不空」要看 `api/models` 的 siblings，不要用 `resolve README` 的结果反推**。
 - **新坑：`api/models/<id>` 的 `siblings[].size` 依然全 `None`**（第 3 日复现）；体积只能 `curl -sIL | grep -i content-length`（本轮 6 个文件全用此法）。
+
+## 第 35 轮增补（2026-11-27 04:30）—— 生态快照第 11 日 + 「后处理」与「调参 graft」两条线的新形态
+
+### 上游与相邻线（逐日复查）
+
+- **vpipe 静默第 11 日**：HEAD 仍 `a6a1f53`（`author.date 2026-11-23T09:54:27Z`），release 仍 **v0.1.110（2026-11-01）→ 落后 26 天**，
+  issue **14 全开**（#59/#58/#56/#55 均 `updated_at == created_at`、0 评论），**PR total_count = 0**，**274 star / 27 fork / 36,920 KB**（与第 34 轮逐位相同）。
+- **LightX2V（`ModelTC/LightX2V`）5 条全非 H3**：`c1e33b28`（11-26 17:10）Intel XPU B70 修复 #1763、`1e912006` LongCat-Video-Avatar 1.6 #1762、
+  `d9b1099d` Seed-VC #1758、`239537fc` YuE2 #1755、`83a424ac` README 文案 #1757。H3 侧仍停在 **11-25 06:41 的 `7fc25cdc`（#1730 蒸馏 best practices）**。
+- **sd.cpp 6 条，H3 只前进半步**：`439e77a5`（11-26 13:12）#2424 `-mlp` 变体（第 34 轮已记）；
+  新 **`e637c7bc` 13:48 #2422 lingbot 视频 rms_affine 调制融合**、`fce8619b` 13:36 #2434 FLUX.3 fused QKV、
+  `6b51a955` 15:00 #2435 W4A8 复用 INT8 GEMM、`ea3f6ec7` 15:50 #2436 LTX INT8 ConvRot 载入修复、`e637c7bc/e637`… 其余为 server/WebUI。
+  ⇒ **#2435/#2436 仍只服务 LTX 与通用路径，不是 H3 量化进度**（K229 的提醒继续成立）。
+  另 **PR #2357（open，未合，11-15 起无更新）「MiniMax-H3 2D-conv latent upscaler」**：新增 `minimax_h3_latent_upscaler_2d_conv_v1`（2D conv + 两个共享时间块、无 attention/SE/大核），
+  与已合的 **#2249（3D-conv，2026-11-04 关闭合入）** 并列 ⇒ sd.cpp 也只支持 **3D-conv 这一支**，与本机同。
+- **ComfyUI**：`2b33af49`（11-26 19:08）#18015 Pruna 定价、`8b0f1071` #17837 VBAR、`4a4b3409` #17960 Seed/OpenRouter、`ef507153` #17996 —— **4 条全无 H3**。
+- **ModelScope**：`lightx2v/Minimax-h3-Turbo` 仍 **31 项**（README 11-24 改文案，权重未动）；`Minimax-H3-Turbo-Fusion` **15 项顶层 + `assets/` + `pruned/`**，
+  `pruned/` 4 个 safetensors（4/8 步 × lite_r32/全量）**sha 两两不同**（K240 结案，见 768p-adapters 第 35 轮第 6 条）。
+
+### 本轮社区面（11-26 单日，与第 33/34 轮**去重后**）
+
+- 新品类：**latent upscaler v2 重训族**（`George0667/MiniMax_Temporal_Upscaler`，v2 + v2_temporal，478 dl）、
+  **跨模型 q_norm graft**（`yichengup/...ltxqnorm-int8-convrot`，1,141 dl / 8 like，20.97 GB）、
+  **AMD Loom 打包**（`loom-draft/pytraveler-...-Prompt-Rewriter-Qwen3.8-27B-{FL2VA,Ref2VA}-loom`，`.loom` 程序 + GGUF 卡片，**不是 H3 权重**，只是提示词改写器的部署包）。
+- **gated 仓首次出现**：`linkqpsfa/minimax-h3-{i2v,unc-i2v}-weights`（11-26）siblings 可见但 `resolve` 全 403 `GatedRepo` ⇒ 社区开始用「限制访问」分发 H3 权重，检索时不可按体积判断内容。
+- 空壳/占位仓比例未见改善（`mimba/minimax-h3`、`nnndite/minimaxh3image`、`PYTHAI/MiniMax-H3-fork` 等仍 0 dl、无权重）。
+
+### 检索通路（第 4 日复核）
+
+- `huggingface.co` 直连**仍未恢复**（本轮未再试，沿用镜像；`api/models` / `resolve` 全走 `hf-mirror.com`，均 200）。
+- `hf-mirror.com` 两个新坑：**① 403 GatedRepo 的 `content-length`（183/191）是错误体长度，看着像文件体积**；
+  **② `curl -sIL` 不带 `-L` 时 302 目标不展开，`content-length` 直接给 183**——必须 `-sIL`（大 I 大写）才跟跳转，小写 `-i` + `-s` + `-L` 亦可。
+- `api/models/<id>` 的 `siblings[].size` **第 4 日仍全 `None`**；体积一律 `curl -sIL | grep -i content-length`。
+- ModelScope 的 `repo/files` 顶层会返回 `Type: tree` 的目录项且**不带子项列表**；取子目录要再打一次 `Root=<dir>`，本轮 `pruned/fl2v`、`pruned/ref2v` 均不存在（目录名是 `pruned/` 下平铺）。

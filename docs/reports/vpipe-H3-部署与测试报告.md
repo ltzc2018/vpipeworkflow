@@ -6417,3 +6417,98 @@ K151 的先例是「sha 各异 + 字节同构」，本轮**未取 sha**，只能
 - **P48 / P47 维持**：VAE int8 仍是「错值」级；三处盲区之外再添「逐投影混合」一档（K234），**warning 至少要覆盖 `_skipped` / 未识别后缀 / 混合格式未知投影三类**。
 - **P43（仍未建）`safetensors-peek.py`**：本轮又手写 7 次读头。**第六项需求**：按投影归类 dtype + 读出 `comfy_quant` 原文 + 给出「本机 kernel 表里有没有对应 widening」的结论（配合 P53）。
 - **SOP（仍未改）**：累计 **9 条**待写入（HF 搜索替代 WebSearch / 镜像优先 / commits 301 / `.alpha` 五态 / tree `lastModified` 缺失 / raw README / `tensor_names` 无序 + `resolve` 需 `-L` / **404 分文件级与仓级** / **`strings` 查 kernel 优于 grep 源码**）。
+
+### 18.44 2026-11-27 04:30 —— 第 35 轮：★★★ 社区 latent upscaler v2「同架构重训」本机零改动可加载（唯一「社区新权重 + 零适配」件）+ ★★★ 第四条调参工艺「跨模型 q_norm graft」+ ★★★ Fusion pruned 4/8 步「同字节不同构」结案 + ★★ `comfy_quant` 是 U8 载荷致 dtype 统计翻倍
+
+> 本轮由 **P39 launchd + codebuddy 无头 CLI** 执行（slot=04:30，守卫 R=35，第 12 次完整链路）。
+> 与 18.43 的关系：上轮判的是「量化形态」（NVFP4 逐投影 / DWD 第二家 / `-mlp` / 闭式投影），结论是**本机受阻于 kernel**。
+> 本轮换取样面，把此前只有一句话的两条线各挖一层：**后处理（latent upscaler）**与**调参（跨模型 graft）**。
+> 四条既有结论被改写：① 「社区 H3 后处理件只能是官方权重转存」被推翻（v2 是同架构重训）；② K240「4/8 步同尺寸疑似同构」结案为**不同构**；
+> ③ K199「r256 refiner」是标称值，**逐模块 rank 48–946**；④ 多了一类此前不存在的分发形态（**gated 仓**），且它的 `content-length` 会被误读成文件体积。
+
+#### 18.44.1 检索范围
+
+| 源 | 端点 / 方式 | 结果 |
+|---|---|---|
+| vpipe 上游 | `api.github.com/repos/tgo-app-dev/vpipe` + `/commits?per_page=5` + `/releases?per_page=3` + `search/issues`（issue / PR 各一次） | **静默第 11 日**，四项与第 34 轮**逐位相同** |
+| LightX2V | `api.github.com/repos/ModelTC/LightX2V/commits?per_page=6` | 5 条全非 H3（XPU B70 / LongCat-Avatar / Seed-VC / YuE2 / README） |
+| sd.cpp | commits ×6 + PR #2414 / #2357 / #2249 + #2357 files | **H3 后处理仍有 2D-conv 一支 open（#2357），已合只有 3D-conv（#2249）** |
+| ComfyUI | `api.github.com/repos/Comfy-Org/ComfyUI/commits?per_page=6` | 4 条全无 H3 |
+| ModelScope | `repo/files?Root=` + `Root=pruned`（Turbo / Fusion） | Turbo 31 项；Fusion **15 项顶层 + `pruned/` 4 件带 sha256** |
+| HF 镜像 | `api/models?search=minimax_h3|minimax-h3|upscaler|latent_upscaler` + `api/models/<id>` ×8 + `resolve` Range 读头 ×9 | 见 18.44.2 |
+| 本机源码 | `metal-minimax-h3-latent-upscaler.cc`（自检 / 权重解析 / dtype 读入）、`runtime-lora.cc`、`fp8-layout.cc:is_aux_name`、`lora-names.h` | 四条自检逐条核对 |
+| WebSearch | 未调用（记忆：2026-11-22 起长期 `Authentication required`，本轮预算优先给镜像面） | — |
+
+#### 18.44.2 新增知识（K243–K252，完整表格见 `vpipe-daily-knowledge.md` 第 35 轮）
+
+- **K243 上游静默第 11 日**：HEAD `a6a1f53`、release v0.1.110（落后 26 天）、issue 14 全开 0 评论、PR=0、**274 star / 27 fork / 36,920 KB**，**四项与第 34 轮逐位相同**（star 连续第 2 日不动）。
+- **K244 sd.cpp 的 upscaler 也只有 3D-conv**：`#2249`（hires second pass）11-04 合入；`#2357`（2D-conv，2D 骨干 + 两个共享时间块，无 attention/SE/大核/refine/pixel-shuffle）**11-14 开、11-15 后无更新、仍 open**。本机 `2d_conv` grep = 0 ⇒ **后处理线与本机同档**。
+- **K245 ★★★ v2 是「同架构重训」**：`George0667/MiniMax_Temporal_Upscaler:…_v2_fp16` = **690,592,736 B / 322 tensors / 全 F16**；与 v1（SOLRICKS F16 转存 690,592,672 B / 322）**key 集逐名相同（onlyA 0 / onlyB 0）、shape 全同**，但数据区 sha 不同（`conv_in` 后 192 B：v1 `6307f49c…` / v2 `d1e3cbc7…`）⇒ **不是转存**。本机 `config_from_weights` 四条自检（5 维 `conv_in.weight` / 3×3×3 / 入通道 24 / `embed.0.weight [E,1]`）全过，`dwconv.weight [512,1,5,1,1]`（时间核 5、奇数）亦过 ⇒ **`latent-upscale` stage 零改动可加载**。
+  ⚠️ **`v2/config.json` 写 `in_blocks 12` / `parameters 345,280,216`，而权重头是 18+18 块** ⇒ **结构只认 header，config 不可信**。
+- **K246 `v2_temporal` 多出的 4 个张量本机无分支**：690,601,656 B / **326** tensors，仅多 `t_embed.{0,2}.{weight,bias}`；本机加载只按名取 `conv_in/conv_out/norm_out/in_blocks/out_blocks/embed.0/embed.2`，**未见「未识别张量」报错点** ⇒ 推断**静默忽略**（空间放大照做、时间插帧不发生、日志无痕；未实测）。
+- **K247 ★★★ 第四条调参工艺「跨模型 q_norm graft」**：`yichengup/minimax_h3-tyc-zs05-ltxqnorm-int8-convrot`（1,141 dl / 8 like，**20,970,382,496 B = 19.53 GiB**，932 tensors = F32 210 / BF16 220 / F16 102 / I8 200 / U8 200），原生名无 `model.` 前缀、`adaln_t_table [1025,8]`、`comfy_quant = int8_tensorwise convrot groupsize 256` ⇒ 本机四条契约全满足。`__metadata__` 原文：`rebuild = own-hybrid from official Comfy-Org pruned bf16`、`source_base = minimax_h3_fl2va_pruned_bf16`、`source_ref = …ref2va_pruned_bf16`、**`adaln_splice = none (fl2va throughout)`**（Ref2VA 只声明未混入）、**`zspatial_graft = donor=Z-Image-Turbo layers.N.attention.q_norm, blocks=30-49, dose=0.5, normalize=False`**、**`qnorm_graft = donor=LTX-2.5 transformer_blocks.N.attn1.q_norm (mean-normalised x1.9340), blocks=30-48, dose=1.0`**、**`qnorm_pin = block 49 rms=5.0`**。
+  ⇒ 不量化、不剪枝、不蒸馏、不换编码器，而是**把别的模型的 RMSNorm 增益按剂量移植进 H3 末段 20 块的 `attn.q_norm`**。`attn.q_norm.weight` 是普通逐通道增益 ⇒ **本机按名加载不拒**，但语义跨模型 ⇒ **「能加载」≠「行为对」**。作者自承认「快动作会撕裂/拖影」。
+- **K248 I8 refiner 的 rank 不是 256**：`SOLRICKS/…:h3_upscale_refiner_int8`（1,884,199,184 B / 624 tensors = I8 416 + F32 208 = **208 对**）rank 横跨 **48 / 72 / 79 / 94 / 121 / 144 / 165 / 188 / 206 / 234 / 248 / 252 / 300 / 356 / 377 / 495 / 630 / 760 / 800 / 866 / 895 / 938 / 946**，按族分层（out_proj 48–267 / qkv 252–866 / fc1 195–382 / fc2 72–400）。`.alpha` 4 例仍 1e-4～1e-3（最大 `blocks.29.attn.qkv_proj 1.112e-3`）⇒ `mul = alpha/rank` 仍给 1e-6（K200 继续成立）。
+- **K249 `comfy_quant` 是 U8 的 72 B JSON，且 weight/bias 精度可不同**：`Coffmeteor/…v10INT8`（20,967,649,144 B / 932 tensors）= I8 200（量化权重）+ **U8 200（全 `*.comfy_quant`，各 72 B）** + F32 206（`weight_scale [N,1]` ×200 + `adaln_t_table` + `rope.inv_freq` + 4 bias）+ BF16 275 + **F16 51（全 `adaln_proj.linear.bias`，50 块 + final_layer 1）**。载荷原文 `{"format":"int8_tensorwise","convrot":true,"convrot_groupsize":256}`。
+- **K250 ★★★ Fusion pruned 4/8 步「同字节、不同构」（K240 结案）**：`4step_lite_r32_pruned = fc088567ba945213…` / `8step_lite_r32_pruned = 425d1c1c105effdb…`（都 818,925,468 B）；`4step_pruned = 86449d1d…` / `8step_pruned = 8208de8c…`（都 5,220,193,444 B）。另根目录 8 件（3,778,242,236 / 5,209,509,820 / 808,241,732）**与 `pruned/` 非同一批**。
+- **K251 gated 仓首现**：`linkqpsfa/minimax-h3-{i2v,unc-i2v}-weights`，`api/models` 正常列出 siblings（8 文件 / 单件），`resolve` 一律 **403 `GatedRepo`**；**`content-length: 183`（`10Eros` 191）是错误体长度**。
+- **K252 社区三条新线**：latent upscaler v2 重训族（478 dl）、跨模型 graft（1,141 dl）、**AMD Loom 部署包**（`loom-draft/…-loom`，`.loom` 程序 + `REPORT.md` + GGUF 卡，**非 H3 权重**，是 27B 提示词改写器在 Strix Halo / R9700 上的打包）；另 `jh27kim/MiniMax-H3-Ref2VA-4step` **已删**（`api/models` 返回 200 体里的 `{"error":"Repository not found"}`）。
+
+#### 18.44.3 印证与冲突
+
+- **★★★ 冲突①（「社区后处理件 = 官方权重转存」被推翻）**：K198 的结论只比对了 **header**（322 tensors / key 全同 / dtype BF16→F16）。本轮 K245 证明**同 key 同 shape 也可以是重训**——判据必须下沉到**数据区**（2 次 Range、192 B 比 sha，成本极低）。这条方法论可推广到所有「转存 vs 重训」的判断。
+- **★★★ 冲突②（K240「疑似同构」判为不同构）**：字节数完全相同（818,925,468 / 5,220,193,444）但 sha 全异。⇒ 与 K151 合并成**通用判据：H3 生态里「字节数相同」几乎从不意味着「可原槽互换」**，只有 sha 相同才是同一份。
+- **★★★ 冲突③（「加载成功 ≠ 全生效」第 3 例）**：K221（`reshape_weight` 元数据支）+ K199（I8 因子静默跳过）+ K246（`t_embed` 4 张量无分支）。⇒ 三种静默各自独立出现两次以上，**P47 的 warning 必须做成「加载结束时打一遍对账」**（绑定数 / 跳过数 / 未识别张量数），而不是逐点报错。
+- **★★ 印证（K198「本机 2K 链路完整」再进一步）**：不仅 v1 能读，**同架构重训的 v2 也能读**——因为自检是对**结构**而不是对权重值。`latent-upscale` 因此是**唯一对社区新权重完全开放的后处理通路**。
+- **★★ 印证（社区改造的层级在下移）**：从改 shift（K187）→ 加 LoRA → 换编码器 → **改归一化增益**（K247）。⇒ 「社区件能不能读」正在从「格式问题」变成「**语义问题**」：格式全对、行为未知。
+- **★ 零增量（须明日复查）**：vpipe 第 11 日（274 star 第 2 日不动）；LightX2V 5 条全非 H3；ComfyUI 4 条无 H3；`Comfy-Org/MiniMax-H3` 本轮未复核。
+
+#### 18.44.4 本轮实验
+
+**无生成实验，仅零下载读取 + 本机源码对照**：共 **9 次 Range 请求**（K245 ×2 + 数据区 sha ×2、K246 ×1、K247 ×1、K248 ×1、K249 ×1 + 2 次 72 B 载荷）、**3 次 403 诊断**（K251）、磁盘 0 增长，累计约 **11 min**。
+
+不跑 P44/P55 的理由：
+1. **时间**：04:30 起动，04:45 完成检索（15 min），窗口充裕，但本轮把「后处理」挖出了一条**可直接交付的新能力**（K245），知识价值高于再取一组 P44 数。
+2. **P44 选件纪律本轮才定死**（K250：4/8 步不可互换）——在选件未定死前跑 P44 可能取到不可复用的数，这与第 33 轮的判断同因。
+3. **P55 需下载 690 MB 且要复跑两臂**（v2 vs v2_temporal 逐位比对），留给有完整 90 min 窗且磁盘宽裕的槽位更稳；磁盘现 37 GiB 不是瓶颈，纯时间问题。
+
+#### 18.44.5 技能包脚本修改
+
+- **无脚本改动**（本轮无新增脚本，`scripts/nightly_sync.sh` / `nightly_guard.sh` 均未动）。
+- **references 追加**（只追加，两侧逐字节同步）：
+  - `~/.workbuddy/skills/vpipe-model-prepare/references/768p-adapters.md`：新增「第 35 轮」六小节（v2 重训 / graft / I8 rank / `comfy_quant` dtype / gated 403 / Fusion sha），**88,726 → 97,073 B**；
+  - `…/h3-ecosystem-map.md`：新增「第 35 轮增补」（上游第 11 日 + 三条相邻线 + 社区面 + 检索通路），**58,849 → 62,740 B**；
+  - 两份均已 `cp` 到 `vpipe-lab/skills/vpipe-model-prepare/references/` 并 `shasum -a256` 校验前 10 位一致（`d2179fe3bc` / `6d29180563`）。
+- **待办（仍未做，累计 8 条）**：`safetensors-peek.py`（P43，本轮又手写 9 次读头，第六项需求=过滤元数据张量）；SOP 补写（本轮新增 3 条：403 假体积 / `-L` 缺失 / config 与 header 不一致）。
+
+#### 18.44.6 踩坑与结论
+
+**坑①（新，最重要）：镜像 403 会给一个「看着像体积」的 `content-length`。**
+gated 仓返回 `content-length: 183`（`10Eros` 191），与正常小文件在字段上无区别 ⇒ **必须先看 `%{http_code}` 或 `x-error-code`**，再读体积。与「`000` 超时」并列为**两类假体积**。
+
+**坑②（新）：`curl -sIL` 缺 `-L` 时 302 的 `content-length` 是跳转体长度（183）。**
+本轮最初 3 次「体积 = 183」就是漏了 `-L`。正确：`curl -sIL`，或 `curl -s -o /dev/null -w '%{http_code} %{size_download}'`。
+
+**坑③（新）：`config.json` 的 `in_blocks` 可与权重头不一致。**
+`George0667` 的 v2 写 `in_blocks 12`，头里 18+18 ⇒ 「轻量版 / 结构不同」这类推断**只能来自 header**。
+
+**坑④（新）：`comfy_quant` 是 U8 张量（72 B JSON），不是纯元数据键。**
+按 dtype 统计权重个数会把 200 个量化声明数成 200 个权重 ⇒ 必须同时要求 `shape.size()>=2` 且非 `is_aux_name`（`fp8-layout.cc:295-305` 已含 `.comfy_quant`）。这与第 33 轮坑⑤（`reshape_weight` 是 I64 元数据）**是同一类坑的第 2 例**。
+
+**坑⑤（复现）：仓被删后 `api/models` 返回 200 体内的 `{"error":"Repository not found"}`，不是 404 状态码。**
+`jh27kim/MiniMax-H3-Ref2VA-4step` 第 33 轮才出现、本轮已撤 ⇒ **「搜到过」不能当「还在」，引用社区仓必须带抓取日期**。
+
+**结论（三条）**
+
+1. **后处理是本机唯一「社区怎么更新都不需要改代码」的能力面**：v1 转存能读、v2 重训也能读（K245），因为自检是对结构而非权重值。⇒ 生态出现新 upscaler 时，**先试加载、再谈适配**，这与 DiT 侧「先 `strings` 查 kernel」正好相反——两条判据不可混用。
+2. **社区改造已经进入「增益/归一化」层面**（K247）：`attn.q_norm` 这类逐通道增益本机不会拒，但语义跨模型 ⇒ **「能加载」的能力边界要继续往下压一层：从「格式问」压到「行为问」**，QC 判据也要相应换成运动一致性而非 SSIM。
+3. **「静默」已成系统性问题**：三类静默（未识别后缀 / I8 因子 / 未知顶层张量）都各出现过两次以上，且日志都不报错 ⇒ 下一轮若动 `runtime-lora.cc` 或 upscaler 加载，**应顺手把「加载结束对账」加上**，这比逐个格式加分支收益更高。
+
+#### 18.44.7 下一步
+
+- **P55（新，高）latent upscaler v2 真机复跑**：690 MB 下载 + 2×3 min 后处理。两臂（v1 / v2）比锐度/纹理量/首帧 SSIM；**必须加第三臂 `v2_temporal`** 并与 v2 **逐位比对**——逐位相同即坐实 K246 的「`t_embed` 静默忽略、时间插帧不发生」。
+- **P56（新，中）graft 件的 QC 方法**：先写判据脚本（快动作 frame diff 方差 / 边缘断裂计数 / 与 K224 `Variable-Clock` 对照），**再决定是否花 19.53 GiB**。
+- **P44（首选不变）**：4 步档（K250 结案）+ Kijai W4A8 10.96 GiB + Fusion `lite_r32` + `video_shift 6→12`；避开 K221/K222 混合拼写件。
+- **P47（升）**：「加载结束对账」一次覆盖三类静默（绑定数 / 跳过数 / 未识别张量数）。
+- **P43（仍未建）`safetensors-peek.py`**：本轮又手写 9 次读头；第六项需求=过滤 `I64 [1]` / `U8 [72]` / `alpha F32 []` 三类元数据张量。
+- **SOP（仍未改）**：累计 **11 条**待写入（新增：403 GatedRepo 假体积 / `-L` 缺失 / config 与 header 不一致）。

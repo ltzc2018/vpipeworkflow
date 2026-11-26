@@ -1171,3 +1171,73 @@ ModelScope `lightx2v/Minimax-h3-Turbo` 现有 **31 个文件 / 27 个 safetensor
   `…_4step_v1.0_pruned_comfyui` = 5,220,193,444、非 pruned 全量 3,778,242,236 / lite 665,148,804。
   ⇒ 4 步与 8 步的 lite_r32 pruned 档**字节数完全相同（818,925,468 B）**，但**未核 sha256**，故只能说「体积同尺寸、疑似同构」（K151 的 4 步家族是 sha 各异 + 字节同构）。
   P44 取 4 步档即可；8 步档是否可原槽互换**待 sha 复核**，不额外下载。
+
+## 第 35 轮（2026-11-27 04:30）—— latent upscaler 的「同架构重训」与「跨模型 graft」两条新工艺
+
+> 来源：HF 镜像 Range 读头（0 下载）+ ModelScope `repo/files` + 本机 `repo/vpipe` 源码。所有体积取自 `curl -sIL` 的 `content-length`。
+
+### 1）★★★ 社区 latent upscaler v2 = **同架构、不同权重**，本机现成通路可直读（K245）
+
+- `George0667/MiniMax_Temporal_Upscaler`（11-16，478 dl）三份权重：`..._3d_conv_v2_{bf16,fp16}` + `..._v2_temporal_{bf16,fp16}`。
+- 实读 `v2_fp16` 头（**690,592,736 B / 322 tensors / 全 F16**）：与 K198 的官方 v1（`SOLRICKS` 那份 F16 转存，690,592,672 B / 322 tensors）
+  **key 集逐名相同（onlyA 0 / onlyB 0）、shape 全同**，但 `conv_in.weight` 之后的数据区 sha 不同 ⇒ **不是转存，是重训**。
+  本机 `metal-minimax-h3-latent-upscaler.cc:209-290` 的四条自检（`conv_in.weight` 5 维 / 3×3×3 / 24 入通道 / `embed.0.weight [E,1]`）**全部满足** ⇒ **按现有 `latent-upscale` stage 可直接加载**。
+- `v2_temporal` 变体（690,601,656 B / **326** tensors）只多 4 个张量：`t_embed.{0,2}.{weight,bias}`（帧率 8/12/16→24 的时间嵌入）。
+  **这 4 个张量本机没有任何加载分支**（`load_conv_/load_entry_` 只按名取 `conv_in/conv_out/norm_out/in_blocks/out_blocks/embed.0/embed.2`），
+  且未见「未识别张量」报错点 ⇒ **推断为静默忽略**（未实测），后果是**空间放大照做、时间插帧静默不发生**，日志无痕迹。
+- ⚠️ **`config.json` 与权重头打架**：`v2/config.json` 写 `in_blocks 12 / temporal_every 2 / temporal_kernel 5 / parameters 345,280,216`，
+  但权重头实为 **18 个 in_blocks / 18 个 out_blocks**，`dwconv.weight [512,1,5,1,1]`（temporal_kernel 5 对得上）。
+  ⇒ 引用「v2 是 12 块的轻量版」是**错的**；判结构只认 header，不认 config。这条与 K245 的「同架构」互证。
+- 结论：**v1 → v2 是同一网络的重新训练**（作者用 v1 的 checkpoint 布局做 `drop-in replacement`），不是新架构；
+  本机不需要任何改动即可跑 v2 的空间放大，且这是**唯一「社区新权重 + 本机零适配」的 2K 后处理件**。
+
+### 2）★★★ 第三种社区工艺：**跨模型 graft（把别的模型的 q_norm 移植进 H3 末段）**（K247）
+
+- `yichengup/minimax_h3-tyc-zs05-ltxqnorm-int8-convrot`（11-25，**1,141 dl / 8 like**，单件 20,970,382,496 B = 19.53 GiB）：
+  `932 tensors`（F32 210 / BF16 220 / **F16 102** / I8 200 / U8 200），**原生名无 `model.` 前缀**、`adaln_t_table [1025,8]`（pruned 形态）、
+  `comfy_quant = int8_tensorwise convrot groupsize 256` ⇒ 契约与 K215 同类，**本机 `comfy_saved`/I8+ConvRot/逐行 scale 四条全满足**。
+- `__metadata__` 自述的重建与移植（原文）：
+  - `rebuild = own-hybrid from official Comfy-Org pruned bf16`；`source_base = minimax_h3_fl2va_pruned_bf16`、`source_ref = minimax_h3_ref2va_pruned_bf16`；
+  - `adaln_splice = none (fl2va throughout)`（**Ref2VA 线没有真的混进来**，只在 metadata 里声明）；
+  - **`zspatial_graft = donor=Z-Image-Turbo layers.N.attention.q_norm, blocks=30-49, dose=0.5, normalize=False`**
+  - **`qnorm_graft = donor=LTX-2.5 transformer_blocks.N.attn1.q_norm (mean-normalised x1.9340), blocks=30-48, dose=1.0`**
+  - **`qnorm_pin = block 49 rms=5.0`**；`quant_format = int8_tensorwise convrot groupsize 256`
+- ⇒ 这是一条**既非量化、也非剪枝、也非蒸馏**的第四条「调参」工艺：**用文本/图像模型的 RMSNorm 增益直接改写 H3 末段 20 个 block 的 `attn.q_norm`**，
+  并用手工 `rms=5.0` 钉住最后一个 block。作者自述效果是「快动作更有力、慢动作不僵、碎动不冻」，代价是「快动作会撕裂/拖影」。
+- 判据价值：`attn.q_norm.weight` 在 H3 里是普通逐通道增益张量（`[5376]` 或按头维），**本机按名加载不会拒**；
+  但 graft 的来源模型（LTX-2.5 / Z-Image）与 H3 的 norm 语义不同，**「能加载」≠「行为正确」**，只能算**行为级**改造，须人工 QC。
+- 与本机纪律：属**真人无关**的调参件（无真人微调声明），可进候选池；但「快动作撕裂」是它在 README 里自承认的缺陷 ⇒ 需要运动夹具才能判优劣（与 P40 同一套判据）。
+
+### 3）★★ I8 适配器的 rank **不是固定 256**（修正 K199 的描述）
+
+- `SOLRICKS/MiniMax-H3-Upscaler:h3_upscale_refiner_int8.safetensors`（**1,884,199,184 B / 624 tensors = I8 416 + F32 208**）逐模块 rank 实测：
+  **48, 72, 79, 94, 121, 144, 165, 188, 206, 234, 248, 252, 300, 356, 377, 495, 630, 760, 800, 866, 895, 938, 946…**，
+  按模块族分层（`attn.out_proj` 48–267 / `attn.qkv_proj` 252–866 / `mlp.fc1` 195–382 / `mlp.fc2` 72–400），**50 块 × 4 投影 + 2 个 token_refiner 块 = 208 对**。
+- `.alpha` 实测 4 例：`blocks.48.mlp.fc2 = 3.956e-4`、`blocks.28.attn.out_proj = 2.388e-4`、`blocks.29.attn.qkv_proj = 1.112e-3`、`blocks.22.mlp.fc1 = 3.624e-4`
+  ⇒ 仍是 K200 的「量化 scale 语义」，`alpha/rank` 只会给出 1e-6 量级 ⇒ 即便将来能读 I8 也**不能**用 `mul = alpha/rank`。
+- ⇒ 修正：K199 里「r256 refiner LoRA」的 256 是**打包约定/标称值**，实际逐模块 rank 差异大；**任何按固定 rank 反推体积或强度的算法都不成立**。
+
+### 4）★ 量化件的 dtype 统计有个新陷阱：`comfy_quant` 是 **U8 的 72 字节 JSON 载荷**（K246）
+
+- `Coffmeteor/MiniMaxH3-Realism-Turbo-Remix:int8/...v10INT8.safetensors`（**20,967,649,144 B / 932 tensors**）完整 dtype 分解：
+  **I8 200（量化权重）+ U8 200（全部是 `*.comfy_quant`，每个 72 B）+ F32 206（`weight_scale [N,1]` 200 + `adaln_t_table`/`rope.inv_freq`/4 个 bias）+ BF16 275 + F16 51**。
+- **F16 的 51 个全部是 `adaln_proj.linear.bias`（50 块 + `final_layer` 1）**，而同一 linear 的 `weight` 是 BF16
+  ⇒ **同一投影的 weight 与 bias 精度不同**，社区量化脚本是逐张量分精度的。本机按逐张量 dtype 分派，不构成问题，但**不能假设「一个 linear 一个 dtype」**。
+- **坑**：任何按 `dtype in {I8,U8}` 统计「量化权重个数」的脚本会把 200 个 `comfy_quant` 数进去（体积 14,400 B，可忽略，个数翻倍）
+  ⇒ 统计权重必须**同时要求 `shape` 维度 ≥ 2 且不是 `is_aux_name`**（`fp8-layout.cc:295-305` 已列 `.comfy_quant`）。
+
+### 5）★★ 检索坑（新）：**镜像 403 + `x-error-code: GatedRepo`，而 `content-length: 183` 是错误体**
+
+- `linkqpsfa/minimax-h3-i2v-weights`（11-26，8 文件：fl2va pruned int8_convrot / qwen3vl_32b nvfp4_awq / 8step turbo bf16 / 两个 VAE）
+  与 `linkqpsfa/minimax-h3-unc-i2v-weights`（单件 `10Eros_Max_h3_8stepTURBO_beta7_int8HQ`）**`api/models` 正常列出 siblings，但 `resolve` 一律 403**：
+  `x-error-code: GatedRepo` / `x-error-message: Access to model ... is restricted and you are not in the authorized list`。
+- ⇒ **`content-length: 183` 不是文件体积，是错误体长度**（`10Eros` 是 191）。同一形状的误读此前只在 `000` 超时上见过，本轮证明 **403 也会给出一个「看起来像体积」的 content-length**。
+- 判据顺序应是：`api/models` 看 siblings（仓在不在、有什么）→ `curl -sIL` 看 status（200/206 才有体积）→ 再看 `content-length`。
+
+### 6）★★ Fusion pruned 4 步 / 8 步**不同构，不能原槽互换**（K240 悬案结案）
+
+- ModelScope `lightx2v/Minimax-H3-Turbo-Fusion:pruned/`（同批 2026-11-24 18:49 UTC 上传）的 sha256 前 20 位：
+  `4step_lite_r32_pruned = fc088567ba945213…`、`8step_lite_r32_pruned = 425d1c1c105effdb…`（字节数都是 818,925,468）；
+  `4step_pruned = 86449d1d…`、`8step_pruned = 8208de8c…`（都是 5,220,193,444）。
+- ⇒ **体积同尺寸、sha 各异** —— 与 K151 的 4 步家族同型（字节同构 + 内容不同），**不可原槽 A/B 互换**；P44 按 4 步档取即可。
+- 另注：**根目录**那批非 pruned / `_comfyui` / `_lite_r32_comfyui` 是另一组字节数（3,778,242,236 / 5,209,509,820 / 808,241,732），**与 `pruned/` 子目录不是同一批文件**，别混引。
