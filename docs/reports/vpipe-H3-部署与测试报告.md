@@ -6203,3 +6203,114 @@ WaveCut 件 `proj_in [16,256]` / `proj_out [8,16]`，而全模型件是 `[5376,2
 - **P50（新，低，跟踪）**：「ref LoRA」＝ FL2VA→Ref2VA 差分，若成立可省一半磁盘。
 - **P43（仍未建）**：`safetensors-peek.py`，**第四条需求**：把 `comfy_quant` JSON 解析成结构化字段（format / convrot / group_size），否则「名拒 vs 布局拒」每次都要手读。
 - **SOP（仍未改）**：累计 **5 条**待写入（HF 搜索替代 WebSearch / hf-mirror 只用于搜索与 tree / commits 端点 301 走 `repositories/<id>` / `.alpha` 三态体检 / **tree 的 `lastModified` 缺失 + raw README 走直连**）。
+
+### 18.42 2026-11-27 00:30 —— 第 33 轮：★★★ 加速 LoRA 的第五形态（`reshape_weight` 补丁 + 满秩 final_layer，本机只可能绑一半）+ ★★★ 同一文件两种因子拼写使绑定结果取决于 `unordered_map` 序 + ★★ alpha 第五态「已折进 lora_B」
+
+> 本轮由 **P39 launchd + codebuddy 无头 CLI** 执行（slot=00:30，守卫 R=33）。
+> **编号说明**：接 18.41 顺延为 **18.42**（知识编号 **K220–K231**，接上轮 K219）。
+> **与上轮的关系**：18.41 的方向是「盯官方蒸馏线 + 把 P44 的前置清干净」；本轮**换取样方向**——把 11-26 单日真正落地的 4 个新件（Vantage 8 步 acc LoRA、Variable-Clock RunF、ReFrame 重绘 LoRA、VDN edge 包）逐个读头，结果是**三条既有结论被推翻或收窄**：① 「metadata alpha 数字对了就安全」不成立（`conversion` 文本才是语义）；② 「本机 LoRA 拼写自动发现」隐含「一个文件一种拼写」的假设被打破，且结果**随进程变化**；③ 「上游出现量化关键字 = H3 有进展」是误读源。
+
+#### 18.42.1 检索范围
+
+| 源 | 端点 | 结果 |
+|---|---|---|
+| vpipe 上游 | `commits?per_page=5` / `repos` / `releases?per_page=3` / `search/issues is:issue is:open&sort=updated` / `search/issues is:pr` | **零增量（第 9 日）**：HEAD `a6a1f53`（`author.date 11-23T09:54:27Z`、`pushed_at 11-23T11:20:51Z`）；release **v0.1.110（11-01）落后 26 天**；issue **14 全开**（#59 11-16 / #58 11-08 / #56 10-22 / #55 10-21 四条的 `updated_at == created_at`，均 0 评论）；**PR = 0**；**274 star（+1）/ 27 fork / 36,920 KB** |
+| LightX2V | `commits?per_page=3` | 单日 **3 条全非 H3**：`1e912006` LongCat-Video-Avatar 1.6（#1762）、`d9b1099d` Seed-VC 原生音频转换（#1758）、`239537fc` YuE2 音频生成（#1755） |
+| stable-diffusion.cpp | `commits?per_page=3` | `e637c7bc` server Web UI（#2437）、**`ea3f6ec7` LTX INT8 ConvRot 载入修复（#2436）**、**`6b51a955` W4A8 复用 INT8 GEMM（#2435）**；H3 仍停在 11-25 `5fa203c` ClipProj(no mlp) |
+| ComfyUI | `repositories/589831718/commits?per_page=3` | `8b0f1071` VBAR pins（#17837）、`4a4b3409` Seed/OpenRouter 节点迁移、`ef507153` TextGenerateV2 流式预览 → **无 H3** |
+| HF 社区搜索 | `hf-mirror.com/api/models?search=` × 3 拼写（`minimax_h3` / `MiniMax-H3` / `MinimaxH3`），各 `sort=lastModified&direction=-1&limit=30` | 11-26 单日 **30 个新/更新仓**；锁定 4 个「有实质新件」的仓进入读头阶段 |
+| Vantage 8 步 acc LoRA | `loras/MiniMax-H3-Ref2VA-Acc-8Step_pruned_comfy.safetensors` Range 读头 ×3（header / 后缀切片 / 原始字节序枚举） | **K221/K222/K223**：578 tensors、`reshape_weight` ×4、kohya+peft 双拼写、`conversion` 自述折叠 |
+| Variable-Clock RunF | `minimax_h3_variable_clock_runf_step2000_r16.safetensors` Range 读头 | **K224**：600 tensors / 全 F32 / 200 模块 / `ss_*` 训练元数据全量 |
+| ReFrame 重绘 LoRA | `ReFrameVideo-H3-LoRA-v1.safetensors` Range 读头 | **K225**：600 tensors / kohya / 200 模块 / 200 `.alpha` |
+| VDN edge bundle | `READY.json` + `bundle.json` + `cache/adaln-tables-v2-*/00.safetensors` 读头 | **K226**：535 payload 全校验、`step_N BF16 [6|9,32256]`、`3x6-v1` 契约 |
+| Vantage 仓整体 | `api/models/<id>` + 7 份 workflow JSON 解析 | **K227**：22 GGUF + 4 LoRA + 7 workflow；默认 `pruned_int8_convrot` / GGUF、`simple·20 步`、`euler`、Sage+Sol+Spectrum |
+| 像素头 | `minimax_h3_video_pixel_head{,_bf16}.safetensors` 读头 ×2 | **K228**：92 tensors / `eval_psnr_db 31.97` / 作者自标不宜生产 |
+| 本机源码 | `shared/runtime-lora.cc:300-330 / 420-460 / 554-582 / 617-640 / 741-747`、`llama3/metal-llama-weights.h:296`、`metal-minimax-h3-transformer.cc:3479 / 4501-4560 / 6081` | K221/K222/K223 的本机侧判据；**`reshape_weight` 全树 grep = 0**；**`pixel_head` 全树 grep = 0** |
+| 通路实测 | `curl` 对 `huggingface.co` 的 `api/models` / `api/models/<id>` / `resolve/*` | **全部 `000`**（DNS → `157.240.13.8`，TCP 无响应，15/20/25 s 超时）；`hf-mirror.com` 同路径 **200 / 2.2 s**，`resolve` + `-r 0-7` 返 **206** 且首字节正确 |
+| 磁盘 | `df -h /` | **38 GiB 可用**（与上轮同） |
+
+#### 18.42.2 新增知识（K220–K231）
+
+| # | 一句话结论 | 来源 | 日期 | 与本机实测冲突 |
+|---|---|---|---|---|
+| **K220** | 上游静默第 9 日：HEAD `a6a1f53`、release v0.1.110 落后 **26 天**、issue 14 全开 0 评论、PR=0、**274 star(+1)** | GitHub API ×5 | 2026-11-27 | 否（零增量） |
+| **K221** | ★★★ 加速 LoRA **第五形态**：`vantagewithai/…Ref2VA-Acc-8Step_pruned_comfy`（**1,725,921,392 B / 578 tensors**）metadata `…PDD head banks as base-relative pad-and-add reshape_weight LoRA (strength interpolates toward base); adaln projected to curve basis`；**4 个 `I64` `reshape_weight`（`[1]`/`[2]`）= 元数据**；`final_layer.video_out` = `lora_down [3072,5376]` + `lora_up [3072,3072]`（**rank 3072 = 满秩**）；本机 `reshape_weight` grep **= 0** | HF 镜像 Range 读头 + 本机源码 | 2026-11-26 | **新增「部分静默」**：前缀与 AdaLN 侧全过，只有 `final_layer` 落空；它**不在 `bind()` 枚举路径上**，`_skipped` 未必涨 |
+| **K222** | ★★★ **同文件两种因子拼写并存**：`final_layer.*` kohya（4 对）vs `blocks.*`+`token_refiner.*` peft（258 对）；本机 `index_suffix_()` 取**首个因子**定整文件拼写，`tensor_names()` 来自 `std::unordered_map` ⇒ **绑一半且不确定绑哪半** | 读头（原始字节序枚举）+ `runtime-lora.cc:308-330` / `metal-llama-weights.h:296` | 2026-11-27 | **推翻「一个文件一种拼写」的隐含假设** |
+| **K223** | ★★ alpha 第五态：`lora_alpha 64 == rank 64`（mul 1.0）但 `conversion` 明写 `alpha/rank folded into lora_B` ⇒ 体检须读自然语言 metadata | 读头 `__metadata__` | 2026-11-26 | **K188/K200/K212 之后的第五态**；只读数字会在 alpha≠rank 时双倍施加 |
+| **K224** | ★★ **可读对照件**：`MATLOWAI/…Variable-Clock` = **298,261,224 B / 600 tensors / 全 F32**，kohya、200 模块、rank16；`ss_shift_video 12.0` / `shift_audio 3.0` / `task t2va` / `base_family fl2va` / `motion_clock per_item_physical_fps_v1+motion_time_spans_v1` / `motion_keep_bands 2` / `native_anchor …`（weight **30.0**，replay 0.1）/ `guidance_loss_scale 4.0`（audio 同、sigma_min 0.15）/ `lr 5e-5 constant_with_warmup warmup 10` / `23 epoch × 84 items / 2000 steps / seed 20260923`；另有 `_lateattn`/`_noblock49` + `clock_maps/`（124 / 56 帧） | HF 镜像 Range 读头 | 2026-11-25 | **独立复现 K187 的 shift 12/3**；本机可读 ⇒ P44 之后最便宜的对照件 |
+| **K225** | ★★ 视频重绘 LoRA 首进清单：`VoidEclipseAI/…ReFrame-VideoInpainting` = **596,446,800 B / 600 tensors / 全 F32**、kohya、200 模块、200 `.alpha` | HF 镜像 Range 读头 | 2026-11-26 | 契约内、理论可绑；待复现 |
+| **K226** | ★★★ **预烘 AdaLN 表第三家**：`OpenVDN/vdn-minimax-h3-edge`（9,804 文件 / `READY.json` 535 payload 全校验 / `freevideo-fp8-variants-v1` / `per_tensor` + `rowwise` 363 矩阵），`adaln-tables-v2-*/00` = `step_0 BF16 [6,32256]` + `step_1..7 [9,32256]`，`bundle.json` 声明 `channels 5376 / modality_rows 3 / components 6`，契约名 `minimax-h3-adaln-silu-linear-3x6-v1` | HF 镜像 API + bundle/READY + 表头 | 2026-11-26 | **三种布局互不兼容**（K210 宽 8 / K205 `[8,2688]` / 本件每步向量）⇒ 本机一种都不认 |
+| **K227** | ★★ 交付三件套化：`vantagewithai` = 22 GGUF（fl2va/ref2va × 11 档）+ 4 个 8 步 acc LoRA + 7 workflow，**11,153 dl / 28 like**；默认 `pruned_int8_convrot` 或 GGUF、`BasicScheduler simple/20/1`、`euler`、`PathchSageAttentionKJ`、`SolAttnPatch(0.1/0.88/4096/"39-42")`、`SpectrumApplyMiniMaxH3` | HF 镜像 API + workflow JSON | 2026-11-26 | 评估口径改为「三件套能拼出几条」 |
+| **K228** | ★★ 像素头首带 PSNR：`pocis/…Video-PixelHead` = **95,858,352 B / 92 tensors / F32**（bf16 49 MB），`eval_psnr_db 31.97`、`d_feat 5376`、`d_lat 96`、`depth 1/2/2/2`、`frame_per_token "1,4,4,4,4"`、`latent_input "x0_hat_vid_1x2x2"`、`teacher_vae …int8_convrot`、`release_status experimental_preview_v0.2.0_not_recommended_for_production` | HF 镜像 Range 读头 | 2026-11-26 | 本机 grep=0；31.97 dB 作「免 VAE 解码」参照线 |
+| **K229** | ★ 三线零 H3：LightX2V 3 条全非 H3；sd.cpp `#2436` LTX INT8 ConvRot + `#2435` W4A8 GEMM **只服务 LTX/通用**；ComfyUI 3 条无 H3 | GitHub API ×3 | 2026-11-26 | **⚠️ 勿当 H3 量化进度** |
+| **K230** | ★★ **检索通路反转**：`huggingface.co` 全域 `000`（DNS 157.240.13.8、TCP 无响应），`hf-mirror.com` 的 `resolve`+Range **可用（206）**、`api/models?search=` 200/2.2 s | curl 实测 | 2026-11-27 | **推翻上轮「镜像只用于搜索/tree」** ⇒ 改「镜像优先」 |
+| **K231** | ★ 社区续增：Person-Remover / Character-Swap / Image-Outpaint LoRA、`javawock7618/comfy-MiniMax-H3-workflows`（**175 like** 纯 workflow 仓）、`klassas/minimax-h3-image-slim`、`aevionlabs/*` 4 仓、`Infinity-io` GGUF、`linkqpsfa/*-i2v-weights` | HF 镜像搜索 API ×3 | 2026-11-26 | 「人物级编辑」成独立品类 |
+
+#### 18.42.3 印证与冲突
+
+**冲突（三条既有结论被收窄或推翻）**
+
+1. ★★★ **「metadata alpha 数字对了就安全」不成立**（K223）。18.41 判死 Fusion 的 alpha（全体 == rank，`mul ≡ 1.0`）后，结论写成「读 alpha 数字即可」。本轮同一个数字（64 vs 64）背后，`conversion` 却写着 `alpha/rank folded into lora_B` —— **数字是乘数，`conversion` 才是语义**。若某个文件 alpha ≠ rank 且已折叠，按 `alpha/rank` 再折一次就是**双倍施加**。⇒ 换槽体检从 4 项扩到 **5 项**（第 5 项：读 `conversion`/自由文本）。
+2. ★★★ **「本机 LoRA 拼写自动发现」有隐藏前提被打破**（K222）。`index_suffix_()` 用「扫到的第一个因子张量」决定整文件后缀，隐含「一个文件只用一种拼写」。Vantage 件同文件并存 kohya（4 对）与 peft（258 对），而 `MetalLlamaWeights::_tensors` 是 `std::unordered_map` ⇒ **迭代序不定**：扫到 `lora_A` 则 blocks 全绑、final_layer 落空；扫到 `lora_down` 则 `lora_B` 算成 `lora_up`、**258 对全失配**。这与 K199（I8 静默跳过）不同：**不是格式不支持，而是选择逻辑本身不确定** ⇒ 同一 build 两次运行结果可以不同。
+3. ★★★ **「上游出现量化关键字 = H3 有进展」是误读源**（K229）。sd.cpp 同日 `#2436`（LTX INT8 ConvRot 载入修复）与 `#2435`（W4A8 复用 INT8 GEMM）标题都带量化词，但**都只服务 LTX / 通用路径**。⇒ 上游生态的「量化词」与「H3 能力」必须分开记账。
+
+**印证**
+
+- ★★ **K211 的失效形态扩到三档**：K211 = **整件拒载**（前缀 / 曲线表）；K221 = **部分静默**（只有 final_layer 一支落空，且它在 `bind()` 枚举路径之外）；K222 = **选择不确定**（可能绑一半）。**后两档日志更安静**。
+- ★★ **「预烘 AdaLN」已成路线而非个例**（K226）：三家三种布局——K210 WaveCut（宽 8 one-hot 时编码）、K205 `adaln_affine`（`adaln_basis [8,2688]`）、VDN（每步调制向量 32256 = 5376×6）。⇒ 本机若要支持，「先约定认哪种」比实现更贵。
+- ★★ **K187 的 shift 12/3 得到第三方独立复现**（K224）：`ss_minimax_h3_shift_video 12.0` / `shift_audio 3.0`，来自一个 200 模块 rank16 的小 LoRA 训练者，而非官方 PR。⇒ **shift 12 已是社区默认，不是单点口径**。
+- ★ **`kKohyaPrefix` 通路确实是「能读」**（K224/K225）：两个纯 kohya 文件（600 tensors 各）与本机 `runtime-lora.cc:100-124` 的三拼写支持逐条对上；反过来说明 K221 的问题**不在 kohya，而在「混合」**。
+
+#### 18.42.4 本轮实验
+
+**无生成实验，仅零下载读头**：9 次 Range 请求（K221 主头 + 2 次切片、K222 合并、K223 合并、K224、K225、K226 两次（bundle/READY + 表头）、K228 两个精度版本），磁盘占用 0，累计约 **12 min**。
+
+**不跑 P44 的理由（本轮理由与前两轮不同，更强）**：
+
+1. **时间**：00:30 起动，检索阶段到 01:10 已用 **40 min**（镜像变慢 + 3 次直连各白等 15–25 s）。P44 = 10.96 GiB + 818 MB（约 25 min）+ 改 shift + 124 帧生成（约 29 min）≈ 55 min，**必挤掉两份报告与 sync/release**。
+2. **本轮价值在「判新形态」**：K221/K222 直接说明**社区最新那批 8 步 LoRA 在本机可能只绑一半，且不确定绑哪一半**——而这批正是 P44 的选件池。**在拼写不确定性排除前跑 P44，等于在不可复现的配置上取数**。
+3. **磁盘 38 GiB**：下 11.8 GiB 后余 26 GiB，**技术上可行**，纯时间问题。
+
+#### 18.42.5 技能包 / 脚本修改
+
+- **技能包（双源已对齐，逐字节校验通过）**：
+  - `vpipe-model-prepare/references/768p-adapters.md`：**71,575 → 80,061 B**（+8,486），新增「第 33 轮（2026-11-27 00:30）—— 加速 LoRA 的第五种形态：`reshape_weight` 补丁型 + 混合因子拼写」8 小节（K221/K222/K223/K224/K225/K226/K227/K228）。
+  - `vpipe-model-prepare/references/h3-ecosystem-map.md`：**50,542 → 53,433 B**（+2,891），新增「第 33 轮增补——生态快照第 9 日 + 三条新支线」。
+  - 两侧 `shasum -a 256` 前 10 位一致：`768p-adapters.md c16363d083`、`h3-ecosystem-map.md 7483e9e73a`。
+- **脚本**：未修改。`nightly_guard.sh` / `nightly_sync.sh` 均原样运行。
+- **记忆更新**：`project_search-channels.md` 的「权重/读头一律走 `huggingface.co` 直连」**本轮被实测推翻**，需改为「镜像优先」（见 18.42.6 坑②）。
+
+#### 18.42.6 踩坑与结论
+
+**坑①（新，最重要）：`tensor_names()` 的返回序 ≠ header 字节序。**
+`MetalLlamaWeights::_tensors` 是 `std::unordered_map`（`metal-llama-weights.h:296`），`tensor_names()` 只做 `for (kv : _tensors) names.push_back(kv.first)`（`:741-747`）⇒ 返回序与文件写入序**无关**。因此**读头脚本看到的「第一个因子张量」不能用来推断本机实际会选哪种拼写**；要判必须真机跑两遍并比 `modules` 计数。本轮 K222 的「kohya 在 header 里排第 54、peft 排第 60」只能说明**文件写入序**，不能说明绑定结果。
+
+**坑②（新）：HF 直连全域不可达，而镜像的 `resolve` 完全可用 —— 与既有分流规则相反。**
+实测 `huggingface.co` 的 `api/models` / `api/models/<id>` / `resolve/main/*` 全部 `000`（DNS 解析到 `157.240.13.8`，TCP 无响应）；`hf-mirror.com` 同路径 **200 / 2.2 s**，`resolve` 带 `-r 0-7` 返 **206** 且首字节正确（`98 4e …` = header 长 0x4e98）。⇒ 记忆 `project_search-channels` 里「权重与读头一律走直连、镜像只用于搜索与 tree」**在本轮不成立**，应改为「**镜像优先，直连作 fallback**」。
+
+**坑③（新）：`resolve` 必须带 `-L`，且小文件会忽略 Range。**
+镜像的 `resolve/main/<file>` 会 302 到 `api/resolve-cache/...`；不加 `-L` 只得 302 空体。加了 `-L` 后 Range 正常（大文件 206）。但 `README.md` 这类小文件走同一路径会**忽略 Range 返回整个 200 全量**（7,810 B / 38,767 B 实测）——**别用 Range 是否生效来判断「是不是分段下载」**。
+
+**坑④（新）：`api/models/<id>` 不返回 `siblings[].size`（全为 `None`）。**
+体积只能靠 `curl -sIL | grep -i content-length`（本轮 6 个文件全用此法：596,446,800 / 298,261,224 / 95,858,352 / 47,958,296 / 1,725,921,392 / 1,723,713,944）。⇒ 「按体积筛候选」要在 HEAD 请求上做。
+
+**坑⑤（复现）：`000` 不等于 404。**
+直连失败时 `curl` 返回 `000`，`%{time_total}` 恰好等于超时值。若只看 `000` 容易误判「仓不存在 / 文件被删」。⇒ 见 `000` 先用同一路径打镜像，再判内容层问题。
+
+**坑⑥（复现）：`reshape_weight` 这类「元数据张量」在 header 里长得像权重。**
+`I64 [1]` / `[2]`、`data_offsets` 只有 8/16 字节。若把它们算进「tensors 数」，会把 4 个元数据当 4 个模块。本轮 578 = 258×2(A/B) + 50(diff_b) + 4(reshape_weight) + 8(final_layer 因子) ——**总数不整齐，只能逐类计数，不能靠总数反推**。
+
+**结论（三条）**
+
+1. **「社区最新」≠「本机可评估」**。本轮四个新件里，**两个可读**（Variable-Clock、ReFrame）、**一个部分静默**（Vantage acc LoRA）、**一个无通路**（VDN bundle）。判据仍是**文件形态**，且现在需要第三档：「绑定是否确定」。
+2. **alpha 体检要读自然语言**。数字（`alpha` / `lora_alpha`）只给乘数；`conversion` 里的 `folded into` / `projected to` 才说明语义。第五态出现后，**只看数字的体检不完整**。
+3. **P44 的选件必须避开混合拼写件**。这不是新增工作量，只是换文件名——Kijai W4A8 + Fusion `lite_r32` 都是纯 peft、alpha==rank。
+
+#### 18.42.7 下一步
+
+- **P44（前置 3 条）**：① 下 `Kijai/…:minimax_h3_ref2va_pruned_w4a8_mixed`（11,770,657,048 B）+ `Fusion:pruned/…_4step_v1.0_lite_r32_pruned_comfyui`（818,925,468 B）；② `video_shift 6.0 → 12.0`；③ **避开 `vantagewithai` 的 `Acc-8Step_pruned_comfy`**（K221/K222）。建议排给有完整 90 min 窗的槽位。
+- **P51（新，中）混合拼写容错**：`resolve_()` 对 A/B 各试两种后缀（或 `index_suffix_()` 取多数拼写），消除 `unordered_map` 序依赖。改动小，收益是**让社区最新 8 步 LoRA 可评估**。
+- **P52（新，低）像素头通路**：92 tensors / 95.9 MB，但需 `x0_hat_vid_1x2x2` 这类内部张量 hook 点，**本机无接入点**，只记存在性。
+- **P48 / P47 维持**：VAE int8 仍是「错值」级缺口；三处盲区之外本轮新增「部分静默（`reshape_weight`）」，warning 至少要覆盖 `_skipped` + 未识别后缀两类。
+- **P43（仍未建）`safetensors-peek.py`**：**第五项需求**——把 `conversion` 这类自由文本按 `;` 拆成语句，并标出 `folded into` / `projected to` 等「语义已改」的声明。
+- **SOP（仍未改）**：累计 **7 条**待写入（HF 搜索替代 WebSearch / **镜像分流已反转为「镜像优先」** / commits 端点 301 走 `repositories/<id>` / `.alpha` **五态**体检 / tree 的 `lastModified` 缺失 / raw README 走直连 / **`tensor_names` 无序 + `resolve` 需 `-L`**）。

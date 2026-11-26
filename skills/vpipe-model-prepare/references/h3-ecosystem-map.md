@@ -534,3 +534,17 @@
 - ComfyUI：`f40a4fbb` frontend 1.59.15 / `a2103ae6` Meshy / `b27006af` Recraft，无 H3。
 - LightX2V：`83a424a`（README 文案）。
 - 社区新仓：`SOLRICKS/3D-Animation-Style-MiniMax-H3`（rank16 step1250 LoRA + 5 份 V3 workflow）、`Coffmeteor/MiniMaxH3-Realism-Turbo-Remix`（908 dl）、`pmczip/MiniMaxH3_RefMod`（1,634 dl）。
+
+## 第 33 轮增补（2026-11-27 00:30）—— 生态快照第 9 日 + 三条新支线
+
+- **上游仍静默第 9 日**：HEAD `a6a1f53`（`author.date 2026-11-23T09:54:27Z`、`pushed_at 11-23T11:20:51Z`）、release **v0.1.110**（11-01，落后 **26 天**）、issue **14 全开**（#59/#58/#56/#55 仍 0 评论）、**PR 0**、**274 star（+1）/ 27 fork / 36,920 KB**。
+- **LightX2V 单日 3 条但全非 H3**：`1e912006` LongCat-Video-Avatar 1.6（#1762）、`d9b1099d` Seed-VC 原生音频转换（#1758）、`239537fc` YuE2 音频生成（#1755）⇒ H3 主线仍是 `7fc25cd`（#1730，11-25）。
+- **sd.cpp 单日 5 条，H3 零**：`e637c7bc` server Web UI（#2437）、**`ea3f6ec7` LTX INT8 ConvRot 载入修复（#2436）**、**`6b51a955` W4A8 复用 INT8 GEMM（#2435）**——两条量化基础设施改动**只服务 LTX/通用路径**，H3 相关仍停在 11-25 `5fa203c` ClipProj(no mlp)。
+  - ⚠️ 注意别误读：`#2436 / #2435` 的「INT8 ConvRot / W4A8」**不是** H3 支持，别当成 H3 量化进度。
+- **ComfyUI 零 H3**：`8b0f1071` VBAR pins（#17837）、`4a4b3409` Seed/OpenRouter 节点迁移、`ef507153` TextGenerateV2 流式预览。
+- **ModelScope**：`lightx2v/Minimax-h3-Turbo` 仍 **31 项**（与上轮同）——本轮镜像直连 `huggingface.co` 全域不可达（见下「踩坑」），ModelScope 侧未再逐项复核。
+- **新支线 ①「预烘 AdaLN 表」第三家**：`OpenVDN/vdn-minimax-h3-edge`（`freevideo-fp8-variants-v1`，535 payload 全校验），`adaln-tables-v2-*` 每文件 8 个 `step_N BF16 [6|9, 32256]`。与 K210（宽 8 one-hot）、K205（`adaln_basis [8,2688]`）并列，**三种互不兼容布局**；本机一种都不认。
+- **新支线 ②「三件套交付」**：`vantagewithai/MiniMax-H3-comfyUI-GGUF`（11,153 dl / 28 like）= 22 个 GGUF（fl2va/ref2va × 11 档）+ 4 个 8 步 acc LoRA + 7 份 workflow。社区交付单位从「一个权重」变成「权重+LoRA+workflow+注意力补丁」。
+- **新支线 ③「像素头」**：`pocis/MiniMax-H3-Video-PixelHead`（92 tensors / 95.9 MB F32，`eval_psnr_db 31.97`，作者自标 `experimental_preview_v0.2.0_not_recommended_for_production`）——DWD 路线的首个推理侧实现，本机无通路。
+- **编辑型 LoRA 扩支**：`VoidEclipseAI/MiniMax-H3-ReFrame-VideoInpainting-LoRA`（596 MB，画布内重绘）、`Uhvg856/MiniMax-H3-Person-Remover-LoRA`、`Uhvg856/MiniMax-H3-Character-Swap-LoRA`、`ausboss/MiniMax-H3-Image-Outpaint-LoRA`（13 like）⇒ 「人物/物体级编辑」已成独立品类。
+- **检索通路退化（新）**：本轮 `huggingface.co` **全域超时**（DNS 解析到 157.240.13.8，TCP 无响应，`api/models`、`resolve` 均 `000` 25 s 超时）；`hf-mirror.com` 的 **`resolve` + Range 完全可用**（返回 206 与正确首 8 字节）。⇒ 读头可全部走镜像，不再依赖直连。

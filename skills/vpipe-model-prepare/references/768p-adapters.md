@@ -1008,3 +1008,98 @@ ModelScope `lightx2v/Minimax-h3-Turbo` 现有 **31 个文件 / 27 个 safetensor
 - **本机 VAE 契约**：`linear_()` 读 **`.scales` + `.biases`**（仿射量化；`_quant_bits` 4/8、`_quant_group` 默认 64，来自 config 的 `quantization.{bits,group_size}`），**不认** ComfyUI 的 `weight_scale` / `comfy_quant`。
 - **⇒ 失效形态**：`_quant_bits == 0` 时直接走 dense 路径拿 I8 张量 → **把整数码当像素值 → 画质崩塌且无错误日志**。比 K199（LoRA 因子静默 `_skipped`）更危险。
 - **P48**：① `linear_()` 加 comfy 命名分支；② 转换脚本解成 BF16（lite VAE 只 1.04 GB → 解出约 4 GB，本机可接受）。
+
+---
+
+## 第 33 轮（2026-11-27 00:30）—— 加速 LoRA 的第五种形态：`reshape_weight` 补丁型 + 混合因子拼写
+
+> 来源：HF 镜像 API + `resolve` Range 读头（8 次）+ 本机 `repo/vpipe` 源码交叉核对。社区二手源（README 自报指标）一律标「待复现」。
+
+### 1）★★★ `PDD head bank` + `reshape_weight`（Vantage Acc-8Step 家族，**本机不绑**）
+
+- `vantagewithai/MiniMax-H3-comfyUI-GGUF:loras/MiniMax-H3-Ref2VA-Acc-8Step_pruned_comfy.safetensors`
+  = **1,725,921,392 B / 578 tensors**（`FL2VA` 版 1,723,713,944 B）。
+- `__metadata__` 原文（逐字）：
+  `conversion = "qkv block-diag fused; mlp.fc1 swiglu halves swapped; alpha/rank folded into lora_B;
+   PDD head banks as base-relative pad-and-add reshape_weight LoRA (strength interpolates toward base);
+   adaln projected to curve basis"`，另 `lora_alpha 64.0 / lora_rank 64 / lora_targets
+   to_q,to_k,to_v,to_out.0,ff.net.0.proj,ff.net.2,adaln_proj.linear / pdd_block_size 4 / pdd_num_steps 32`。
+- **4 个 `I64` 张量**：`final_layer.{video_out,audio_out}[.bias].reshape_weight`（`[1]` / `[2]`）——
+  这是**元数据型张量**（记录目标 shape），不是权重。
+- **本机 grep `reshape_weight` 全树 = 0**（第 33 轮复核仍为 0）；`is_aux_name()` 也不列它。
+  ⇒ `final_layer` 上的「pad-and-add 全秩 LoRA」（`lora_down [3072,5376]` + `lora_up [3072,3072]`，**rank 3072 = 满秩**）**不会绑定**。
+- **与 K211 的区别**：K211 是「整件被前缀/曲线表判据拒掉」，本件**前缀与 `adaln_t_table` 侧完全可读**，
+  只有 `final_layer` 这一支落空 ⇒ 属「**部分静默**」，日志里 `_modules` 计数正常、`_skipped` 未必涨（`final_layer` 不在 `bind()` 的枚举路径上）。
+
+### 2）★★★ 混合因子拼写：同一文件里两种命名并存（新坑）
+
+- 本件 `final_layer.*` 用 **kohya** 拼写（`.lora_down.weight` / `.lora_up.weight`），
+  `blocks.*` 与 `token_refiner.*` 用 **peft** 拼写（`.lora_A.weight` / `.lora_B.weight`）——258 对 A/B 全在 blocks/token_refiner。
+- 本机 `Adapter::index_suffix_()`（`shared/runtime-lora.cc:308-330`）**取到的第一个因子张量**就决定整文件拼写，
+  而 `tensor_names()` 来自 `std::unordered_map`（`metal-llama-weights.h:296`）⇒ **顺序不确定**。
+- 后果分两种：
+  - 若先扫到 `lora_A` → blocks 全部绑定，`final_layer` 的 4 对（lora_down/up）落空；
+  - 若先扫到 `lora_down` → `lora_B` 后缀算成 `lora_up`，**258 对全部失配**（只剩 4 对生效）。
+- ⇒ **判据不能写「一定失败」，只能写「可能只绑一半，且哪一半取决于 unordered_map 迭代序」**。
+  真机验证要在同一 build 上跑两遍（不同进程）看日志 `modules` 计数是否一致。
+- **文件的 header 写入顺序**（`final_layer` 在前、`blocks` 在后）**不等于** `tensor_names()` 的返回顺序，
+  两者不能互推。
+
+### 3）★★ alpha 的第五种现场：metadata 明写「已折进 lora_B」
+
+- `lora_alpha 64.0` + `lora_rank 64` ⇒ `mul = 64/64 = 1.0`，恰好无害。
+- 但 `conversion` 里写着 **`alpha/rank folded into lora_B`** ⇒ 因子本身已是训练强度。
+- ⇒ **换槽体检加第 5 项**：读 `__metadata__.conversion`（或同义的自由文本），
+  看是否声明「已折叠」。**只看数字会在 alpha ≠ rank 的文件上双倍施加**。
+
+### 4）★★ 可读对照组：RunF / Variable-Clock（kohya 拼写，契约内）
+
+- `MATLOWAI/MiniMax-H3-Variable-Clock:minimax_h3_variable_clock_runf_step2000_r16.safetensors`
+  = **298,261,224 B / 600 tensors / 全 F32**，200 个模块 ×（`lora_unet_<flat>.alpha` + `.lora_down.weight` + `.lora_up.weight`），rank 16。
+- 训练元数据成体系（musubi/sd-scripts 风格，`ss_*` 键）：`ss_minimax_h3_shift_video = 12.0`、
+  `shift_audio = 3.0`、`task = t2va`、`base_family = fl2va`、`motion_clock = per_item_physical_fps_v1+motion_time_spans_v1`、
+  `motion_keep_bands = 2`、`native_anchor = frozen_base_conditional_video_v1`（weight **30.0**，replay prob 0.1）、
+  `guidance_loss_scale = 4.0`（audio 同）、`sigma_min = 0.15`、`lr 5e-5 / constant_with_warmup / warmup 10`、
+  `23 epoch × 84 items / 2000 steps / seed 20260923`、`ss_sd_model_name = minimax_h3_fl2va_pruned_bf16.safetensors`。
+- **本机可读**（`kKohyaPrefix = "lora_unet_"` + `lora_down/lora_up` 三拼写支持，`runtime-lora.cc:100-124`），
+  且 `shift_video 12` 与 K187 官方 Ref2AV 训练分布一致 —— **是 P44 之后最便宜的「shift 12 + 轻量 LoRA」对照件（298 MB）**。
+- 同仓 `_lateattn` / `_noblock49` 两个变体（消融），另带 `clock_maps/*.json`（长 124 帧 / 短 56 帧的 hold map）。
+
+### 5）★★ 视频重绘（video repaint）LoRA 首次进入清单
+
+- `VoidEclipseAI/MiniMax-H3-ReFrame-VideoInpainting-LoRA:ReFrameVideo-H3-LoRA-v1.safetensors`
+  = **596,446,800 B / 600 tensors / 全 F32**，kohya 拼写、200 模块（50 块 × qkv/out_proj/fc1/fc2）、`200 × .alpha`（F32 标量），top-level 无 module 前缀（`lora_unet_` 直接开头）。
+- 与 K141 Character Swap / K218 Person-Remover 同属「编辑型 LoRA」，但**任务是画布内重绘**（inpainting）而非换人/去人。
+- ⇒ 本机契约内（kohya + 每模块 alpha），**理论可绑**；未实测，标「待复现」。
+
+### 6）★★★ 第三家「预烘 AdaLN 表」：VDN edge fp8 bundle（本机不认）
+
+- `OpenVDN/vdn-minimax-h3-edge`（**9,804 文件**，`READY.json` 报 535 payload 全 sha256 校验）：
+  `format = "freevideo-fp8-variants-v1"`，`per_tensor` 与 `rowwise` 两套缓存。
+- `cache/adaln-tables-v2-*/00.safetensors` 实测：8 个张量 `step_0..step_7`，
+  `step_0 = BF16 [6, 32256]`、`step_1..7 = BF16 [9, 32256]`（`bundle.json`：`channels 5376`、`modality_rows 3`、`components 6`）。
+- 契约名 `minimax-h3-adaln-silu-linear-3x6-v1`，上游 `OpenVDN/vdn-minimax-h3@751739e`。
+- **与本机契约的关系**：本机 pruned 分支要 `adaln_t_table` **`[1025, 8]`**（1025 个时间格 × 8 维曲线），
+  VDN 这里是「**每步直接给调制向量**」（9 行 = 3 modality × 3 分量？），且宽 32256 = 5376×6。
+  ⇒ **形不同族不同**：K210 WaveCut（宽 8 的 one-hot 时编码）、K205 `adaln_affine`（`adaln_basis [8,2688]`）、本件（每步预烘向量）——
+  三家三种布局，**本机一种都不认**。这条工艺线已成事实标准方向，但**没有收敛到统一格式**。
+
+### 7）★★ 生态形态变化：从「单件」到「三件套」
+
+- `vantagewithai/MiniMax-H3-comfyUI-GGUF`：fl2va / ref2va 各 **11 档 GGUF**（Q3_K_M … Q8_0）+ **4 个 8 步 acc LoRA**（comfy / pruned_comfy × fl2va / ref2va）+ **7 份 workflow**，11,153 dl / 28 like（本周最高）。
+- workflow 默认：`UNETLoader` 用 `minimax_h3_fl2va_pruned_int8_convrot.safetensors` 与 `UnetLoaderGGUF` 二选一、
+  `BasicScheduler simple / 20 步 / denoise 1`、`KSamplerSelect euler`、
+  `PathchSageAttentionKJ`、`SolAttnPatch`（`0.1 / 0.88 / 4096 / "39-42"`）、`SpectrumApplyMiniMaxH3`（4 组 0.5/1/0.1/2/0.75…）。
+  ⇒ 社区把「量化权重 + 加速 LoRA + 注意力补丁 + workflow」打包交付；**单件评估的时代基本结束**。
+
+### 8）★ 像素头（DWD 路线）首次带 PSNR 指标，但本机零通路
+
+- `pocis/MiniMax-H3-Video-PixelHead:minimax_h3_video_pixel_head.safetensors`
+  = **95,858,352 B / 92 tensors / 全 F32**（bf16 版 47,958,296 B）。
+- metadata：`arch = minimax_h3_video_pixel_head_v2`、`base_model = Comfy-Org/MiniMax-H3`、`d_feat 5376`、`d_lat 96`、
+  `depth_s4/s8/s16/s32 = 1/2/2/2`、`frame_per_token = "1,4,4,4,4"`、`latent_input = "x0_hat_vid_1x2x2"`、
+  `out_channels 3`、`width 768`、`teacher_vae = minimax_h3_video_vae_int8_convrot.safetensors`、
+  **`eval_psnr_db = 31.97`**、`rollouts 1800`、**`release_status = "experimental_preview_v0.2.0_not_recommended_for_production"`**（作者自标不宜生产）。
+- **本机 `pixel_head` / `pixelhead` 全树 grep = 0** ⇒ 无通路。但它是**第一条带可复现指标的 DWD 实现**
+  （K129 的 DWD 是上游训练侧能力，这里是推理侧像素头）：31.97 dB 可作为「免 VAE 解码」的量化参照线。
+- 前缀：`entry_norm / feat_norm / feat_proj / lat_proj / norm_out / out_proj` —— **极小的独立网络**，不是 DiT 的一部分。
