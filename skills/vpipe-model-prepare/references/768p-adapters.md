@@ -1103,3 +1103,71 @@ ModelScope `lightx2v/Minimax-h3-Turbo` 现有 **31 个文件 / 27 个 safetensor
 - **本机 `pixel_head` / `pixelhead` 全树 grep = 0** ⇒ 无通路。但它是**第一条带可复现指标的 DWD 实现**
   （K129 的 DWD 是上游训练侧能力，这里是推理侧像素头）：31.97 dB 可作为「免 VAE 解码」的量化参照线。
 - 前缀：`entry_norm / feat_norm / feat_proj / lat_proj / norm_out / out_proj` —— **极小的独立网络**，不是 DiT 的一部分。
+
+## 第 34 轮（2026-11-27 02:30）—— 量化从「整件一种格式」进入「逐投影混合格式」+ 文本编码器第三条路（零梯度闭式投影）
+
+### 1）★★★ 首个「NVFP4 + INT8 ConvRot」**逐投影混合**的 H3 DiT（pi-H3 4 步）
+
+- `Maximilian228/MiniMax-H3-pi-H3-NVFP4-GPTQ`（2026-11-26，0 dl / 0 like，README 自述面向 RTX 50 系 Blackwell）：
+  - `diffusion_models/minimax_h3_fl2va_pruned_pih3_4step_nvfp4_fc2int8_gptq_bf16cal.safetensors`
+    = **14,302,909,922 B（13.3 GiB）/ 1,082 tensors**；`loras/pi_h3_4step_dwd_head_gptq_int8` = **642,352,928 B**；
+    `text_encoders/qwen3vl_32b_minimax_h3_nvfp4_gptq` = **16,461,056,970 B**。
+  - 逐投影 dtype 实测（50 块全同）：`qkv_proj / out_proj / fc1` = **U8 350** + `weight_scale` **F8_E4M3 [N,336]**（swizzled，N 行补 128、336 = (K/16=168)/4×4 补齐）+ `weight_scale_2` **F32 标量**；
+    `fc2` = **I8 50 + U8 50** + `weight_scale [5376,1]`（逐行）；`adaln_proj.linear` 全 **F32 [96768,8]**；norm 全 BF16。
+  - `comfy_quant` 原文两种：`{"format":"nvfp4"}`（qkv/out/fc1）与 `{"format":"int8_tensorwise","convrot":true,"convrot_groupsize":256}`（fc2）。
+  - metadata `quantization` 自述：`gptq`、`nvfp4 w4a4 + int8 convrot w8a8 for fc2`、Hessian 取自 **BF16** 基座 + BF16 pi-H3 适配器、在**真实 4 个采样步**上采 16 段 ×5 s（两遍）——**不是从已量化模型再量化**。
+  - 命名是**原生名**（`blocks.* / token_refiner / condition_proj / video_patch_proj / audio_patch_proj / final_layer` + `adaln_t_table [1025,8]`），
+    不是 diffusers 的 `transformer_blocks.* / context_embedder` ⇒ 走本机「comfy_saved」判据（`adaln_t_table` + `blocks.0.attn.qkv_proj.weight`）**两条都满足**。
+- **本机判定分两层（重要，别混）**：
+  1. **源码层**：`fp8::scan(src,&m->_f8,&err,/*int8=*/true,/*nvfp4=*/true)`（`metal-minimax-h3-transformer.cc:5715`）本身认 NVFP4，
+     `resolve_nvfp4_(...,/*comfy=*/true)` 也已处理 cuBLAS swizzled 补齐（`fp8-layout.cc:225-250`）；fc2 的 int8+convrot 逐行 scale 也被 `per_row` 分支接受（`:430-455`）。
+  2. **已发布二进制层**：App `0.1 (9db5dd7*0)` 的 `libvpipe.0.dylib` 里 **`nvfp4_dequant` 命中 0 次**（同包里 `w4a8_to_i8` / `h3_adaln_pruned_f16` 都有），
+     而 kernel 源 `build/apple-silicon/metal-compute/affine_dequant_embed.cc.metal:2408` 是存在的 ⇒ **该件在本机是「kernel 缺席」拒载，不是「格式不认」**。
+     同一 dylib 里只有两条 NVFP4 相关文案，都是 `second-stage scale (NVFP4 / AWQ-style) ... does not read` ⇒ 现役版本连「NVFP4 widening」这条路都还没有。
+- ⚠️ **口径纪律**：`w4a4` 的激活侧精度是 README 的说法，未验证；本机没有 Blackwell，也**不能**用 `w4a8_to_i8` 冒充 NVFP4 通路。
+- 作者自报速度（**二手，待复现**，RTX 5090 32 GB，1344×768/24 fps/带音频）：4 步 5 s ≈ **12.5 s**、10 s ≈ 27.5 s；教师强制逐步骤误差 0.53/0.33/0.20/0.13、末步像素 PSNR **31.7 dB**（BF16 自比噪声地板 33.4 dB）。
+
+### 2）★★ pi-H3 的 DWD 像素头是**可独立量化的第二个单元**（本机 `dwd` 全树 0 命中）
+
+- `loras/pi_h3_4step_dwd_head_gptq_int8.safetensors` = **171 tensors**（F16 75 / F32 32 / I8 32 / U8 32），
+  前缀**全部** `dwd_pixel_refiner.*`（169）+ `dwd_norm_out.*`（2），**没有任何 `lora_*` / pi-H3 适配器其余张量**——README 称「其余部分已并进 DiT」。
+- 结构：`feature_expand.{weight,bias}`、`first_frame_proj_out.*`、`register_tokens`、`blocks.N.{attn.to_qkv,attn.to_out,ff.w1,ff.w2}.weight(+weight_scale)`、`norm_out.*`、`proj_out.*`。
+- **本机整树 `dwd` grep = 0**（`_step_out` 是「多步输出头」的数组，只有 `Linear w/b`，不是像素 refiner）⇒ 与 K228 的 `pocis` 像素头**拓扑与命名都不同**，
+  这是 DWD 推理侧的**第二份互不兼容实现**：`entry_norm/feat_proj/lat_proj`（92 tensors）vs `feature_expand/first_frame_proj_out/register_tokens`（171 tensors）。
+  ⇒ 结论升级：DWD 推理侧**格式尚未收敛**，本机 P52 从「等一个实现」变成「至少两家不一致，不宜私接」。
+
+### 3）★★★ 文本编码器第三条路：**零梯度闭式投影**（Plato's Key / Ridge），单件 20–105 MB
+
+- `Alissonerdx/TE-PK-Minimax-H3`（2026-11-26 18:06，0 dl）：把 Qwen3.5-0.8B/2B/4B/9B、Qwen3.8-27B、Gemma-4 E2B/E4B/12B/31B
+  直接映到 H3 原生 **5,120 维**空间，方法为**闭式 Ridge**（`(XᵀX+λI)⁻¹XᵀY`）或 Procrustes，**无梯度、无 LoRA、无 MLP**；
+  配套 `ComfyUI-H3-Text-Encoders` 节点。单件 20.0 / 40.0 / 50.0 / 80.0 MB（Qwen3.5 四档）。
+- 实读一件（`qwen3.5/minimax_h3_32b_pk_ridge_qwen3.5_9b`，header 1,032 B，5 个张量）：
+  **`R F32 [4096,5120]` + `donor_mean [4096]` + `target_mean [5120]` + `scale [1]`**，
+  metadata `format=platos_key_v2_ridge`、`lambda 1`、`tap_layer -1`、`align_mode token`、`corpus_prompts 800`（90/10 held-out）、`num_samples 146674`。
+- ⚠️ **与本机 connector 契约不对应**（`minimax-h3-text-encoder.cc:655-690`）：本机要 **6 个 F32**——`input_mean / input_std / proj.weight / output_mean / output_std / sink_embedding`，
+  运算为 `(x−μ)/σ → proj → ×out_std + out_mean`，且**第 0 行输出被 `sink_embedding` 顶替**（`:854-901`）。
+  TE-PK 只有 4 个张量、**无 std、无 sink**、数学是 `(x − donor_mean)·R·scale + target_mean` ⇒ **属另一种 connector 方言**，不能直接塞进现契约目录。
+- ★★★ **该仓自身的数字互相矛盾（必须记）**：README 表格写 Qwen3.5-9B **cosine 0.9626 / R² 0.9935**，safetensors header 也是 0.962549 / 0.993465，
+  但同仓 `metrics.json` 对**同一文件**给的是 `val_cosine_mean 0.890825` / `val_r2 0.037135`（8 个 key 的 R² 全在 0.03–0.11）。
+  ⇒ 「R² 0.99」与「R² 0.037」相差两个数量级，**README 的 R² 口径不可引用**；cosine 也差 0.07。**标「待复现」，不并入能力**。
+- 定位：与 K190（sd.cpp ClipProj，1 个 MLP 投影）、K202（Qwen3.5-9B + rank32 LoRA，成片 PSNR 14.8 dB）并列，是**第三条换编码器路线，且唯一「工件只有几十 MB」的一条**。
+
+### 4）★★ 社区「LoRA 已并进基座」的 pruned 全量件：**具体卡在 `time_embedder.table` 这个名字上**（K204 的定位收窄）
+
+- `ibyteohdear/MiniMax-H3-Pruned-{DMD-FL2VA-Turbo,LightX8-hybrid}-Fused`（11-26 各 497 / 502 dl）：
+  各 **4 分片**，全量枚举 **637 tensors / 50 块（0–49）**，dtype 仅 F32 + BF16。
+- 块内后缀只有 12 种：`adaln_proj.{linear.weight, folded_bias}`、`attn.{to_q,to_k,to_v,to_out.0, norm_q,norm_k, out_proj}`、`ff.net.{0,2}.{proj,weight}`、`norm1/norm2`。
+- 顶层：`time_embedder.table F32 [1025,8]`（**不是** `adaln_t_table`）、`context_embedder.weight BF16 [5376,5120]`、
+  `transformer_blocks.0.adaln_proj.{linear.weight BF16 [96768,8], folded_bias F32 [96768]}`、`norm_out.folded_bias [10752]`、`token_refiner.refiner_blocks.0.attn.to_q.weight [7168,5376]`。
+- **本机精确失败点**：`is_diffusers_layout` 三条判据**全满足**（`adaln_proj.linear.weight` + `refiner_blocks.0.attn.to_q.weight` + `context_embedder.weight`），
+  于是 `translate_diffusers` 启动 → `untranslatable_tensor()` 撞上 **`time_embedder.table`**（`native_()` 只映射 `time_embedder.linear_1./linear_2.`，`table` 无映射）⇒ 翻译返回 0、整文件保持原名。
+  再加一层：它本就是 **diffusers 分片目录**（`diffusion_pytorch_model-0000N-of-00004` + `model_index.json`），本机 `WeightSet::open` 不读目录。
+  ⇒ **「名字缺一个映射」+「目录形态不支持」双重阻断**，`folded_bias` 全树 grep 亦为 **0**。
+
+### 5）★ P44 选件再确认（大小与 4/8 步关系）
+
+- ModelScope `lightx2v/Minimax-H3-Turbo-Fusion`（48 项，2026-11-24 18:49 UTC 更新）`pruned/` 下：
+  `…fusion_4step_v1.0_lite_r32_pruned_comfyui` = **818,925,468 B**、`…fusion_8step_v1.0_lite_r32_pruned_comfyui` = **818,925,468 B**（**同字节**）、
+  `…_4step_v1.0_pruned_comfyui` = 5,220,193,444、非 pruned 全量 3,778,242,236 / lite 665,148,804。
+  ⇒ 4 步与 8 步的 lite_r32 pruned 档**字节数完全相同（818,925,468 B）**，但**未核 sha256**，故只能说「体积同尺寸、疑似同构」（K151 的 4 步家族是 sha 各异 + 字节同构）。
+  P44 取 4 步档即可；8 步档是否可原槽互换**待 sha 复核**，不额外下载。

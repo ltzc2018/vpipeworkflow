@@ -548,3 +548,45 @@
 - **新支线 ③「像素头」**：`pocis/MiniMax-H3-Video-PixelHead`（92 tensors / 95.9 MB F32，`eval_psnr_db 31.97`，作者自标 `experimental_preview_v0.2.0_not_recommended_for_production`）——DWD 路线的首个推理侧实现，本机无通路。
 - **编辑型 LoRA 扩支**：`VoidEclipseAI/MiniMax-H3-ReFrame-VideoInpainting-LoRA`（596 MB，画布内重绘）、`Uhvg856/MiniMax-H3-Person-Remover-LoRA`、`Uhvg856/MiniMax-H3-Character-Swap-LoRA`、`ausboss/MiniMax-H3-Image-Outpaint-LoRA`（13 like）⇒ 「人物/物体级编辑」已成独立品类。
 - **检索通路退化（新）**：本轮 `huggingface.co` **全域超时**（DNS 解析到 157.240.13.8，TCP 无响应，`api/models`、`resolve` 均 `000` 25 s 超时）；`hf-mirror.com` 的 **`resolve` + Range 完全可用**（返回 206 与正确首 8 字节）。⇒ 读头可全部走镜像，不再依赖直连。
+
+## 第 34 轮增补（2026-11-27 02:30）—— 生态快照第 10 日 + sd.cpp 换编码器双向推进
+
+### 上游与三条相邻线（逐日复查，本轮为**有增量**的一次）
+
+- **vpipe 上游：第 10 日静默（零增量）**。HEAD 仍 `a6a1f53`（`author.date 2026-11-23T09:54:27Z`、`committer.date 11-23T11:14:45Z`、`pushed_at 11-23T11:20:51Z`）；
+  release 最新仍 **v0.1.110**（11-01）⇒ **落后 26 天**；issue **14 全开**（#59/#58/#56/#55 的 `updated_at == created_at`、0 评论）；
+  **PR total_count = 0**；**274 star（与上轮同）/ 27 fork / 36,920 KB**。
+- ★★ **sd.cpp 出现本轮唯一的实质增量（换编码器线双向推进）**：
+  - **`439e77a5` PR #2424「support `-mlp` variants of ClipProj-MiniMax-H3」已于 2026-11-26T13:12:17Z 合入**——补上了 #2410（11-24，no-mlp）的缺口，
+    现在 `mmh3-8b-ClipProj` / `-mlp` / `v3.1` / `v3.1-mlp` **四种 connector 全支持**（含 linear+mlp refiner 与纯 mlp）。
+    ⇒ **K190/K202 里「sd.cpp 也不支持带 MLP 残差变体」这条前提被上游推翻**；本机 `minimax-h3-text-encoder.cc` 的 connector 契约仍是 6 张量「无 MLP」式（`:655-690`），
+    因此 **P46 的对手（sd.cpp）已具备本机没有的能力**，P46 从「跟跑」变成「落后一个变体」。
+  - **`2414`（open，未合）「latent continuation」**：`--save-latent` / `--continue-latent` / `--pin-frames`，从上一段**尾 latent** 续接而非尾**像素**帧
+    （作者说明：像素帧续接有构图漂移、且音轨每段重启）。本机全树 `save-latent|continue-latent|pin-frames` grep = **0** ⇒ 长视频拼接是**新增缺口**（非 H3 独有，但直接影响 >10 s 交付）。
+  - 其余 4 条与前一轮同源、无 H3：`e637c7bc` server Web UI（#2437）、`ea3f6ec7` LTX INT8 ConvRot（#2436）、`6b51a955` W4A8 复用 INT8 GEMM（#2435）、`00a944fd` lingbot rms_affine 融合（#2422）。
+- **LightX2V 单日 4 条，仍全非 H3**：`c1e33b28` intel xpu B70（#1763）、`1e912006` LongCat-Video-Avatar 1.6（#1762）、`d9b1099d` Seed-VC（#1758）、`239537fc` YuE2（#1755）。
+  ⚠️ 组织名是 **`ModelTC/LightX2V`**；`api.github.com/repos/lightx2v/LightX2V` 返回 **404**（不是改名跳转，别当仓没了）。
+- **ComfyUI 零 H3**：`8b0f1071` VBAR pins（#17837）、`4a4b3409` Seed/OpenRouter → Comfy Router（#17960）、`ef507153` TextGenerateV2 流式预览（#17996）。
+- **ModelScope `lightx2v/Minimax-h3-Turbo` 仍 31 项**（README 于 2026-11-24 14:36 UTC 改过文案，权重未动）；
+  **新增复核 `lightx2v/Minimax-H3-Turbo-Fusion` 共 48 项**（2026-11-24 18:49 UTC 一次性上传）：`pruned/` 6 个 safetensors + 非 pruned 6 个 + `assets/`（case1/2 图 + 对比 mp4）+ `configuration.json`。
+- **Comfy-Org/MiniMax-H3**：`lastModified 2026-11-15`、**33,258,212 dl / 2,853 like**（权重仓本身已 12 天未动）。
+
+### 本轮社区面（11-26 单日，与第 33 轮**去重后**的新仓）
+
+> 第 33 轮已记的 `vantagewithai` / `javawock7618` / `pocis` / `OpenVDN` / `MATLOWAI` / `VoidEclipseAI` / `Uhvg856` / `ausboss` / `aevionlabs` / `Infinity-io` / `klassas` / `Jianqiao1` / `Alissonerdx/Qwen3.5-9B` 不再重复。
+
+- `Maximilian228/MiniMax-H3-pi-H3-NVFP4-GPTQ`（**新品类：`pi-H3` 的 NVFP4/GPTQ 落地方案**，含 DiT + DWD 头 + 32B 文本编码器三件，面向 Blackwell）。
+- `Alissonerdx/TE-PK-Minimax-H3`（**新品类：零梯度闭式投影换编码器**，8 个 key、20–105 MB；同作者 `ComfyUI-H3-Text-Encoders`）。
+- `loom-draft/pytraveler-MiniMax-H3-Prompt-Rewriter-Qwen3.8-27B-{FL2VA,Ref2VA}-loom`（**提示词改写器作为独立仓**、F2VA/Ref2VA 双版本）。
+- `ibyteohdear/MiniMax-H3-Pruned-{DMD-FL2VA-Turbo,LightX8-hybrid}-Fused` 更新（497/502 dl；仍是 4 分片 diffusers 目录 + `time_embedder.table`）。
+- `haubnh/FrameRush-Minimax-H3`、`Jim507735/Minimax-H3-LongVideo`（均 3 文件、**无 README**）、`nnndite/minimaxh3image`、`mimba/minimax-h3`、
+  `bp-5193/MiniMax-H3`、`PYTHAI/MiniMax-H3-fork`、`klassas/minimax-h3-loras`、`RunningHubAI/rh-minimax-h3-image-123-1500-lora`（7 个**空壳/占位仓**，0 dl）。
+- ⇒ 与第 33 轮相比，重心从「编辑型 LoRA」转向 **「pi-H3 的量化落地」+「换编码器」** 两条工程线；空壳仓比例明显上升（11-26 单日 30 仓中 ~8 个无内容）。
+
+### 检索通路（本轮复核，含一条新坑）
+
+- `huggingface.co` 仍**全域不可达**：`api/models/Comfy-Org/MiniMax-H3` 与 `api/models?search=` 均 `000`（12.1–12.2 s 恰好等于 `--max-time`）。
+- `hf-mirror.com` 同路径 **200 / 0.76 s**；`resolve/main/<file>` + `-r 0-7` 稳定 **206** 且首字节正确。⇒ **镜像优先**的规则本轮继续成立（第 3 日）。
+- **新坑：镜像上「不存在的文件」返回 404，但存在性判断不能只看 `resolve`** —— 本轮 `Jim507735/Minimax-H3-LongVideo` 的 `README.md` 与随机文件名**都返回 404**，
+  而 `api/models/<id>` 报 3 个 siblings ⇒ 该仓只有 3 个非 README 文件。**判「仓空不空」要看 `api/models` 的 siblings，不要用 `resolve README` 的结果反推**。
+- **新坑：`api/models/<id>` 的 `siblings[].size` 依然全 `None`**（第 3 日复现）；体积只能 `curl -sIL | grep -i content-length`（本轮 6 个文件全用此法）。

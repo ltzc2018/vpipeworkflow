@@ -6314,3 +6314,106 @@ WaveCut 件 `proj_in [16,256]` / `proj_out [8,16]`，而全模型件是 `[5376,2
 - **P48 / P47 维持**：VAE int8 仍是「错值」级缺口；三处盲区之外本轮新增「部分静默（`reshape_weight`）」，warning 至少要覆盖 `_skipped` + 未识别后缀两类。
 - **P43（仍未建）`safetensors-peek.py`**：**第五项需求**——把 `conversion` 这类自由文本按 `;` 拆成语句，并标出 `folded into` / `projected to` 等「语义已改」的声明。
 - **SOP（仍未改）**：累计 **7 条**待写入（HF 搜索替代 WebSearch / **镜像分流已反转为「镜像优先」** / commits 端点 301 走 `repositories/<id>` / `.alpha` **五态**体检 / tree 的 `lastModified` 缺失 / raw README 走直连 / **`tensor_names` 无序 + `resolve` 需 `-L`**）。
+
+### 18.43 2026-11-27 02:30 —— 第 34 轮：★★★ 首个「NVFP4 + INT8 ConvRot」逐投影混合的 H3 DiT（本机受阻于已发布二进制缺 `nvfp4_dequant`，非格式不认）+ ★★★ DWD 像素头第二份实现与第一份互不兼容 + ★★ sd.cpp 合入 `-mlp` 换编码器变体反超本机 + ★★ 零梯度闭式投影换编码器但自报 R² 与自家 metrics.json 差两个数量级
+
+> 本轮由 **P39 launchd + codebuddy 无头 CLI** 执行（slot=02:30，守卫 R=34）。
+> **编号说明**：接 18.42 顺延为 **18.43**（知识编号 **K232–K242**，接上轮 K231）。任务模板里的「18.34」是早期槽位模板残留，实际按主报告顺序递增。
+> **与上轮的关系**：18.42 判的是**文件形态**（LoRA 拼写 / `reshape_weight` 补丁），结论是「社区最新 8 步 LoRA 在本机可能只绑一半」。本轮**换到量化形态与相邻生态线**，四条既有口径被修订：① 「本机不认 NVFP4」必须拆成「源码认 / 已装二进制不认」两层；② 「DWD 像素头等一个实现即可」→ 已有两家拓扑与命名都不一致；③ 「sd.cpp 不支持 `-mlp` 变体」被 PR #2424 推翻；④ 「换编码器只能 LoRA/MLP」被第三条路（闭式投影）打破，但该仓**自己的 README 与 metrics.json 打架**。
+
+#### 18.43.1 检索范围
+
+| 源 | 端点 | 结果 |
+|---|---|---|
+| vpipe 上游 | `commits?per_page=5` / `repos` / `releases?per_page=3` / `search/issues is:issue is:open&sort=updated` / `search/issues is:pr` | **零增量（第 10 日）**：HEAD `a6a1f53`（`author.date 11-23T09:54:27Z`、`committer.date 11-23T11:14:45Z`、`pushed_at 11-23T11:20:51Z`）；release **v0.1.110（11-01）落后 26 天**；issue **14 全开**（#59/#58/#56/#55 `updated_at == created_at`、0 评论）；**PR = 0**；**274 star（与上轮同）/ 27 fork / 36,920 KB** |
+| sd.cpp | `commits?per_page=6` + `pulls/2424` + `pulls/2414` + `search/issues is:pr minimax h3` | ★★ **有增量**：**`439e77a5` PR #2424「support `-mlp` variants of ClipProj-MiniMax-H3」已于 11-26T13:12:17Z 合入**；**PR #2414（open）latent continuation**（`--save-latent`/`--continue-latent`/`--pin-frames`，尾 latent 续接）；其余 4 条无 H3（`e637c7bc` #2437 / `ea3f6ec7` #2436 LTX / `6b51a955` #2435 / `00a944fd` #2422） |
+| LightX2V | `api.github.com/repos/ModelTC/LightX2V/commits?per_page=4` | 4 条全非 H3：`c1e33b28` intel xpu B70（#1763）、`1e912006` LongCat-Avatar 1.6（#1762）、`d9b1099d` Seed-VC（#1758）、`239537fc` YuE2（#1755）。⚠️ `lightx2v/LightX2V` 返回 **404**，正确组织是 `ModelTC` |
+| ComfyUI | `repositories/589831718/commits?per_page=3` | `8b0f1071` VBAR pins（#17837）、`4a4b3409` Seed/OpenRouter → Comfy Router（#17960）、`ef507153` TextGenerateV2 流式预览（#17996）→ **无 H3** |
+| ModelScope | `lightx2v/Minimax-h3-Turbo/repo/files` + `lightx2v/Minimax-H3-Turbo-Fusion/repo/files` | Turbo 仍 **31 项**（README 11-24 14:36 UTC 改文案，权重未动）；**Fusion 48 项**（11-24 18:49 UTC 一次性上传，`pruned/` 6 个 + 非 pruned 6 个 + assets） |
+| HF 社区搜索 | `hf-mirror.com/api/models?search=` × 3 拼写，各 `sort=lastModified&direction=-1&limit=40` | 11-26 单日 30+ 仓（去重第 33 轮后**新品类 2 个 + 无读权重仓 8 个**）；`Comfy-Org/MiniMax-H3` lastModified **11-15**、**33,258,212 dl / 2,853 like** |
+| pi-H3 NVFP4 混合 DiT | `…/Minimax-H3-pi-H3-NVFP4-GPTQ:diffusion_models/…nvfp4_fc2int8_gptq_bf16cal` Range 读头（header 113,136 B）+ 逐层 dtype 归类 + `comfy_quant` 切片 ×2 | **K234/K235**：1,082 tensors、U8 350 / F32 312 / BF16 220 / F8_E4M3 150 / I8 50；qkv/out/fc1 = NVFP4(swizzled 336)、fc2 = INT8 ConvRot 逐行 |
+| pi-H3 DWD 头 | `…:loras/pi_h3_4step_dwd_head_gptq_int8` Range 读头 | **K236**：171 tensors 全 `dwd_pixel_refiner.*` + `dwd_norm_out.*`，无 `lora_*` |
+| TE-PK 换编码器 | `TE-PK-Minimax-H3` 的 `README.md` + `metrics.json` + `qwen3.5/…_ridge_qwen3.5_9b` 读头 | **K237/K238**：5 张量 `R [4096,5120]` + donor/target mean + scale；README R² 0.9935 vs metrics.json 0.0371 |
+| ibyteohdear 融合件 | 4 分片各一次 Range 读头（全量枚举） | **K239**：637 tensors / 50 块 / `time_embedder.table [1025,8]` / `folded_bias` |
+| 本机源码 | `fp8.h:43-73`、`fp8-layout.cc:133/225-250/430-455`、`metal-minimax-h3-transformer.cc:5715/5758-5781/1092/13761`、`minimax-h3-text-encoder.cc:655-690/854-901`、`minimax-h3-diffusers-layout.cc:20-115/179-203`、`build/…/affine_dequant_embed.cc.metal:2408`、`git log -S kNVFP4` | K235/K236/K237/K239 的本机侧判据 |
+| 本机二进制 | `strings -a "/Applications/Vpipe Manager.app/Contents/Frameworks/libvpipe.0.dylib"` | `nvfp4_dequant` **0 命中**；`w4a8_to_i8` / `h3_adaln_pruned_f16` 命中；NVFP4 仅两条 `second-stage scale … does not read` 文案；版本 `0.1 (9db5dd7*0)` |
+| 通路实测 | `curl` 对 `huggingface.co` 与 `hf-mirror.com` 同路径 | 直连 **`000` / 12.1–12.2 s（= `--max-time`）**；镜像 **200 / 0.76 s**；镜像 `resolve` + `-r 0-7` 稳定 **206** |
+| 磁盘 | `df -h /` | **37 GiB 可用** |
+
+#### 18.43.2 新增知识（K232–K242）
+
+| # | 一句话结论 | 来源 | 日期 | 与本机实测冲突 |
+|---|---|---|---|---|
+| **K232** | 上游静默第 10 日：HEAD `a6a1f53`、release v0.1.110 落后 **26 天**、issue 14 全开 0 评论、PR=0、**274 star（与上轮同，停涨）** | GitHub API ×5 | 2026-11-27 | 否（零增量） |
+| **K233** | ★★ sd.cpp **PR #2424 已合**（`439e77a5`，11-26T13:12:17Z）：`-mlp` 变体四种 connector 全支持；**PR #2414（open）latent continuation**（尾 latent 续接，解决像素接缝漂移 + 音轨重启）；本机 connector 仍 6 张量无 MLP，`save-latent|continue-latent|pin-frames` grep = 0 | GitHub PR API + 本机源码 | 2026-11-26 | **推翻 K190/K202 的「sd.cpp 也不支持 MLP」前提** |
+| **K234** | ★★★ 首个 **NVFP4 W4A4 + INT8 ConvRot 逐投影混合**的 H3 DiT：`Maximilian228/MiniMax-H3-pi-H3-NVFP4-GPTQ` 的 DiT = **14,302,909,922 B / 1,082 tensors**；`qkv/out/fc1` = U8 + `weight_scale F8_E4M3 [N,336]`(swizzled) + `weight_scale_2 F32`；`fc2` = I8+U8 各 50 + `weight_scale [5376,1]`；`adaln_proj.linear` F32 `[96768,8]`；`comfy_quant` = `{"format":"nvfp4"}` / `{"format":"int8_tensorwise","convrot":true,"convrot_groupsize":256}`；命名是**原生名** + `adaln_t_table [1025,8]` | HF 镜像 Range 读头 + 切片 | 2026-11-26 | **量化形态第三档：逐投影混合格式** |
+| **K235** | ★★★ **本机判定要分两层**：源码 `scan(...,nvfp4=true)`（`transformer.cc:5715`）+ `resolve_nvfp4_(comfy=true)`（`fp8-layout.cc:225-250`）+ int8 逐行 `per_row`（`:430-455`）**都认**；但已装 `libvpipe.0.dylib`（`0.1 (9db5dd7*0)`）**`nvfp4_dequant` 0 命中**（kernel 源在 `affine_dequant_embed.cc.metal:2408`）⇒ 拒载形态是 **host 无 NVFP4 widening kernel**（`transformer.cc:5774-5781`），**不是格式不认** | 源码 grep + `strings` + `git log -S kNVFP4`（通路在 **41d2789, 11-12**） | 2026-11-27 | **修正「本机不认 NVFP4」的单层口径**：升级 App / 自编译后才可能过门 |
+| **K236** | ★★★ **DWD 像素头第二份实现**：`pi_h3_4step_dwd_head_gptq_int8` = **171 tensors**（F16 75/F32 32/I8 32/U8 32），全 `dwd_pixel_refiner.*` + `dwd_norm_out.*`，无 `lora_*`；结构 `feature_expand` / `first_frame_proj_out` / `register_tokens` / `blocks.N.{attn.to_qkv,to_out,ff.w1,ff.w2}` | HF 镜像 Range 读头 | 2026-11-26 | **P52 改口径**：与 K228 `pocis`（92 tensors、`entry_norm/feat_proj/lat_proj`）拓扑命名**都不兼容**；本机 `dwd` grep = 0，`_step_out` 不是像素 refiner |
+| **K237** | ★★★ 换编码器**第三条路**：`Alissonerdx/TE-PK-Minimax-H3`，零梯度闭式 Ridge/Procrustes 直接映到 5,120 维，**无 LoRA 无 MLP**，单件 20–105 MB；实读 9B 档 **5 张量**：`R F32 [4096,5120]` + `donor_mean [4096]` + `target_mean [5120]` + `scale [1]` | HF 镜像 Range 读头 + README | 2026-11-26 | **本机 connector 要 6 张量（含 `input_std`/`output_std`/`sink_embedding`，首行被 sink 顶替）** ⇒ 另一种方言，不可直塞 |
+| **K238** | ★★★ **TE-PK 自相矛盾**：README/header 写 9B **cosine 0.9626 / R² 0.9935**，同仓 `metrics.json` 对同一文件给 **0.890825 / 0.037135**；8 个 key `val_r2` 全在 0.033–0.112，`val_rel_l2 ≈ 0.95` | README + header + metrics.json 三方对照 | 2026-11-26 | **R² 差两个数量级**、`train_r2` 同样低（非过拟合，是口径不同）⇒ **不并入能力，只记方法与体积** |
+| **K239** | ★★ 「LoRA 并进基座」pruned 件卡在一个名字上：`ibyteohdear/…{DMD-FL2VA-Turbo,LightX8-hybrid}-Fused` **637 tensors / 50 块**，顶层 `time_embedder.table F32 [1025,8]`（非 `adaln_t_table`）、`transformer_blocks.0.adaln_proj.folded_bias [96768]`、`norm_out.folded_bias [10752]`；`is_diffusers_layout` 三条**全满足** → 翻译启动 → `untranslatable_tensor()` 撞 `time_embedder.table`（`native_()` 无此映射）→ 返回 0 | HF 4 分片 Range 读头 + `minimax-h3-diffusers-layout.cc:20-115` | 2026-11-26 | **K204 精确定位**：判据层 → 枚举层 → **翻译映射层**（第三处失败位）；叠「diffusers 分片目录不读」= 双重阻断；`folded_bias` grep 仍 0 |
+| **K240** | ★★ ModelScope 复核：Turbo **31 项**（仅 README 改动）；Fusion **48 项**（11-24 一次性上传），`pruned/…4step_v1.0_lite_r32_pruned_comfyui` **818,925,468 B** 与 `…8step…` **同字节数（未核 sha）**；`…4step_v1.0_pruned_comfyui` 5,220,193,444 | ModelScope API ×2 | 2026-11-26 | P44 取 4 步档；8 步「疑似同构」**待 sha 复核** |
+| **K241** | ★★ 检索坑与纠正：① `lightx2v/LightX2V` → **404**（正确是 `ModelTC`）；② 镜像 `resolve` 对**仓内不存在文件**也返 **404**（与仓不存在同码）⇒ 判仓内容要看 `api/models` 的 siblings；③ `siblings[].size` 仍全 `None`；④ 直连仍 `000`、镜像 200/0.76 s | curl + GitHub API | 2026-11-27 | 镜像优先第 3 日成立；新增「404 要分文件级与仓级」 |
+| **K242** | ★ 11-26 单日社区（去重后）：新品类 2 个（pi-H3 NVFP4 落地 / 闭式投影换编码器）；`loom-draft/pytraveler-…Prompt-Rewriter-Qwen3.8-27B-{FL2VA,Ref2VA}`；**8 个空壳/占位仓**（0 dl、无 README 或无权重，~27%） | HF 镜像搜索 API ×3 | 2026-11-26 | 重心转向「pi-H3 量化落地 + 换编码器」；空壳比例升高 |
+
+#### 18.43.3 印证与冲突
+
+- ★★★ **冲突①（「本机不认 NVFP4」是单层结论）**：K234 件在**源码层**能过（`scan(nvfp4=true)` + `resolve_nvfp4_(comfy=true)` 都在树里，`git log -S kNVFP4` → **41d2789 / 2026-11-12**），但**已装 dylib（`9db5dd7`）没有 `nvfp4_dequant`**。⇒ 正确写法是「**升级二进制后可能可读**」，与 K178（dylib 早已含 `w4a8_to_i8`）并列：**已装版本的能力矩阵要逐 kernel 核**，不能用源码树代答。
+- ★★★ **冲突②（DWD 像素头两家不一致）**：K228 `pocis`（92 tensors，`entry_norm/feat_norm/feat_proj/lat_proj/out_proj`）vs K236 `pi-H3`（171 tensors，`feature_expand/first_frame_proj_out/register_tokens`）——**张量名与拓扑完全不同**。与 K226（预烘 AdaLN 三家三布局）同型：**方向收敛、格式未收敛**，本机私接成本高于等上游。
+- ★★★ **冲突③（sd.cpp 的 `-mlp` 已反超）**：K190/K202 据 `ClipProjConnector` 注释判「不支持 `-mlp`」，**PR #2424 已合入**，四种变体全支持 ⇒ P46 从「跟跑」变「落后一个档位」；且对方实现不需要 `sink_embedding` 那套方言。
+- ★★★ **冲突④（第三条路自带数据矛盾）**：闭式 Ridge 工程上远比 LoRA 便宜（20 MB vs 530 张量），但 K238 显示**同仓 README（R² 0.99）与 metrics.json（R² 0.037）差两个量级**，`train_r2` 同样低 ⇒ 不是过拟合，是两套脚本口径不同。⇒ 纪律强化：**同一份材料内部自相矛盾时，「待复现」都不够，要标「口径不可用」**。
+- ★★ **印证（「看着像 H3 打不开」的第三处失败位）**：K211 = 判据层（前缀/曲线表，`fail("... neither a Comfy-Org ...")`）；K221/K222 = 枚举/绑定层（`_skipped` 未必涨）；**K239 = 翻译映射层（`translate_diffusers` 返回 0，整文件保持原名）**。三种失效的日志位置各不相同。
+- ★ **零增量（须明日复查）**：vpipe 第 10 日（274 star 停涨，与「有 star 增长但无 commit」是两种静默）；LightX2V 4 条全非 H3；ComfyUI 3 条无 H3；`Comfy-Org/MiniMax-H3` 停在 11-15。
+
+#### 18.43.4 本轮实验
+
+**无生成实验，仅零下载读头 + 源码/二进制对照**：**7 次 Range 请求**（K234 DiT 头、2 次 `comfy_quant` 切片、K236、K237、K239 四片），磁盘 0，累计约 **9 min**。
+
+**不跑 P44 的理由**：
+
+1. **时间**：02:30 起动，检索到 02:59 已用 **29 min**（含 2 次直连各白等 12 s + 一次镜像 404 排查）。P44 ≈ 下载 25 min + 改 shift + 124 帧生成 29 min ≈ 55 min，**会挤掉两份报告与 sync 余量**。
+2. **本轮结论直接改变 P44 的解读方式**：K235 说明「NVFP4 那件跑不了」是**二进制版本问题而非配方问题**——先把结论落库，比再取一组数更值钱。
+3. **磁盘 37 GiB**（下 11.8 GiB 后余 25 GiB），技术上可行，纯时间问题。
+
+#### 18.43.5 技能包 / 脚本修改
+
+- **技能包（双源已对齐，`shasum -a 256` 与字节数双向核过）**：
+  - `vpipe-model-prepare/references/768p-adapters.md`：**80,061 → 88,726 B**（+8,665），新增「第 34 轮（2026-11-27 02:30）—— 量化从「整件一种格式」进入「逐投影混合格式」+ 文本编码器第三条路」5 小节（K234/K235、K236、K237/K238、K239、K240）。
+  - `vpipe-model-prepare/references/h3-ecosystem-map.md`：**53,433 → 58,849 B**（+5,416），新增「第 34 轮增补—— 生态快照第 10 日 + sd.cpp 换编码器双向推进」。
+  - 两侧 sha 前 10 位一致：`768p-adapters.md b9da44c97c`、`h3-ecosystem-map.md 105f0be886`。
+- **脚本**：未修改。`nightly_guard.sh` / `nightly_sync.sh` 原样运行。
+- **记忆**：`project_search-channels.md` 本轮补「404 分文件级/仓级」与「镜像 `siblings[].size` 仍 None」两条；镜像优先的规则连第 3 日成立，不改。
+
+#### 18.43.6 踩坑与结论
+
+**坑①（新，最重要）：`strings` 有名字不能证明「能用」，但没有名字足以证明「不能用」。**
+`libvpipe.0.dylib` 里 `nvfp4_dequant` 命中 **0**、`w4a8_to_i8` 命中 1，而源码树两者都在（`fp8-expand.cc` 的 `_nvfp4 = _lib.function("nvfp4_dequant")` vs W4A8 的同型调用）。⇒ **判「已装版本能不能读某个量化」要 `strings` 找 kernel 名，不能 grep 源码**；反向不成立（名字在但 `fp8x.load()` 仍可能失败）。
+
+**坑②（新）：`git log -S <symbol>` 要与**已装版本**比先后。**
+NVFP4 通路在 `41d2789`（2026-11-12），已装 `9db5dd7`；`git merge-base --is-ancestor 9db5dd7 41d2789` 返回「不是祖先」⇒ 已装版本不含。比逐文件对源码快。
+
+**坑③（新）：镜像 `resolve` 对「仓里没有的文件」返 404，与「仓不存在」同码。**
+`Jim507735/Minimax-H3-LongVideo` 的 `README.md` 与随机名**都 404**，但 `api/models/<id>` 报 3 个 siblings ⇒ **判仓内容用 siblings，`resolve` 只能判单文件**。
+
+**坑④（复现）：`4 步 / 8 步 lite_r32 pruned` 字节数完全相同（818,925,468）≠ 同构。**
+K151 的先例是「sha 各异 + 字节同构」，本轮**未取 sha**，只能写「体积同尺寸」。
+
+**坑⑤（复现）：静默期也要看 star 有没有动。**
+本轮 274 star 与上轮**完全相同**（上轮 274 = +1）⇒ 「连关注度都停了」与「有 star 增长但无 commit」是两种不同的静默，报告要区分。
+
+**结论（三条）**
+
+1. **量化形态已进入「逐投影混合」**：一个 H3 DiT 里 `qkv/out/fc1` 走 NVFP4、`fc2` 走 INT8 ConvRot 已成现实（K234）。本机的**能力边界不在解析，而在 kernel**——源码早认，已装二进制没有 `nvfp4_dequant`（K235）。判「本机能不能跑」的**第一个动作应是 `strings` 查 kernel，而不是读 README 或 grep 源码**。
+2. **DWD 推理侧与预烘 AdaLN 一样，方向收敛、格式未收敛**：两家像素头（K228/K236）、三家 AdaLN 表（K210/K205/K226）。⇒ P52 与 P49/P50 同类：**等上游，不私接**。
+3. **换编码器这条线本机现在是三条里最落后的**：sd.cpp 已支持四种 ClipProj 变体（含 `-mlp`，K233），社区出现零梯度闭式投影（K237，但数据不可用，K238），本机仍只有 6 张量无 MLP 的单一方言。⇒ P46 的优先度应上调，但**必须先定「认哪种方言」**（现有 6 张量式 / ClipProj 式 / 闭式投影式），否则实现完也只能接一种。
+
+#### 18.43.7 下一步
+
+- **P53（新，高）「已装二进制的 kernel 能力矩阵」**：把 `strings libvpipe.0.dylib` 的 kernel 名（`nvfp4_dequant` / `w4a8_to_i8` / `h3_adaln_pruned_f16` / `int8_*` / `affine_dequant_*`）固化成一张表，与源码树可用 kernel 对比，**每次判「新量化件能不能跑」先查表**。零成本、每轮都用得上。
+- **P46（优先度上调）换文本编码器**：sd.cpp 已四种变体全支持（K233），本机必须**先选方言**再实现。三候选：① 现有 6 张量（`input_std`/`sink`）② ClipProj（no-mlp / mlp）③ 闭式投影（4 张量，但 K238 数据不可用）。建议 ①→② 的转换器（6 张量可由 ClipProj 的线性投影 + 常数 std/sink 构造），成本最低。
+- **P54（新，低）长视频 latent 续接**：sd.cpp PR #2414（未合）给出格式（`int32 "43LT"` magic + version + ndim + shape + 原始 float），本机 `save-latent|continue-latent|pin-frames` grep = 0。属**通用能力缺口**（>10 s 交付都会遇到），但需等上游或自研，不阻塞 H3 主线。
+- **P44 维持首选**：前置两条（Kijai W4A8 10.96 GiB + Fusion lite_r32 818,925,468 B；`video_shift 6→12`）+ 避开 K221/K222 混合拼写件。**K240 补一条**：8 步档与 4 步档同尺寸但未核 sha，仍取 4 步档。
+- **P52 改口径**：从「等一个像素头实现」改为「两家拓扑命名都不一致，等上游统一」。
+- **P48 / P47 维持**：VAE int8 仍是「错值」级；三处盲区之外再添「逐投影混合」一档（K234），**warning 至少要覆盖 `_skipped` / 未识别后缀 / 混合格式未知投影三类**。
+- **P43（仍未建）`safetensors-peek.py`**：本轮又手写 7 次读头。**第六项需求**：按投影归类 dtype + 读出 `comfy_quant` 原文 + 给出「本机 kernel 表里有没有对应 widening」的结论（配合 P53）。
+- **SOP（仍未改）**：累计 **9 条**待写入（HF 搜索替代 WebSearch / 镜像优先 / commits 301 / `.alpha` 五态 / tree `lastModified` 缺失 / raw README / `tensor_names` 无序 + `resolve` 需 `-L` / **404 分文件级与仓级** / **`strings` 查 kernel 优于 grep 源码**）。
