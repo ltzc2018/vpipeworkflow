@@ -1241,3 +1241,29 @@ ModelScope `lightx2v/Minimax-h3-Turbo` 现有 **31 个文件 / 27 个 safetensor
   `4step_pruned = 86449d1d…`、`8step_pruned = 8208de8c…`（都是 5,220,193,444）。
 - ⇒ **体积同尺寸、sha 各异** —— 与 K151 的 4 步家族同型（字节同构 + 内容不同），**不可原槽 A/B 互换**；P44 按 4 步档取即可。
 - 另注：**根目录**那批非 pruned / `_comfyui` / `_lite_r32_comfyui` 是另一组字节数（3,778,242,236 / 5,209,509,820 / 808,241,732），**与 `pruned/` 子目录不是同一批文件**，别混引。
+
+## 第 36 轮（2026-11-27 06:30）—— H3 VAE 侧 int8 ConvRot（组 64）+ 本机 fast-VAE dtype gate + Pika 融合投影混 rank
+
+### 1. `cjbrigato/fast_h3_vae_v2_24l-INT8-CONVROT`（2026-11-26 上传，1.51 GiB）
+
+- 文件 `fast_h3_vae_v2_24l_int8_convrot.safetensors` = **1,623,016,374 B / 493 tensors**（I8 98 / U8 98 / F32 297）。
+- 结构 = **fast-VAE**：24 层、dim 2048、ffn 16384、z 24、`register_tokens [1,4,2048]`、`post_quant_conv [24,24,1,1,1]`、`proj_out [3072,2048]`（=3×1×32²）、`x_embedder [2048,24]`。
+- 98 个量化层 = `blocks.{0..23}.{attn.to_qkv, attn.to_out, ff.w1, ff.w2}`（96）+ `x_embedder` + `proj_out`。每层：`I8 weight` + `F32 weight_scale [N,1]`（逐行）+ `U8 comfy_quant`（120 B）。
+- ⚠️ **`convrot_groupsize = 64`（不是 DiT 的 256）**；`x_embedder` 唯一「不旋转」（`comfy_quant` 无 `convrot` 键，`K=24` 撑不住两次 4 分组）。
+- **本机状态**：fast-VAE 加载器 `metal-minimax-h3-fast-vae.cc:96` 的 `with_tensor_` 有 `float_dtype_` gate（只收 F32/F16/BF16）⇒ **I8 在入口即被拒**，报 `cannot read block 0's ...`。`proj_` 的 int8 分支是「bf16→int8 转换」，**没有读 I8 码字的路径**。
+- 结论：**体积减半的好件，但本机结构性读不了**（P57）。移植点：`convrot_row_scales_` + I8 读取 + `convrot_group_ok(64)` 已验证合法。
+
+### 2. `Pika-Labs/Pika-H3-Flex`（官方）/ `vml12/Pika-H3-Flex`（第三方镜像，逐字节同份）
+
+- 官方仓：2026-10-29 建、**197,060 dl / 712 like**、lastModified **2026-11-07**（此后未动）。
+- `fl2va/adapter.safetensors` = **2,767,274,120 B / 624 tensors / 全 F32**，命名 `<module>.lora_A.default.weight`（**带 `.default.` 中缀**），**全 rank 128**。`ref2va` 同规格。
+- `comfy/loras/pika_h3_flex_fl2va_comfy_bf16.safetensors` = **1,956,172,176 B / 416 tensors / 全 BF16**，命名 `diffusion_model.<module>.lora_A.weight`，**普通模块 rank 128、`attn.qkv_proj` rank 384**（Q/K/V 融合）。
+- ComfyUI 版 README 原文：**「fuses Q/K/V LoRA projections and reorders the SwiGLU halves」** + **「preserves unit scaling and **omits explicit alpha tensors**」**。
+- ⚠️ **本机风险（推断，未实测）**：header 无 `alpha`/`lora_alpha`/`lora_adapter_metadata` ⇒ `_meta_alpha=0` ⇒ `mul≡1.0`；而 `qkv_proj` rank 384 若原 alpha 是 128，实际强度只有 **1/3**。**alpha 第六态：融合后语义被取消**。
+- 采样契约（`fl2va/manifest.json`）：knots `1000/750/500/250/100/40/0`、`video_shift 12.0` / `audio_shift 3.0`、`method renoise`、`base_revision 42ed227e…`。**本机已内置**（`model-catalog.cc:3043-3078` + `SamplingContract`，`docs/pipelines/pika-h3-flex-*.vpipeline`）。
+
+### 3. 判据新增
+
+- **`x-linked-size`（镜像 302 响应头）= 真实体积**，比 `content-length` 可靠（后者在 302 上是跳转体 1050/1102 之类）。
+- **`x-linked-etag` = 内容哈希**：跨仓相同即同一份权重；`x-repo-commit` 只标仓的 commit，**不是内容标识**。
+- **融合投影识别**：某模块 A 的 `shape[0]` 是其它模块 rank 的 3 倍（384 vs 128）⇒ 大概率 Q/K/V 融合，**先怀疑 alpha 是否同时被丢**。

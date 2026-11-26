@@ -6512,3 +6512,119 @@ gated 仓返回 `content-length: 183`（`10Eros` 191），与正常小文件在�
 - **P47（升）**：「加载结束对账」一次覆盖三类静默（绑定数 / 跳过数 / 未识别张量数）。
 - **P43（仍未建）`safetensors-peek.py`**：本轮又手写 9 次读头；第六项需求=过滤 `I64 [1]` / `U8 [72]` / `alpha F32 []` 三类元数据张量。
 - **SOP（仍未改）**：累计 **11 条**待写入（新增：403 GatedRepo 假体积 / `-L` 缺失 / config 与 header 不一致）。
+
+### 18.45 2026-11-27 06:30 —— 第 36 轮：★★★ H3 **VAE 侧**首个 int8 ConvRot（组 64 而非 256、`x_embedder` 显式关旋转）+ ★★★ 本机 fast-VAE 在 `with_tensor_` 入口按 dtype 硬拒（与 video-VAE 两个失败位）+ ★★★ Pika Flex 同份 LoRA 的 diffusers/comfy 两版混 rank 128/384 且 comfy 版丢弃 alpha
+
+> 本轮由 **P39 launchd + codebuddy 无头 CLI** 执行（slot=06:30，守卫 R=36，第 13 次完整链路）。
+> **取样面第三次换向**：第 34 轮挖「量化形态 + 相邻生态」，第 35 轮挖「后处理 + 调参」，本轮挖**VAE 本体**——此前 13–17 节只有「VAE 体积」与「VAE int8 是错值」两句话。
+> 结果四条结论被改写：① 「int8 ConvRot 只是 DiT 的事」→ **VAE 也有，且组大小 64 不是 256**；② 「本机 VAE 读不了量化只是转换失败」→ **fast-VAE 在读之前就拒**；
+> ③ 「一个 LoRA 一个 rank」→ **Pika comfy 版 128/384 混排**；④ 「体积判据只能靠 `content-length`」→ **`x-linked-size` 是正解**。
+
+#### 18.45.1 检索范围
+
+| 源 | 结果 |
+|---|---|
+| GitHub API（vpipe） | commits `per_page=5` / repo / releases ×3 / search issues open / search pr open，共 **5 次**。**全部与第 35 轮逐位相同**（第 12 日静默） |
+| GitHub API（sd.cpp） | `search/issues` 近 3 日 PR 20 条 → 逐条读 **#2435 / #2436 / #2431**；#2414（latent continuation）仍 open |
+| HF 镜像搜索 | `minimax_h3` / `minimax-h3` / `h3` 三拼写 × 两种排序（`lastModified` / `createdAt`），共 **6 次**，覆盖 45 个仓 |
+| HF 镜像读头 | `cjbrigato/fast_h3_vae_v2_24l-INT8-CONVROT`（2 MB 全 header + 3 次 `comfy_quant` 切片）、`vml12/Pika-H3-Flex`（adapter ×2 + comfy lora ×2 + manifest + comfy README + model_index + transformer index）、`Pika-Labs/Pika-H3-Flex`（adapter 头 + `api/models`） |
+| ModelScope | `lightx2v/Minimax-h3-Turbo`（31 项）+ `Minimax-H3-Turbo-Fusion`（`Recursive` 两种口径 15/48 项） |
+| 本机源码 | `metal-minimax-h3-fast-vae.cc`（1436 行，`with_tensor_`/`proj_`/`load_`/`config_from_weights` 全读）、`metal-minimax-h3-video-vae.cc`（`to_bf16_`/`weight_`）、`fp8.h`（`convrot_group_ok`）、`fp8-layout.cc`（`declared_of_`/`declared_format_`）、`runtime-lora.cc`（`index_suffix_`/`resolve_`/`factor_meta_`）、`model-catalog.cc`（Pika 条目） |
+| 本机二进制 | `strings libvpipe.0.dylib | grep -i pika` = **6 条**（含 `Pika-Labs/Pika-H3-Flex-fl2va/-ref2va` 与 SamplingContract 文案）⇒ **已装版已含 Pika 支持** |
+| 未做 | WebSearch（已知失效）、`huggingface.co` 直连（已知 `000`）、YouTube/Reddit/掘金/知乎/B站（本轮检索预算留给读头） |
+
+#### 18.45.2 新增知识（K253–K264）
+
+| # | 知识 | 来源 | 日期 | 一句话结论 / 与本机冲突？ |
+|---|---|---|---|---|
+| **K253** | ★ 上游静默**第 12 日**，五项逐位相同（HEAD `a6a1f53` / release v0.1.110 落后 26 天 / issue 14 全开 0 评论 / PR=0 / 274 star 27 fork 36,920 KB） | GitHub API ×5 | 2026-11-27 | 零增量；**star 连续第 3 日不动** |
+| **K254** | ★★★ **H3 VAE 侧首个 int8 ConvRot**：`cjbrigato/fast_h3_vae_v2_24l-INT8-CONVROT` = **1,623,016,374 B / 493 tensors**（I8 98 / U8 98 / F32 297），fast-VAE 24 层 / dim 2048 / ffn 16384 / z 24；98 量化层（96 块 + `x_embedder` + `proj_out`）各带 `I8 weight` + `F32 weight_scale [N,1]` 逐行 + `U8 comfy_quant` 120 B；**`convrot_groupsize = 64`** | HF 镜像全 header + 3 次载荷切片 | 2026-11-26/27 | **无冲突但是新面**：DiT 侧全是 256 ⇒ **不能把 256 当规范** |
+| **K255** | ★★★ **本机 fast-VAE 对 I8 硬拒**：`with_tensor_`（`:96`）`!float_dtype_(dtype)` 即 false（`:73-76` 只收 F32/F16/BF16）⇒ `proj_` 空 ⇒ `cannot read block 0's ...`。`proj_` 的 int8 分支是 bf16→int8 **转换**，**无读 I8 码字路径** | 本机源码逐行 | 2026-11-27 | **冲突**：与 video-VAE 的失败位不同（后者走到 `to_bf16_` 的 `else return {}`） |
+| **K256** | ★★★ **Pika Flex 两版两种 rank 契约**：diffusers **624 tensors / 全 F32 / 2.58 GiB / 全 rank 128 / `.lora_A.default.weight`**；comfy **416 tensors / 全 BF16 / 1.82 GiB / 普通 128 + `qkv_proj` 384** | HF 镜像 ×4 + `comfy/README.md` | 2026-11-26/27 | **冲突**：「一文件一 rank」不成立 |
+| **K257** | ★★★ **comfy 版 omits explicit alpha ⇒ 本机 `mul≡1` ⇒ `qkv` 强度推断只有 1/3** | header + README + `runtime-lora.cc:420-460` | 2026-11-27 | **alpha 第六态（偏弱）**，前五态都是偏强或跳过 |
+| **K258** | ★★ sd.cpp **#2435** 删掉独立 W4A8 matmul（+692/−1496/29 文件）而本机 `w4a8_to_i8` kernel 仍在 | PR API + 本机 metal 源 | 2026-11-26 | 「同名 kernel ≠ 同功能」第 2 例 |
+| **K259** | ★★ sd.cpp **#2436** 把 `convrot_groupsize` 缺省定 256「matching ComfyUI」；本机 `Declared` 默认亦 256 | PR API + `fp8-layout.cc:47` | 2026-11-26 | **印证**（少见的三方一致） |
+| **K260** | ★★ **`x-linked-etag` 是内容哈希**：官方 `Pika-Labs` 与镜像 `vml12` 的 adapter 同 etag（`8ed6115d…`）同 size，`x-repo-commit` 不同 ⇒ 同份 | 镜像 `resolve` 头 ×2 | 2026-11-27 | 新判据；`manifest.json.sha256` 亦为 `8ed6115d…` |
+| **K261** | ★★ **`x-linked-size` 是 302 上唯一可信体积字段**（本轮 4 件一次拿全；`content-length` 给 1050/1102 之类跳转体） | 镜像 `resolve` 头 | 2026-11-27 | **根治第 35 轮坑②** |
+| **K262** | ★★ `_quantization_metadata` 与 `comfy_quant` 层内可写法不同：`x_embedder` 两处都不旋转（`K=24` 撑不住两次 4 分组），其余 97 层 `convrot true / 64`；本机先读 `comfy_quant` | 本机 `fp8-layout.cc:74-125` + 载荷切片 | 2026-11-27 | 印证解析顺序；新见「细长投影显式关旋转」是设计 |
+| **K263** | ★ 11-26 社区新品类：`Enigma4869/h3`（**422 个 .safetensors 三层目录集合仓**）、`huggingface12341/zsf-h30`（4 分片疑似整模型）、3 个空壳、`vml12` 全量镜像（96 文件 / DiT 索引 66.28 GB） | HF 搜索 ×3 + `api/models` ×5 | 2026-11-26 | 重心第 4 次迁移 → **货架仓 + 整模型镜像** |
+| **K264** | ★★ ModelScope `Recursive` 口径：Fusion `false`=15 项 / `true`=48 项；`LastUpdatedTime 1795546202` = 11-24 18:50Z（未动） | ModelScope API ×2 | 2026-11-27 | 引用文件数**必须带口径** |
+
+#### 18.45.3 印证与冲突
+
+**★★★ 冲突①（「int8 ConvRot 只出现在 DiT」被推翻）**
+K215 / K234 / K249 三份 int8 件全是 DiT，`convrot_groupsize` 全 256。K254 是**第一个 VAE 侧件**，组大小 **64**。⇒ 「ConvRot 256」是 **DiT 的惯例，不是 H3 的规范**。本机 `convrot_group_ok`（`fp8.h:178`）要求「4–1024 的 4 的幂且指数为偶数」，**64 合法**——但**参数合法 ≠ 有加载通路**（见冲突②）。
+
+**★★★ 冲突②（「本机 VAE 读不了量化」的失败位被精确定位为两层）**
+
+| 加载器 | 失败位 | 现象 |
+|---|---|---|
+| **video-VAE** | `to_bf16_`（`metal-minimax-h3-video-vae.cc:102-124`）的 `else` 分支返回 `{}` | 走到**转换时**才失败；`weight_` 已经拿到 `info` |
+| **fast-VAE** | `with_tensor_`（`metal-minimax-h3-fast-vae.cc:96`）的 `!float_dtype_()` | **读之前**就拒；连 `ws.read` 都不发生 |
+
+⇒ 这是第 32 轮 K207「VAE int8 是错值而非跳过」的**更精确版本**：当时只看了 video-VAE，本轮发现 **fast-VAE 更早、更硬**。日志分别落在 `cannot read <name>` 与 `to_bf16_` 返回空。
+
+**★★★ 冲突③（「一个 LoRA 一个 rank」被推翻，且带一个数值陷阱）**
+K248 是「标称 r256、实际 48–946」（**同一语义不同标称**）；K256 是「**同一文件里 128 与 384 并存，384 是 3×128 融合**」。本机 `factor_meta_`（`runtime-lora.cc:433-456`）**按模块读 `alpha`→`rank`**，结构上支持混 rank。真正的问题是 K257：**alpha 被丢弃后 `mul≡1`，融合模块只有 1/3 强度**。⇒ 混 rank 不是问题，「融合 + 丢 alpha」才是。
+
+**★★ 印证（`x-linked-etag` / `x-linked-size`）**：这是第 35 轮坑②的根治 —— 不是「记得加 `-L`」，而是**换字段**。同时给出一条更强的判等判据（K260）：跨仓同 etag 即同份，`x-repo-commit` 只标仓。
+
+**★★ 印证（三方在 ConvRot 缺省 256 上一致，K259）**：sd.cpp #2436 的默认值、ComfyUI 的行为、本机 `Declared` 的 `int group = 256` 三者对齐 —— 近期少见的**无分歧项**。
+
+**★★ 印证（已装二进制含 Pika 支持）**：`strings libvpipe.0.dylib` 命中 6 条 Pika 字符串（含 catalog 的 `.name` 与 SamplingContract 文案）⇒ **Pika Flex 的适配器与六步契约在本机现役版就能跑**（`model-catalog.cc:3043-3078` 的条目是 11-14 的 `41d2789` 就已在内）。
+
+**★ 零增量**：vpipe 第 12 日（274 star 第 3 日不动）；`MiniMaxAI/MiniMax-H3` lastModified **11-24T04:56Z**（6,012,871 dl / 7,411 like）；lightx2v 两仓权重未动；ComfyUI `search/issues` 返回体缺 `total_count`（**接口抖动，非零结论**）。
+
+#### 18.45.4 本轮实验
+
+**无生成实验，仅零下载读头 + 本机源码/二进制对照**：9 次 Range/HEAD 请求、磁盘 0、累计 **23 min**（06:30 → 06:53）。
+
+不跑 P44 / P55 的理由：
+1. **时间**：检索 23 min，剩余 67 min 要装两份报告（≈12 min）+ sync + release。P44 ≈ 55 min 会挤爆预算。
+2. **本轮结论改变实验选择**：K255 说明 K254 的 int8 VAE **本机结构性读不了**，跑它没有意义；而 P55（latent upscaler v2）**走 latent 空间不经过 VAE**，不受影响，但下载 690 MB + 6 min 仍会挤压报告时间。
+3. **真正的产出是判据**：「fast-VAE 有 dtype gate」这一条比再取一组 frame diff 更值钱——它把「VAE 能不能用社区量化件」从「未知」变成「明确不能，且知道改哪一处」。
+
+#### 18.45.5 技能包脚本修改
+
+- **无脚本改动**（`scripts/nightly_sync.sh` / `nightly_guard.sh` 未动，本轮无新增脚本）。
+- **references 追加**（只追加，两侧逐字节同步）：
+  - `~/.workbuddy/skills/vpipe-model-prepare/references/768p-adapters.md`：新增「第 36 轮」三小节（K254 VAE int8 全结构 / K256+K257 Pika 两版 rank 与 alpha / K260+K261 判据），**97,073 → 100,314 B**；
+  - `…/h3-ecosystem-map.md`：新增「第 36 轮增补」（上游第 12 日 + sd.cpp 两条 PR + 四条生态线表 + 官方仓 + 检索通路），**62,740 → 64,827 B**；
+  - 两份已 `cp` 到 `vpipe-lab/skills/vpipe-model-prepare/references/` 并校验 `shasum -a256` 前 12 位一致（`937414d97acd` / `1784d29a26c2`）。
+- **待办（仍未做，累计 14 条）**：`safetensors-peek.py`（P43，本轮又手写 9 次读头，**第七项需求 = 融合投影识别**）；SOP 补写（本轮新增 4 条：`x-linked-size` 优先 / 融合 rank 怀疑 / `x-repo-commit` 非内容标识 / `Recursive` 口径）。
+
+#### 18.45.6 踩坑与结论
+
+**坑①（新，最重要）：`x-linked-size` 是镜像 302 上唯一可信的体积字段。**
+本轮 `curl -sIL` 加 `grep content-length` 给出 **1050 / 1048 / 1102 / 1110**（跳转体长度），而 `x-linked-size` 一次给出 `2,767,274,120`。⇒ **体积判据首选 `x-linked-size`**，`content-length` 只在 `%{http_code}` 是 200/206 后采用。这是第 35 轮坑②的**根治**，不只是「记得加 `-L`」。
+
+**坑②（新）：融合投影后 rank 会变，而 alpha 不一定跟着变。**
+`qkv_proj` 从 3×(128) 融合成 1×(384)。若转换工具丢 alpha ⇒ 本机 `mul=1`（推断偏弱）；若保留原 alpha ⇒ `128/384=0.33`。**两种都能发生，只能读文件确认**。⇒ 见到 **384 / 512 / 768 这类「128 的整数倍」的 rank，先怀疑是融合投影**。
+
+**坑③（新）：`x-repo-commit` 不是内容标识。**
+同一份 `fl2va/adapter.safetensors` 在两个仓里 `x-repo-commit` 不同（`ca45d99f` / `8f2180b2`）、`x-linked-etag` 相同。⇒ **判「是不是同一份权重」只看 `x-linked-etag` + `x-linked-size`**。
+
+**坑④（新）：`declared_format_` 有两条来源，优先 `comfy_quant`。**
+K262 的 `x_embedder` 是唯一「两种记录都写但只有一处提到 convrot」的层（好在两处都说「不转」）。⇒ **判断某层旋不旋转，必须两个来源都读并对账**。
+
+**坑⑤（复现）：`Recursive` 参数让同一个仓的「文件数」差 3 倍。**
+Fusion `false`=15 / `true`=48。⇒ 引用文件数**必须带口径**。
+
+**坑⑥（复现）：HF 搜索 API 的 `total_count` 缺失是接口抖动，不是「零结果」。**
+ComfyUI 那条返回体**既无 `total_count` 也无 `items`** ⇒ **判零必须看 HTTP 200 + 空数组**，不能看字段缺失。
+
+**结论（三条）**
+
+1. **量化面已经「全覆盖」：DiT / VAE / 文本连接器 / 适配器四处都有 int8 件，而本机只在前两处有通路（且 VAE 两处都不通）。** 这条给出一个清晰的优先级：VAE int8 是**唯一「体积极大、格式已明、只差一处 dtype gate」**的缺口（P57），比继续挖新社区件收益高。
+2. **「同一份权重不同封装」已成常态**（Pika 两版 / Fusion pruned vs 根目录 / K240 的 4-8 步）。⇒ **引用社区件必须写「哪个仓、哪个子目录、哪个 revision、sha 前几位」四件套**，否则同一模型的不同封装会被当成不同能力。
+3. **「静默」与「报错」必须分栏记账。** 前四轮的静默三类（未识别后缀 / I8 因子 / 未知顶层张量）都**不报错**；本轮的 dtype gate **明确报错**（`cannot read`）。⇒ P47 的「加载结束对账」应输出**两张表**：静默项（需人类判断）与拒绝项（已明确失败）。
+
+#### 18.45.7 下一步
+
+- **P57（新，高）fast-VAE 的 int8 通路**：先做**可行性判断**——确认 `to_bf16_` 在 fast-VAE 只被 `proj_` 使用（若是，改一处即可）；再移 `convrot_row_scales_` + I8 码字读。**收益：VAE 磁盘/显存减半（3 GB → 1.51 GiB）**。
+- **P58（新，中）融合投影的 alpha 语义**：同 seed 跑 comfy 版与 diffusers 版（**本机两个都认**），比 frame diff / 首帧 SSIM。**若 comfy 不弱 ⇒ K257 撤回**（说明 Pika 训练时融合投影本就是 384）。
+- **P44（首选不变）**：4 步档（K250）+ Kijai W4A8 10.96 GiB + Fusion `lite_r32` + `video_shift 6→12`；避开 K221/K222 混合拼写件。
+- **P55（不变）**：latent upscaler v2 复跑（690 MB + 6 min），**不受 K255 影响**（latent 空间不经过 VAE）。
+- **P47（升）**：「加载结束对账」输出**两张表**（静默 / 拒绝），覆盖四类：未识别后缀 / I8 因子 / 未知顶层张量 / **dtype gate**（K255）。
+- **P43（仍未建）`safetensors-peek.py`**：**第七项需求** = 融合投影识别（某模块 A 的 `shape[0]` 是其它模块 rank 的 3 倍 ⇒ 标 `fused_qkv?`）。
+- **SOP（仍未改）**：累计 **14 条**待写入。

@@ -624,3 +624,30 @@
   **② `curl -sIL` 不带 `-L` 时 302 目标不展开，`content-length` 直接给 183**——必须 `-sIL`（大 I 大写）才跟跳转，小写 `-i` + `-s` + `-L` 亦可。
 - `api/models/<id>` 的 `siblings[].size` **第 4 日仍全 `None`**；体积一律 `curl -sIL | grep -i content-length`。
 - ModelScope 的 `repo/files` 顶层会返回 `Type: tree` 的目录项且**不带子项列表**；取子目录要再打一次 `Root=<dir>`，本轮 `pruned/fl2v`、`pruned/ref2v` 均不存在（目录名是 `pruned/` 下平铺）。
+
+## 第 36 轮增补（2026-11-27 06:30）
+
+### 上游（零增量，第 12 日）
+- `tgo-app-dev/vpipe` HEAD `a6a1f53`（author 11-23T09:54:27Z / pushed 11-23T11:20:51Z），**274 star 连续第 3 日不动**、27 fork、36,920 KB、issue 14 全开 0 评论、PR 0。
+- release **v0.1.110（11-01）** 落后 main **26 天**。引用上游能力必须写 commit。
+- sd.cpp 11-26 合入两条与本机相关：**#2435**（W4A8 改走 INT8 GEMM，删独立 matmul，+692/−1496/29 文件）、**#2436**（`convrot_groupsize` 缺省 **256**，与 ComfyUI 对齐）。本机 `Declared` 的默认也是 256 ⇒ **三方一致**（新少见的无分歧项）。
+
+### 新生态线（第 4 次重心迁移）
+| 线 | 代表 | 形态 |
+|---|---|---|
+| 编辑型 LoRA | `Uhvg856/*`、`ausboss/*` | 11-26 前的主流 |
+| pi-H3 量化 + 换编码器 | `Maximilian228/*NVFP4-GPTQ`、`Alissonerdx/TE-PK` | 第 33/34 轮 |
+| 后处理重训 + 跨模型 graft | `George0667/*Temporal_Upscaler`、`yichengup/*ltxqnorm` | 第 35 轮 |
+| **货架仓 + 整模型镜像** | `Enigma4869/h3`（**422 个 .safetensors**，三层目录）、`vml12/Pika-H3-Flex`（96 文件全量镜像 66.28 GB 索引） | **第 36 轮** |
+
+- 空壳继续增：`RunningHubAI/rh-crown-…`（1 文件无权重）、`Lora-Daddy/h3-writer-hauhau`（4 文件无权重）。
+- `huggingface12341/zsf-h30` 有 4 分片 `model-0000x-of-00004.safetensors`（疑似整模型再分发，未读头）。
+
+### 官方仓
+- `MiniMaxAI/MiniMax-H3`：lastModified **2026-11-24T04:56Z**、**6,012,871 dl / 7,411 like**。
+- `lightx2v/Minimax-h3-Turbo` 31 项未动；`Minimax-H3-Turbo-Fusion` 权重 11-24 18:50Z 未动；⚠️ **文件数口径**：`Recursive=false` 15 项 / `true` 48 项（K264）。
+
+### 检索通路
+- 镜像优先第 4 日成立；`huggingface.co` 未试（已知 `000`）。
+- **`x-linked-size`** 是 302 上唯一可信体积字段（本轮 4 件一次拿全）。
+- ComfyUI 的 `search/issues` 本轮返回体缺 `total_count` 且无 `items` ⇒ **接口抖动 ≠ 零结果**（判零须 HTTP200 + 空数组）。
