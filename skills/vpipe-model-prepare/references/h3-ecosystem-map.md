@@ -651,3 +651,52 @@
 - 镜像优先第 4 日成立；`huggingface.co` 未试（已知 `000`）。
 - **`x-linked-size`** 是 302 上唯一可信体积字段（本轮 4 件一次拿全）。
 - ComfyUI 的 `search/issues` 本轮返回体缺 `total_count` 且无 `items` ⇒ **接口抖动 ≠ 零结果**（判零须 HTTP200 + 空数组）。
+
+---
+
+## 6. HyperFlow H3 Flash：从「另一族」到 upstream 一等公民（2026-11-28 · 第 37 轮 · K266–K269）
+
+> 来源：上游 `docs/MINIMAX-H3.md`（commit `41a694a2`，271,340 B）新增 120 行专章、`stages/model-catalog.cc` 双条目、
+> `tests/unit-tests/hyperflow-h3-flash.cc`（1,093 行）、HF 镜像零下载读头。
+
+**定位变更**：第 1 轮（K12）与第 20 轮（K116）都把它记为「社区另一族、与 vpipe 无关」。**文档层已错**——它是官方文档的一等章节，走 `generate-video` 的 `dit_dir`（不是 LoRA）。但**本机层仍不支持**（见下）。
+
+### 三个文件自述的架构变更
+
+| 变更 | 内容 | 本机（`d72c22f`）状态 |
+|---|---|---|
+| **块删除 + 重编号** | FL2VA 删 **6 / 21 / 22** ⇒ **47 块**；Ref2VA 删 **9** ⇒ **49 块**。文件从 0 重编号，原编号只存 `__metadata__.hyperflow.dropped_blocks` | `dropped_blocks` grep = **0** |
+| **低秩投影对** | 部分投影存成 `up @ down`，rank **pad 到 64**；FL2VA **102 对 / 18 块 / 最宽 3200 / 合计 2.667 GB**；Ref2VA **114 对 / 19 块** | `.up.weight` 只在 vdn-branch 与 quantizer 命中，**DiT 无低秩对通路** |
+| **双时间内建** | `endpoint_time_embedder` 是模型的一部分（与 `time_embedder` 形状同构，各 4 张 F32），每次前向给 `(t, r)`；**AdaLN 读 16 维**（官方 pruned 是 8 维）；**无单时间模式** | `endpoint_time_embedder` 只作为 **HyperFlow LoRA 的因子名**出现（`metal-minimax-h3-transformer.cc:5198/5225`），**不是模型自带张量** |
+
+### `curve_dit`：官方化的「跨模型时间调制嫁接」
+
+pi-H3 训在 pruned 形态的时间调制上，Flash 没有。做法：
+
+```json
+"dit_dir":  "VideoRebirthAI/hyperflow-h3-flash-fl2va-int8-convrot",
+"curve_dit": "Comfy-Org/MiniMax-H3-FL2VA-pruned-int8-convrot"
+```
+
+⇒ Flash 的块跑 **stock pruned 曲线 + 其 AdaLN（单时间）**，pi-H3 的 LoRA / 全张量覆写按**原编号**绑定（落在 6/21/22 的跳过并报），`final_layer` / DWD 头 / 4 步采样器照旧。只读 stock 文件的曲线表与 AdaLN（约 **0.15 GB**）。此路径下 **flow-map 适配器被拒、VDN 分支被拒**。
+
+M5 Max 832×480×73 + Sol：**23.4 s / 22.9 GB** vs pi-H3 直接跑 pruned DiT **29.7 s / 27.4 GB**。
+
+> **与 K247 民间 graft 的区别**（重要）：K247 是手工换 `attn.q_norm` 增益（跨 LTX-2.5 / Z-Image，**行为未知**）；`curve_dit` 只换**时间调制的数据来源**（曲线表 + AdaLN 复用），**不改任何权重语义**。P56 的 QC 判据要按这两类分开写。
+
+### 本机判定（K277）
+
+`libvpipe.0.dylib`（`0.1 (9db5dd7*0)`）strings：`hyperflow` **0** / `curve_dit` **0** / `endpoint_time_embedder` **0** / `tensor-parallel-flash` **0**。
+
+⚠️ **但 `pi-H3` strings 也是 0，而本机确实支持 pi-H3** ⇒ **`strings` 只证有、不证无**。判「本机不支持 Flash」的真依据是**源码树三结构键 grep 全 0** + 本地树停在 `d72c22f`（11-20，落后 HEAD 87 个 commit）。
+
+### 派生仓矩阵（2026-11-27 快照）
+
+| 仓 | dl | 说明 |
+|---|---|---|
+| `VideoRebirthAI/hyperflow-h3-flash`（官方） | 1,019,175 | 8 个目录：`fl2va/ref2va` × `bf16 / gguf / int8_convrot / int8_convrot_comfyui`；**权重停在 2026-11-14** |
+| `BennyDaBall/HyperFlow-H3-Flash-INT8-ComfyUI` | 126,064 | 单文件 int8 |
+| `BennyDaBall/HyperFlow-H3-Flash-NVFP4-ComfyUI` | 6,435 | NVFP4 |
+| `hoidhxd/HyperFlow-H3-Flash-INT8-ComfyUI-Hybrid` | 244 | **`b25-49` 命名 ⇒ 只量化后 24 块，前半 bf16** |
+| `moonbox-dev/…-GGUF` / `…-ref2va-GGUF` | 3,248 / 1,663 | GGUF |
+| `hancheng-ai/…-MLX-Serve-{8bit,4bit}` × 2 partition | 286 / 275 / 207 / 201 | MLX |

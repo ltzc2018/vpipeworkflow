@@ -6653,3 +6653,68 @@ ComfyUI 那条返回体**既无 `total_count` 也无 `items`** ⇒ **判零必�
 #### 18.46.3 方法论
 - **看板是历史追加文档，需定期体检**：夜间 agent 每轮追加，会出现重复行、断裂表头、轮次误标、陈旧基线（头部基线最容易忘更新）。修复要逐条对照原始日志/主报告，不可凭看板自述。
 - **cb_exit=0 ≠ 成功**：无头 CLI 把模型/流错误常以 0 退出（K146/K154），闭环成功必须由产物判定（round 推进 + sync 日志存在）。P41 把这一原则落到"自动重试"层。
+
+### 18.47 2026-11-28 00:30 —— 第 37 轮：★★★ 上游破静默（`41a694a2` +28663 行）把 HyperFlow H3 Flash 收编为一等公民（47 块 / 删 3 块 / 102 对低秩 / 双时间内建 / `curve_dit`）+ ★★★ 8 步 v1.2 逐模块 alpha（16/128）混 rank 推翻 K151/K188
+
+#### 18.47.1 检索范围
+
+| 源 | 结果 |
+|---|---|
+| GitHub `tgo-app-dev/vpipe` commits API | **`41a694a2`**（11-26T07:43 author / 11-26T22:40 committer），前 8 条命中，确认 `a6a1f53` 之后仅此一笔 |
+| commit 详情（`/commits/41a694a2`） | **122 文件 / +28,663 / −418**；关键件：`magi2/*` 新族 21 文件、`metal-minimax-h3-transformer.cc` **+1104/−113**、`train-lora-split.cc` **+1664**、`hyperflow-h3-flash.cc` 单测 **1093**、`minimax-h3-pruned.cc` 单测 +520 |
+| repo / releases / issues / PR API | 274 star（**第 4 日不动**）/ 27 fork / 38,535 KB / `pushed_at 11-26T23:20:21Z`；release **仍 v0.1.110（11-01 ⇒ 落后 27 天）**；issue **14 全开**（#59/#58/#56/#55 全 `updated_at == created_at`、0 评论）；**PR total = 0** |
+| 官方文档 `docs/MINIMAX-H3.md`（`41a694a2`，271,340 B） | 新增 **120 行**专章「Four to eight steps, a smaller DiT — HyperFlow H3 Flash」+ `curve_dit` 段 + 「Which Turbo adapters work」重写（split vs fused 的机理） |
+| `stages/model-catalog.cc`（`41a694a2`，239,064 B） | 768p 条目 **10 → 17**；新增 Flash 双条目；`Comfy-Org/MiniMax-H3-FL2VA-pruned-int8-convrot` 作为 `curve_dit` 目标 |
+| HF 镜像（`hf-mirror.com`）| Flash FL2VA / Ref2VA 两份 comfy 全 header；8step v1.2 全 header + 4 次 alpha 标量切片；`api/models` ×8；搜索 `hyperflow` 20 条 |
+| ModelScope `lightx2v/Minimax-h3-Turbo` | **31 项未动**（26 safetensors，`Recursive=false`）|
+| `leejet/stable-diffusion.cpp` commits | 12 条（`9d1fe300` … `52491bd9`），**H3 面 11-26 之后零增量** |
+| 本机 | `0.1 (9db5dd7*0)` `strings` ×12；本地树 `d72c22f`（11-20）grep 三结构键 |
+
+#### 18.47.2 新增知识
+
+见 `vpipe-daily-knowledge.md` 第 37 轮 **K265–K278**（14 条）。主线三条：
+
+1. **K265 破静默**：`a6a1f53`（+17,617）→ `41a694a2`（+28,663），两级合计 **+46,280 行**。release 落差从 26 天扩到 **27 天**。
+2. **K266–K269 Flash 收编**：`dit_dir` 一等公民（非 LoRA），三处架构变更（块删除重编号 / `up@down` 低秩对 / 双时间内建），再加 `curve_dit` 让 pi-H3 在 Flash 块上跑 pruned 曲线。零下载读头实测见 K267（FL2VA）与 K268（Ref2VA）——**两 partition 结构不同**。
+3. **K270–K271 8 步 v1.2**：**1,543,291,302 B**（4 步线是 1,383,677,808）、**363 个逐模块 `.alpha`**（16 / 128）、**rank 16×51 + 128×312**、**首适配 `norm_out.linear`**；catalog 768p 条目 10→17 且注释与代码矛盾。
+
+#### 18.47.3 印证与冲突
+
+- **★★★ 冲突①（静默结案，且改写「等上游」的成本）**：12 日静默 → 单笔 +28,663 行，H3 本体 +1104/−113。此前多轮把「等上游」当作零成本选项（P57 / P52 / P42）；本轮证明**上游正以每 3 天 3 万行的速度改 H3 本体**，等待本身有代价（每升一次 build，K98 的「跨 build 锚点作废」就把历史锚点全废一次）。
+- **★★★ 冲突②（K151 与 K188 被同一份文件打破）**：K151「4 步家族 v1.0–v1.3 全 1,383,677,808 B、只换权重」——**对 4 步线仍成立**，但 8 步 v1.2 是 **1,543,291,302 B 且结构变了**；K188「alpha 只有 128/8 两档」——8 步 v1.2 是**逐模块 `.alpha`**。两条结论均需加限定。
+- **★★★ 冲突③（「Flash 是另一族」：文档层推翻、本机层仍成立）**：K12/K116 的定位在文档层已错（有 120 行专章 + catalog 双条目 + 1093 行单测）；但本机源码树（`d72c22f`）`dropped_blocks` / `rank_multiple` / `curve_dit` **grep 全 0**。⇒ 「生态有」与「本机能跑」在本轮同日、同一模型上出现最大反差。
+- **★★ 印证（split 件优于 comfy 件）**：8 步 v1.2 split **1.54 GB / 1089 tensors** vs comfy **2.12 GB**，与 K202（1.38 vs 1.96）同型；膨胀来源是 block-diagonal 零，与 K257 的「融合丢 alpha」是两件不同的事。
+- **★ 零增量（须明日复查）**：vpipe star 274（第 4 日）；`MiniMaxAI/MiniMax-H3` 停 **11-24T04:56Z**（dl **回落**到 5,971,579 / like +15）；`VideoRebirthAI/hyperflow-h3-flash` 停 **11-14T09:27Z**（权重 14 天未动）⇒ **上游收编的是既有权重，本轮是纯软件适配**。
+
+#### 18.47.4 本轮实验
+
+**无生成实验，仅零下载读头**（6 次 Range/HEAD：2 个全 header + 4 个 alpha 标量；磁盘 0；检索 58 min + 固化 25 min）。
+
+**不跑 P55（latent upscaler v2，690 MB + 6 min）的决定与理由**：
+
+1. **回答不了本轮任何问题**：K266–K269 改变的是「蒸馏件的玩法」（块删除 / 低秩 / 双时间），P55 是 latent 空间后处理，两者无交集。
+2. **前置题未解**：Flash 与 8 步 v1.2 的任何真机验证都要求 build 追到 `41a694a2`；本机 `0.1 (9db5dd7*0)` 与本地树 `d72c22f` 均落后 87 个 commit。**先定「升不升 build」（P59）比跑一个不受影响的实验更值钱**。
+3. **时间**：本轮源偏多（122 文件 diff + 271 KB 文档 + 5 个新仓 + sd.cpp），01:35 才转固化。
+
+#### 18.47.5 技能包脚本修改
+
+本轮**未改脚本/技能包代码**，仅追加知识：
+
+- `~/.workbuddy/skills/vpipe-model-prepare/references/768p-adapters.md`：追加 §5「8 步 v1.2 是混 rank + 逐模块 alpha（推翻 4 步线同构口径）」。
+- `~/.workbuddy/skills/vpipe-model-prepare/references/h3-ecosystem-map.md`：追加 §6「Flash 收编进主仓（dit_dir 一等公民）+ 三结构 + `curve_dit`」。
+- `~/.workbuddy/skills/vpipe-model-prepare/references/ecosystem-tracking.md`：追加 2026-11-28 条目（SVDQuant 4-bit / W4A8-W6A8 Image / Flash 衍生量化矩阵）。
+- `~/.workbuddy/skills/vpipe-model-prepare/references/quantization.md`：追加「§量化×metadata 自由 JSON」小节。
+
+#### 18.47.6 踩坑与结论
+
+- **坑①（新，最重要）`__metadata__` 自由 JSON 是本机最大的结构盲区**：Flash 的 `hyperflow` 键（`dropped_blocks` / `rank_multiple` / `convrot_groupsize`）、8 步 v1.2 的 `alpha: "128"`，**本机既无 schema 也无解析**（源码树 grep `dropped_blocks` = 0）。⇒ 遇「文件能读但形状对不上」，**第一动作是 dump `__metadata__` 全部键**，不要逐个张量猜。这是 K223（`conversion` 自然语言）同型的第 2 例。
+- **坑②（新）`alpha == rank` 有两种语义，数值上分不开**：K212 的 Fusion 是**倍率**（alpha 32/320/960 == rank ⇒ mul 1），K270 的 8 步 v1.2 是**训练惯例**（16/128 == rank ⇒ mul 1）。两者行为都是 1.0，但来源不同 ⇒ 必须再看 metadata（`conversion` / `floating_dtype`）。
+- **坑③（新）catalog 的注释与代码会矛盾**：`model-catalog.cc` 注释写「v1.1 is NOT catalogued」，代码里 `4step-768p-v1.1` **有条目**。⇒ **数条目 grep `.name =`，不读注释**。这与上一轮 MS `Recursive`（15 vs 48）同族：**口径在文档里，事实在实现里**。
+- **坑④（新）`strings` 判「不支持」会被自己的正对照打脸**：`pi-H3` 在 dylib 里命中 **0**，但本机**确实支持 pi-H3**（catalog/文档/单测全有）。⇒ `strings` **只证有、不证无**；判「不支持 X」要看**源码树结构键**（本轮三键全 0 才是真依据）。**直接修正 P53 的方法论**。
+- **坑⑤（复现）读 data 区偏移必须含 8 字节长度前缀**：把 `data_offsets` 当相对文件头 ⇒ 读出 `1.836e+37`；正确是 `8 + header_json_len + data_offset`。bf16 任意位模式都合法 ⇒ **错了不会报错**，只会静默给噪声。
+
+**结论三条**：
+
+1. **上游的「H3 本体」进入高频期**（3 天 3 万行），任何「等上游」的判断都要重估成本 —— 本机每追一次就废掉一批历史锚点（K98）。
+2. **「生态有 / 本机能跑」的分离要按三层记**：文档层（有专章）/ 代码层（上游有实现）/ 本机层（三键 grep=0）。前两层不能替代第三层。
+3. **结构参数正在从「张量形状」迁到「`__metadata__` 自由文本」**（`dropped_blocks` / `rank_multiple` / `alpha`），这是比 int8 盲区更难发现的一类 —— 因为它**不影响加载成功**，只影响结果对不对。

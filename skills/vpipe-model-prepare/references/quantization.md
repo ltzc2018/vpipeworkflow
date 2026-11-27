@@ -141,3 +141,24 @@ DiT residency ended at 24 of 50 blocks (9717 MB)
 - 只量化官方 Comfy-Org 权重；
 - 硬链接复用时，记得把 `config.json` / `index.json` 一起链过去；
 - 量化后**一定要跑一次真实生成**验证能加载，不能只看日志说"量化完成"。
+
+---
+
+## 量化 × `__metadata__` 自由 JSON（2026-11-28 · 第 37 轮）
+
+> 来源：HF 镜像 Range 读头（Flash FL2VA/Ref2VA、8step v1.2）+ 本机源码树 grep。
+
+**新一类盲区：结构参数不再写在张量形状里，而写在 `__metadata__` 的自由文本里。** 它**不影响加载成功**，只影响结果对不对——比 int8 盲区更难发现。
+
+| 文件 | metadata 键 | 内容 | 本机 |
+|---|---|---|---|
+| HyperFlow H3 Flash | `hyperflow` | `{"format":1,"variant":"fl2va","weights":"int8_convrot","blocks":47,"dropped_blocks":[6,21,22],"rank_multiple":64,"convrot_groupsize":256,"source":"fl2va_int8_convrot","source_revision":"9e9ed14b…"}` | 无解析（grep `dropped_blocks` = 0、`rank_multiple` = 0）|
+| lightx2v 8step v1.2 | `alpha` / `floating_dtype` / `key_format` | `"128"` / `bfloat16` / `minimax-h3-diffusers` | `_meta_alpha` 读它，但**与逐模块 `.alpha`（16/128）冲突** |
+| Pika comfy 版（K257） | `conversion` | 自然语言「preserves unit scaling and omits explicit alpha」 | 只用于人工判读 |
+| Fusion pruned（K212） | （逐模块 `alpha` 张量） | `alpha == rank` 全体成立 | 按模块读 |
+
+**三条纪律**：
+
+1. **读头后第一件事：dump `__metadata__` 全部键**（不是只看 `format`）。结构化参数（块数、删块表、rank 倍数、组大小）大概率在里面。
+2. **`alpha == rank` 有两种语义**：Fusion（倍率惯例）与 8step v1.2（训练惯例）——行为都是 `mul = 1.0`，但**来源不同**，靠数值分不开，要看 metadata 里有没有 `conversion` / `floating_dtype` 之类的说明。
+3. **data 区偏移计算**：`绝对偏移 = 8（长度前缀）+ header_json_len + data_offsets[0]`。漏掉 8 字节会读出任意 bf16 位模式（如 `1.836e+37`）**且不报错**。

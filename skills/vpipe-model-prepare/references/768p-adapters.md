@@ -1267,3 +1267,35 @@ ModelScope `lightx2v/Minimax-h3-Turbo` 现有 **31 个文件 / 27 个 safetensor
 - **`x-linked-size`（镜像 302 响应头）= 真实体积**，比 `content-length` 可靠（后者在 302 上是跳转体 1050/1102 之类）。
 - **`x-linked-etag` = 内容哈希**：跨仓相同即同一份权重；`x-repo-commit` 只标仓的 commit，**不是内容标识**。
 - **融合投影识别**：某模块 A 的 `shape[0]` 是其它模块 rank 的 3 倍（384 vs 128）⇒ 大概率 Q/K/V 融合，**先怀疑 alpha 是否同时被丢**。
+
+---
+
+## 5. 8 步 v1.2：混 rank + 逐模块 alpha（2026-11-28 · 第 37 轮 · K270）
+
+> 来源：HF 镜像 Range 读头（`lightx2v/Minimax-h3-Turbo:minimax_h3_fl2v_turbo_8step_v1.2_768p_bf16.safetensors`，
+> header 134,856 B）+ 4 次 alpha 标量切片 + 上游 `model-catalog.cc`（commit `41a694a2`）注释。
+
+**它打破了「4 步家族字节同构」这条便利假设。**
+
+| 项 | 4 步线 v1.0–v1.3 | **8 步 v1.2（本件）** |
+|---|---|---|
+| 字节数 | 全部 1,383,677,808 B | **1,543,291,302 B（已分叉）** |
+| 张量数 | 同构 | **1,089（全 BF16）** |
+| alpha | `__metadata__.alpha` 单值（128 或 8） | **363 个逐模块 `.alpha` 标量（rank-0 BF16）** |
+| rank | 单一 | **16 × 51 + 128 × 312（同一文件混 rank）** |
+| 适配面 | 未含 `norm_out` | **首次适配 `norm_out.linear`**（`A [16,2688]` / `B [10752,16]`） |
+
+**实测 alpha 值**（`data_offset + 8 + header_len`）：
+
+| 模块 | alpha | 对应 rank | `alpha/rank` |
+|---|---|---|---|
+| `norm_out.linear` | **16.0** | 16 | 1.0 |
+| `transformer_blocks.N.adaln_proj.linear`（50 个） | **16.0** | 16 | 1.0 |
+| `token_refiner.*` / `attn.*` / `ff.*`（312 个） | **128.0** | 128 | 1.0 |
+
+**两条纪律**：
+
+1. **`__metadata__.alpha = "128"` 与逐模块值冲突**：若加载器优先读 metadata，那 51 个 rank-16 模块的 `mul` 会从 1 变成 **8**（128/16）。**换臂前先确认自家 loader 的优先级**（本机 `runtime-lora.cc` 的 `_meta_alpha` / `index_suffix_` / `factor_meta_` 三条路径待判，登记 P61）。
+2. **不要用「体积相同」判断可换槽**：4 步线内部可换槽（K151），**8 步 v1.2 不行**。同族判定改为「字节数 + 张量数 + alpha 形态」三项全同才可换。
+
+> ⚠️ 口径：`8step v1.1` 是 1,383,677,808 B（未分叉）、`8step v1.0_768p` 亦是；**只有 v1.2 分叉**。
