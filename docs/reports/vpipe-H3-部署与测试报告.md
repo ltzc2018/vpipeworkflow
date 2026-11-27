@@ -6718,3 +6718,159 @@ ComfyUI 那条返回体**既无 `total_count` 也无 `items`** ⇒ **判零必�
 1. **上游的「H3 本体」进入高频期**（3 天 3 万行），任何「等上游」的判断都要重估成本 —— 本机每追一次就废掉一批历史锚点（K98）。
 2. **「生态有 / 本机能跑」的分离要按三层记**：文档层（有专章）/ 代码层（上游有实现）/ 本机层（三键 grep=0）。前两层不能替代第三层。
 3. **结构参数正在从「张量形状」迁到「`__metadata__` 自由文本」**（`dropped_blocks` / `rank_multiple` / `alpha`），这是比 int8 盲区更难发现的一类 —— 因为它**不影响加载成功**，只影响结果对不对。
+
+### 18.48 2026-11-28 02:30 —— 第 38 轮：★★ P61 零下载结案（本机 `factor_meta_` 逐模块 `.alpha` 优先，`mul ≡ 1.0`）+ ★★★ Kijai `avg_rank_*` 是动态秩裁剪（8step v1.2 1.54 GB → 336 MB，alpha 被重写为「等于裁剪后 rank」，且丢掉 `norm_out`）+ ★★★ `b25-49` 真相反转（是两 partition 逐块拼接的 50 块全量 bf16，非「只量化后 24 块」）+ ★★★ `alpha` 第三态 = per-tensor 反量化 scale
+
+#### 18.48.1 检索范围
+
+| 类别 | 具体源 | 结果 |
+|---|---|---|
+| GitHub `tgo-app-dev/vpipe` | `commits?per_page=5` / `releases?per_page=3` / `repos/…` / `search/issues is:open` / `pulls?state=open` / `commits?path=docs/MINIMAX-H3.md` | 头部 **仍 `41a694a2`**（第 2 日无后继）；**275 star（+1）/ 27 fork / 38,535 KB / open_issues 14**；release v0.1.110（11-01）落后 **27 天**；issue 14 全开（评论合计 9，#59/#58/#56/#55 仍 0 且 updated==created）；**PR 0** |
+| HF 镜像搜索 | `api/models?search=` × 8（`minimax_h3` / `minimax-h3` / `+h3+flash` / `hyperflow` / `vpipe` / `vpipeline` / `minimax+h3+lora` / `tae-h3` / `relayvsr`）+ `sort=lastModified` | 40 个不同仓，`>= 2026-11-26T20:00` 的新增 6 个（`RunningHubAI/rh-*` ×3 空壳、`AI-KSK/…vbvr-v2`、`RunningHubAI/rh-crown-hyperpdmd`、`mikevu10/relayvsr` 空） |
+| HF 镜像元数据 | `api/models/<id>` × 10（`MiniMaxAI/MiniMax-H3` / `VideoRebirthAI/hyperflow-h3-flash` / `Comfy-Org/MiniMax-H3` / `Kijai/MiniMax-H3_comfy` / `MistyViolet/MiniMax_H3` / `SOLRICKS/MiniMax-H3-Upscaler` / `MistyViolet` / `ibyteohdear` ×2 / `linkqpsfa`） | `MiniMaxAI` **11-24T04:56Z / 5,971,579 dl / 7,426 like**（逐位同上轮）；`hyperflow-h3-flash` **11-14T09:27Z / 1,019,175 dl / 370 like**（逐位同）；`Comfy-Org` **11-15T09:54Z / 33,581,705 dl / 2,863 like** |
+| 零下载读头（Range） | 全 header ×10：`Kijai 8step_v1.2_avg_rank_24` / `MS 4step_v1.1_comfyui` / `MS 4step_v1.3_comfyui` / `MS 8step_v1.2` / `MistyViolet hybrid_b25-49` / `Comfy-Org pruned_int8_convrot` / `Comfy-Org video_vae_int8_convrot` / `curveproj1025 LoRA` / `H3_speed_slider_1.1` / `SOLRICKS refiner_int8`；alpha 标量切片 ×25 | 见 18.48.2 |
+| 体积（`x-linked-size`） | 10 次 `curl -sIL` | 全部一次拿准；gated 仓（`linkqpsfa` 两仓）**README 200 可读、权重 403** |
+| ModelScope | `repo/files?Revision=master&Root=`（Turbo） | **31 项**，26 safetensors 逐名相同，`8step_v1.2_768p_bf16` 仍 **1,543,291,302 B** ⇒ 零增量 |
+| sd.cpp | `leejet/stable-diffusion.cpp` commits ×12 | 11-27 三笔 + 11-26 一笔，**全为 server/LTX/FLUX，H3 面零增量**（`c80ed92a` `--output-dir`、`9d1fe300` LTXAV CUDA、`dee497f4` DGL 输出目录、`e637c7bc` Web UI 尺寸） |
+| 本机源码（定论用） | `generative-models/shared/runtime-lora.cc`（`:48-82` `scalar_f32`、`:168-180` `b_of_a`、`:305-360` `_meta_alpha` 解析、`:364-367` `factor_name_`、`:440-454` `factor_meta_`）；`metal-minimax-h3-transformer.cc`（`:640-700` pruned 探测、`:830-835` pruned gate、`:3802-3830` `bind_curves_` 说明、`:4664-4677` `diff_b` warn）；`shared/streamed-refill.h`（`:42-51` / `:99-103` / `:163-167` F16 源） | 见 18.48.2 / 18.48.3 |
+| WebSearch / 社区视频 | WebSearch ×1 | **`Authentication required for web search`**（连续第 25 轮失效）。B 站/YouTube 通过 `AI-KSK` 仓 README 的外链取得（`BV1Bk1czaEu7` / `youtu.be/OO9yf4yLgng`），未逐条观看 ⇒ 全部标「待复现」 |
+
+#### 18.48.2 新增知识
+
+**K279（★★ 上游第 2 日静默，但 star 破 4 日停滞）**
+
+- HEAD 仍 `41a694a2`；`commits?per_page=5` 与第 37 轮**逐位相同**；`commits?path=docs/MINIMAX-H3.md` 的最后一条也是它 ⇒ **文档无后继增量**。
+- 275 star（+1）/ 27 fork / 38,535 KB / open_issues 14；release v0.1.110（2026-11-01）⇒ **落后 27 天**。
+- issue 14 条全开，评论合计 9：#52 / #34 / #45 各 2，#49 / #41 / #31 各 1；**#59 / #58 / #56 / #55 仍 `updated_at == created_at` 且 0 评论**（分别开放 12 / 20 / 37 / 38 天）。
+
+**K280（★★★ P61 结案：逐模块 `.alpha` 优先，`mul ≡ 1.0`）**
+
+代码路径（`runtime-lora.cc`）：
+
+```
+:444  *rank = (int)ai->shape[0];      // A 的行数
+:446  if (const auto* al = _w->info(key + ".alpha")) {
+:447     if (scalar_f32(*_w, key + ".alpha", al, _mc, &v)) *mul = v / (float)*rank;
+:450  } else if (_meta_alpha > 0.0f) {
+:451     *mul = _meta_alpha / (float)*rank;
+:452  }
+```
+
+`scalar_f32`（`:48-82`）的 dtype 白名单：**F32 / F16 / BF16 / I64 / I32**。8step v1.2 的 363 个 `.alpha` 是 **rank-0 BF16** ⇒ 必命中第一条分支 ⇒ **51 个 rank-16 模块 `mul = 16/16 = 1.0`**。
+
+⇒ **K270 记的「`__metadata__.alpha="128"` 与逐模块值冲突，本机如何取舍未实测」结案；P61 撤销**（它的前提「优先级未知」在代码里是显式写死的顺序）。
+
+**K281（★★★ Kijai `avg_rank_*` = 动态秩裁剪）**
+
+`Kijai/MiniMax-H3_comfy:loras/minimax_h3_fl2v_turbo_8step_v1.2_768p_pruned_avg_rank_24_bf16.safetensors`
+
+| 项 | 官方 8step v1.2 | Kijai avg_rank_24 |
+|---|---|---|
+| 字节 | **1,543,291,302** | **335,604,966（−78.3%）** |
+| tensors | 1,089（全 BF16） | **828（全 BF16）** |
+| 模块数 | 363（`transformer_blocks.N.attn.to_q/to_k/to_v/to_out.0/ff.net.0.proj/ff.net.2` + `norm_out.linear`） | **259（comfy 融合：`blocks.N.attn.qkv_proj/out_proj/mlp.fc1/mlp.fc2/adaln_proj.linear`）** |
+| rank | 16×51 + 128×312 | **2–128，均值 25.0，72 个不同值（`2` 出现 103 次）** |
+| alpha | 16（51 个）/ 128（312 个） | **逐模块 == 裁剪后 rank**（29/29、30/30、26/26、2/2、3/3）⇒ `mul ≡ 1.0` |
+| `norm_out` | **有**（1 个） | **无**（`grep norm_out = 0`） |
+
+metadata（关键四句）：`source_format "Diffusers PEFT LoRA"`、`target_format "ComfyUI generic LoRA"`、`ss_training_comment "Dynamic resize with sv_fro: 0.95 from 384"`、`alpha_policy "per-module alpha tensors take precedence over CLI default"`；另 `output_rank_counts {"16":51,"128":156,"384":52}` 是**裁剪前**口径。
+
+**K282（★★★ `b25-49` 真相反转）**
+
+`MistyViolet/MiniMax_H3:diffusion_models/minimax_h3_hybrid_fl2va_ref2va_b25-49-bf16-pruned.safetensors` = **40,225,724,176 B / 532 tensors / 无 `__metadata__` / 无前缀**。
+
+- **块 0–49 全在（50 块），10 个后缀的逐块签名全同**。
+- dtype 分布：`blocks` 400 BF16 + 100 F16；`final_layer` 1 BF16 + 2 F16 + 4 F32；`adaln_t_table` 1 F32；`token_refiner` 17 BF16；`audio_patch_proj` / `video_patch_proj` / `condition_proj` / `rope` 共 7。
+- **F16 恰好 = 50 块 × 2（`adaln_proj.linear.weight [96768,8]` + `.bias [96768]`）+ `final_layer` 2** —— 与**官方 pruned int8 件的 AdaLN 是 F16 完全一致**（同测 `Comfy-Org/MiniMax-H3:diffusion_models/minimax_h3_fl2va_pruned_int8_convrot` 的 `blocks.0.adaln_proj.linear.weight` = **F16 [96768,8]**、`adaln_t_table` = **F32 [1025,8]**）。
+- **键集对比**：本件 532 键**全部**在官方 pruned int8 的 932 键中（`only hybrid = 0`），官方多出的 **400 个 = `*.comfy_quant` + `*.weight_scale`** ⇒ **本件 = 官方 pruned 结构 + 去量化 BF16 + 两 partition 逐块拼接**。
+
+⇒ **K275 的「`hoidhxd` `b25-49` 只量化后 24 块、前半 bf16、本机无对应通路」作废**：`b25-49` 是**块范围拼接**（前 25 块取一个 partition、后 25 块取另一个），与量化无关，且**本机 pruned 通路结构上完全能读**（50 块 + `adaln_t_table [1025,8]` + `pred()` 由 `curve_grid > 0` 成立）。
+
+**K283（★★★ `alpha` 第三态 = per-tensor 反量化 scale）**
+
+`SOLRICKS/MiniMax-H3-Upscaler:h3_upscale_refiner_int8.safetensors`（1,884,199,184 B / 624 = I8 416 + F32 208）；`__metadata__ = {"quantization": "int8_per_tensor_scales_in_lora_alpha_v1", "packaged_by": "SOLRICKS"}`。实测：
+
+| 模块 | rank | alpha | alpha/rank |
+|---|---|---|---|
+| `blocks.0.attn.out_proj` | 48 | **7.2032e-05** | 1.50e-06 |
+| `blocks.0.mlp.fc1` | 248 | **3.3140e-04** | 1.34e-06 |
+| `blocks.0.attn.qkv_proj` | 356 | **9.6668e-04** | 2.72e-06 |
+
+量级 1e-5~1e-3 且**与 rank 无关** ⇒ 这是**反量化 scale**，不是强度。**本机现状**：I8 因子被 `fp8::format_of("I8") = kNone` 拒（K199）⇒ 整模块 `++_skipped`，**所以现在是「不生效」而非「乘 1e-6」**。**但这是偶然的**：一旦补上 I8 因子读取，同一段 `factor_meta_` 会把 alpha 当强度 ⇒ **`mul ≈ 1.5e-6`，静默变成零增益**。
+
+**K284（★★ 4 步线「强度减半」是 metadata + 逐模块 alpha 双降，融合 qkv 恒 3×）**
+
+| | 4step v1.1 comfyui | 4step v1.3 comfyui |
+|---|---|---|
+| 字节 | 1,956,192,992 | **1,956,193,000（+8 B）** |
+| tensors / 键集 | 624 / — | 624 / **完全相同** |
+| `training_alpha` | `"128.0"` | **`"8.0"`** |
+| `training_scale` | `"1.0"` | **`"0.0625"`**（首次出现） |
+| `blocks.0.attn.out_proj.alpha` | **128.0** | **8.0** |
+| `blocks.0.attn.qkv_proj.alpha` | **384.0** | **24.0**（= 3×） |
+| `blocks.0.mlp.fc1.alpha` | **128.0** | **8.0** |
+
+⇒ 第二次独立印证 K188；新增两条判据：① `training_scale` 与 `training_alpha` **同步除 16**（128/8 = 1/0.0625 = 16）；② comfy 融合 qkv 的 alpha **恒为单投影 3×** ⇒ 本机 `alpha/rank` 读法**恰好正确**（384/384 = 1.0），**不需要特判**。
+
+**K285（★★ 首个「整机套装仓」）** `MistyViolet/MiniMax_H3` 66 文件：`LLM/`（Qwen3.8-27B `UD-IQ3_XXS` / `UD-Q8_K_XL` GGUF + `mmproj-BF16`）、`diffusion_models/`（官方 `FL2VA_int8_convrot` + K282 hybrid）、`text_encoders/`（bf16 / int8_convrot / nvfp4_awq）、`vae/`（audio fp32 + video fp16/int8）、`latent_upscale_models/h3_upscaler_lms_v0.1`、`loras/` 11 + `loras/minimaxh3/` 12、`semantic_bridge/t8_compat/`、中文目录 `自動續接長視頻音頻驅動數字人/models/`（12 个 DiT 变体）。**493 dl / 0 like**（`lastModified 2026-11-27T15:33Z`）。
+
+**K286（★★ metadata 第 4 类用法：prompt 模板）** `H3_speed_slider_1.1.safetensors` = 10,093,356 B / **3 tensors 全 F32**（单模块 `token_refiner.blocks.1.mlp.fc2` 的 `alpha` / `lora_down [128,14336]` / `lora_up [5376,128]`），**rank 128、alpha 128 ⇒ mul 1.0**，kohya 拼写（本机 `b_of_a` `:175-179` 可映射）。metadata 16 键里 **12 个空串**，只有 `positive_phrase "fast motion."` / `negative_phrase "slow motion."` / `image_effect "87%"` / `backend "minimaxh3"` / `concept "speed_slider"` 有值。
+
+**K287（★★ 首个「无权重评测仓」）** `AI-KSK/minimax-h3-vbvr-v2-video-reasoning` 7 文件（`workflow.json` 19 节点 22 链 / `CHECKSUMS.txt` / `LICENSE_NOTE.md` / 中英 README / `cover.png`），自述 **9 场景 18 片段**「H3 with vs without VBVR V2 LoRA」，四维 = 物体一致性 / 动作顺序 / 时序一致性 / 空间交互；外链 B 站 `BV1Bk1czaEu7` + YouTube `OO9yf4yLgng` + RunningHub；**明确声明不含权重/凭据/签名 URL**。
+
+**K288（★ `RunningHubAI/rh-*` 空壳率 3/3）** `rh-crown-hyperpdmd-hd-3-4-minimax-h3-turbo-lora` / `rh-minimax-h3-turbo-4step-ckpt500-comfyui-lora` / `rh-minimax-h3-lora-2090958230839570433` 均 **1 文件（`.gitattributes`）/ 0 dl / 0 like**。另 `klassas/minimax-h3-loras` 1 权重 + 0 dl、`nnndite/minimaxh3image` 4 文件 / 36 dl。
+
+**K289（★ MS 31 项 vs HF 30 项，差的不是权重）** MS Turbo 有 `configuration.json`（72 B）、HF 没有；**26 个 safetensors 逐名相同**，`4step_v1.2_768p_bf16` 仍 1,383,677,808 B、`8step_v1.2_768p_bf16` 仍 1,543,291,302 B ⇒ MS **本轮零增量**。
+
+**K290（★★ 官方 int8 video-VAE 体积需修正）**
+
+| 文件 | 现测 `x-linked-size` | 旧记录 |
+|---|---|---|
+| `vae/minimax_h3_video_vae_int8_convrot` | **2,811,065,184**（etag `52a2c8c7…e60c0e`） | 3,171,670,912（K217 / `h3-ecosystem-map.md`） |
+| `vae/minimax_h3_video_vae_fp16` | 5,207,808,496 | — |
+| `vae/minimax_h3_sol_vae_fp16` | 3,596,335,728 | — |
+| `vae/minimax_h3_sol_vae_int8_convrot` | 1,988,306,504 | — |
+
+该文件提交史停在 10-29（`sol_vae` 上传）之前，`4b53a35191`（11-15）只是 README/模板 ⇒ **文件没被换过**。社区 `Kijai` 的 `mt_video` = 2,811,065,896 B 与官方现测**只差 712 B** ⇒ 旧记录疑为「官方与 mt_video 串位」。⇒ **官方 int8 video-VAE 相对 fp16 是 −46%**（不是 −39%）。
+
+#### 18.48.3 印证与冲突
+
+- **★★★ 冲突①（P61 结案，与 K270 的风险假设相反）**：K270 记「alpha 双源冲突未实测」；实测 `runtime-lora.cc:446` **张量优先** ⇒ `mul = 1.0`。**P61 撤销**。
+- **★★★ 冲突②（K275 的 `b25-49` 推测被推翻）**：见 K282。
+- **★★★ 冲突③（官方 VAE 体积 360 MB 差）**：见 K290。旧值为高估 13%，不影响「减半」结论但影响磁盘预留判断。
+- **★★ 印证（`x-linked-size` 唯一可信）**：本轮 6 个大件（40.2 GB / 335.6 MB / 10.1 MB / 2.81 GB / 5.21 GB / 3.60 GB）一次拿准；**gated 仓 403 的 `content-length` 仍是错误体**（`linkqpsfa` 两仓：README 200 可读、两权重 403）——新增便利判据：**先读 README，能读即仓在、只是权重 gated**。
+- **★★ 印证（`curveproj1025` 与本机两条通路完全对得上）**：`minimax_h3_turbo_v4_step600_ema_DasiwaREF2VAHybridV1_0_curveproj1025_compat_v001.safetensors` = **794,888,704 B / 569 tensors = BF16 518 + F32 51**，结构 = **51 个 `adaln_proj.linear.diff_b [96768] F32`** + **51 对 adaln LoRA（`A [16,8]` / `B [96768,16]`，8 宽 A 正是曲线点宽度）** + **208 对 rank-64 普通因子**；metadata `application "W_eff = W + lora_B @ lora_A; bias_eff = bias + diff_b"`、`conversion_algorithm "adaln_curve_affine_lstsq_pinv1025_with_diff_b"`、`curve_grid_size "1025"`、`curve_width "8"`、`projected_adaln_count "51"`、`validation_status "static_projection_validated; perceptual_render_pending"`、`compatibility_scope "exact_checkpoint_sha256_only"`。本机 **pruned** 上 adaln 的 8 宽 LoRA 当普通 adapter（`bind_curves_` 因 `pruned()` 把 `lora_ok=false` 而跳过）+ `diff_b` 由 `bind_pruned_adaln_` 应用；**released** 上同一批因子当 **curve branch**（`kSpell` 第二项 `".adaln_proj.linear.lora_A/B"`），`diff_b` **只 warn 不应用**（`:4664-4677`）。
+- **★ 零增量（须明日复查）**：`MiniMaxAI/MiniMax-H3`、`VideoRebirthAI/hyperflow-h3-flash`、`Comfy-Org/MiniMax-H3`、MS Turbo 26 权重、sd.cpp 的 H3 面 —— 全部逐位不变。
+
+#### 18.48.4 本轮实验
+
+**无生成实验，仅零下载读头 + 本机源码定论**（约 **40 次 Range/HEAD**：全 header 10 + alpha 切片 ~25 + `x-linked-size` 10；**磁盘 0 增长，仍 35 GiB**）。
+
+不跑实验的三条理由：
+
+1. **本轮唯一的高价值题是「读代码」**：K280 靠 `runtime-lora.cc` 定论，成本 0；跑一次 1.54 GB 实测只是验证代码里写死的事实。
+2. **时间**：02:30 起动，检索到 03:31 才收（超预算 30 min），剩余约 100 min 要装三份报告 + sync + release，任何 >30 min 的实验都会压掉最小闭环。
+3. **磁盘 35 GiB**（过红线，但 K282 的 40.2 GB 与 K290 的 2.81 GB 都不在本轮预算内）。
+
+#### 18.48.5 技能包脚本修改
+
+**本轮未改脚本/技能包代码**，仅追加知识（双侧字节校验见 18.48.6 坑⑤）：
+
+- `references/768p-adapters.md`：追加「§6 Kijai `avg_rank_*` 动态秩裁剪 + 4 步 v1.3 的 `training_scale` 双降」。
+- `references/h3-ecosystem-map.md`：追加「整机套装仓 / 无权重评测仓 / `RunningHubAI` 空壳族」三形态 + **修正官方 int8 video-VAE 体积**。
+- `references/quantization.md`：追加「§`alpha` 四义与第 3 态（反量化 scale）」。
+- `references/ecosystem-tracking.md`：追加 2026-11-28 条目（MistyViolet / AI-KSK / `b25-49` 反转）。
+
+#### 18.48.6 踩坑与结论
+
+- **坑①（新，最危险）bf16 标量按 IEEE half 解码会得到「看起来合理」的小数且不报错**。第一次读 Kijai resized 件 alpha 得 `2.96875 / 2.953125 / 3.34766`（正是 29.0 / 29.0 / 26.0 的 16 位模式被当 half 解），**一眼像「alpha 被缩到 2~3 倍」**，据此会写「Kijai 把强度改成 2/rank」的完全错误结论。正确 `u16 << 16 → f32` 得 29/30/26/2/3（**恰好等于 rank**）。⇒ **纪律：读 bf16 标量后必须把「alpha 是否等于 rank」当自检断言**，不成立先怀疑解码。
+- **坑②（新）同尺寸兄弟件的差异全在「值 + 两个字符串」里，结构对比会给「无差异」**：4 步 v1.1 vs v1.3 的 `624 tensors / 键集全同 / 体积差 8 B`，唯一 metadata 差异是 `training_alpha` + `training_scale`，唯一权重差异是 208 个 alpha 标量的值。⇒ **判「vX.Y 是否同一份」必须 dump metadata 全键 diff + 抽样标量**（这与 K151「字节同构 ⇒ 只换权重值」互为补集）。
+- **坑③（新）「同源」≠「同命名」，resize 工具会顺带做形态转换**：K281 的 259 模块 vs 官方 363，按名字直 diff 会误判「少 104 个」；实际是 `attn.to_q/to_k/to_v` 融合成 `qkv_proj`、`ff.net.0.proj`+`ff.net.2` 改名 `mlp.fc1`+`mlp.fc2`。**唯一真丢的是 `norm_out.linear`（1 个）——而那正是 8step v1.2 相对 4 步线新增的模块** ⇒ **裁秩把「最新特性」丢了**。
+- **坑④（新）「量化 scale 存在 alpha 里」只有 metadata 一句话说明**：`int8_per_tensor_scales_in_lora_alpha_v1` 只在 `__metadata__.quantization`，张量名/形状/dtype 全无异样。⇒ 与 18.47 坑①（metadata 自由 JSON 是最大盲区）**同一个盲区的第二个受害者**：**同一个键名（`alpha`）在不同 publisher 手里是四种语义**（强度倍率 / 训练惯例 / 反量化 scale / 空模板）。
+- **坑⑤（复现）gated 仓要分「文件级 403」与「仓级不可见」**：`linkqpsfa` 两仓 `api/models` 正常、`README.md` 200 可读、**两权重 403** ⇒ 与 K251 同型；新增判据：**先读 README，能读到即仓在、只是权重 gated**。
+
+**结论三条**：
+
+1. **「读代码优先于跑实验」在本轮价值最高**：P61 是上一轮标注「需 1.54 GB 实测」的题，实际 20 行代码就定论。⇒ **凡「本机如何取舍」的问题，先 grep 代码，再谈下载**。
+2. **`alpha` 已成为最不可靠的键**：四义并存，且**第三态（反量化 scale）会被现有读取逻辑当成强度** ⇒ 任何「补 I8 因子读取」的改动都必须带负向断言（P57 已登记）。
+3. **社区加工链正在「越走越远」**：原始 → resize（秩裁剪）→ 量化（scale 塞 alpha）→ 换 partition（块拼接）→ 换命名（comfy 融合）。每一跳都**不改张量名/形状的合法性**，只改语义 ⇒ **判据必须逐跳加，不能只看「能不能加载」**。

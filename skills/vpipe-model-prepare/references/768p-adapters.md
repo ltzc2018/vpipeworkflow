@@ -1299,3 +1299,39 @@ ModelScope `lightx2v/Minimax-h3-Turbo` 现有 **31 个文件 / 27 个 safetensor
 2. **不要用「体积相同」判断可换槽**：4 步线内部可换槽（K151），**8 步 v1.2 不行**。同族判定改为「字节数 + 张量数 + alpha 形态」三项全同才可换。
 
 > ⚠️ 口径：`8step v1.1` 是 1,383,677,808 B（未分叉）、`8step v1.0_768p` 亦是；**只有 v1.2 分叉**。
+
+---
+
+### 6）★★★ Kijai `avg_rank_*` = 动态秩裁剪（2026-11-28 第 38 轮新增）
+
+**件**：`Kijai/MiniMax-H3_comfy:loras/minimax_h3_fl2v_turbo_8step_v1.2_768p_pruned_avg_rank_24_bf16.safetensors`
+**体积 335,604,966 B / 828 tensors 全 BF16 / 259 模块**（官方 8step v1.2 = 1,543,291,302 B / 1,089 ⇒ **−78.3%**），**2026-11-17 上传**。
+
+| 项 | 官方 8step v1.2 | 本件 |
+|---|---|---|
+| 命名 | `transformer_blocks.N.{attn.to_q,to_k,to_v,to_out.0, ff.net.0.proj, ff.net.2}` + `norm_out.linear` | **comfy 融合**：`blocks.N.{attn.qkv_proj,attn.out_proj,mlp.fc1,mlp.fc2,adaln_proj.linear}` |
+| 模块数 | 363 | **259** |
+| rank | 16×51 + 128×312 | **2–128，均值 25.0，72 个不同值（`2` 出现 103 次）** |
+| alpha | 16 / 128 | **逐模块 == 裁剪后 rank**（29/29、30/30、26/26、2/2）⇒ `mul ≡ 1.0` |
+| `norm_out` | **有** | **无** |
+
+metadata 关键四句：`source_format "Diffusers PEFT LoRA"` / `target_format "ComfyUI generic LoRA"` / **`ss_training_comment "Dynamic resize with sv_fro: 0.95 from 384"`** / **`alpha_policy "per-module alpha tensors take precedence over CLI default"`**；`output_rank_counts {"16":51,"128":156,"384":52}` 是**裁剪前**口径（**别拿它当实测**）。
+
+**三条纪律**：
+
+1. **判「可换槽」不能只看 alpha**：本件 alpha 恒等 rank、看起来「完全正常」，但 rank 已从 128 掉到 2（qkv 从 384×3 掉到 30）⇒ **要看 rank 是否已偏离训练 rank**。
+2. **换槽会静默少模块**：`norm_out.linear` 被丢弃（它正是 8step v1.2 相对 4 步线**新增**的那个），本机无告警。
+3. **换算「强度」时用 `alpha / 裁剪后 rank`**，不是 `alpha / 24`（24 只是均值，不是任何模块的 rank）。
+
+### 7）★★ 4 步线 v1.3 的 `training_scale`（2026-11-28 第 38 轮新增）
+
+`4step_v1.1_768p_comfyui_bf16`（1,956,192,992 B）vs `4step_v1.3_768p_comfyui_bf16`（**1,956,193,000 B，+8 B**）：**tensors 624 / 键集完全相同**，metadata **只有两项不同**：
+
+| 键 | v1.1 | v1.3 |
+|---|---|---|
+| `training_alpha` | `"128.0"` | `"8.0"` |
+| **`training_scale`** | `"1.0"` | **`"0.0625"`**（首次出现） |
+
+**逐模块 alpha 实测**：`attn.out_proj` / `mlp.fc1` / `mlp.fc2` **128 → 8**；**`attn.qkv_proj` 384 → 24（恒 3×）**。
+
+⇒ ① `training_scale` 与 `training_alpha` **同步 ÷16**（128/8 = 1/0.0625）；② **comfy 融合 qkv 的 alpha 恒为单投影 3×** ⇒ 本机 `alpha/rank` 读法**恰好正确**（384/384 = 1.0），**不需要特判**；③ 判「vX.Y 是否同一份」**必须 dump metadata 全键 diff + 抽样标量**，只看 keyset/体积会得出「无差异」。

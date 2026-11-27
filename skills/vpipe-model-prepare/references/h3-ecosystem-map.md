@@ -700,3 +700,27 @@ M5 Max 832×480×73 + Sol：**23.4 s / 22.9 GB** vs pi-H3 直接跑 pruned DiT *
 | `hoidhxd/HyperFlow-H3-Flash-INT8-ComfyUI-Hybrid` | 244 | **`b25-49` 命名 ⇒ 只量化后 24 块，前半 bf16** |
 | `moonbox-dev/…-GGUF` / `…-ref2va-GGUF` | 3,248 / 1,663 | GGUF |
 | `hancheng-ai/…-MLX-Serve-{8bit,4bit}` × 2 partition | 286 / 275 / 207 / 201 | MLX |
+
+---
+
+### 2026-11-28（第 38 轮）修正与新形态
+
+**⚠️ 体积修正（向后覆盖）**：
+
+| 文件 | 本文档旧值 | **现测（`x-linked-size`）** |
+|---|---|---|
+| `Comfy-Org/MiniMax-H3:vae/minimax_h3_video_vae_int8_convrot` | 3,171,670,912 | **2,811,065,184** |
+| `Comfy-Org/MiniMax-H3:vae/minimax_h3_video_vae_fp16` | — | **5,207,808,496** |
+| `Comfy-Org/MiniMax-H3:vae/minimax_h3_sol_vae_fp16` | — | **3,596,335,728** |
+| `Comfy-Org/MiniMax-H3:vae/minimax_h3_sol_vae_int8_convrot` | — | **1,988,306,504** |
+
+理由：该文件提交史停在 10-29 之前（`4b53a35191` 仅改 README/模板）⇒ 文件未换过；旧值与社区 `mt_video`（2,811,065,896 B）仅差 712 B ⇒ 旧记录为串位。**int8 相对 fp16 = −46%**（旧口径 −39%）。
+
+**新形态两枚**：
+
+| 仓 | 文件数 | 说明 |
+|---|---|---|
+| `MistyViolet/MiniMax_H3` | 66 | **整机套装**：`LLM/`（Qwen3.8-27B `UD-IQ3_XXS`/`UD-Q8_K_XL` GGUF + `mmproj-BF16`）、DiT ×2（官方 int8 + K282 hybrid）、text_encoders ×3、vae ×3、`latent_upscale_models/h3_upscaler_lms_v0.1`、`loras/` 11 + `loras/minimaxh3/` 12、`semantic_bridge/t8_compat/`、中文目录 `自動續接長視頻音頻驅動數字人/models/`（12 个 DiT 变体）。**493 dl / 0 like** |
+| `AI-KSK/minimax-h3-vbvr-v2-video-reasoning` | 7 | **无权重评测仓**：`workflow.json`(19 节点/22 链) + `CHECKSUMS.txt` + 中英 README，9 场景 18 片段、4 维判据，外链 B 站/YouTube/RunningHub |
+
+**空壳族**：`RunningHubAI/rh-*` 3/3 只有 `.gitattributes`。

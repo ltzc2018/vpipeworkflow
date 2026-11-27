@@ -20,3 +20,14 @@
 - **SageAttention sink 注意力（契约 311）**：缺 311 时**算错但不报错** ⇒ 必须查 `sage_sinks_marker` 探针，不可用就保持 dense。
 - **sd.cpp H3 面零增量**（11-26 之后只有 LTX/FLUX/server 四条）。
 - 口径：以上社区仓均为**存在性记录**，未核实画质；SVDQuant / W4A8-Image / hybrid 三档**待复现**。
+
+---
+
+## 2026-11-28（第 38 轮）
+
+- **★★★ `b25-49` 真相反转（推翻 K275 的推测）**：`MistyViolet/MiniMax_H3:diffusion_models/minimax_h3_hybrid_fl2va_ref2va_b25-49-bf16-pruned.safetensors` = **40,225,724,176 B / 532 tensors / 无 metadata / 无前缀**，**块 0–49 全在、逐块签名全同**，**F16 恰好 = 50 块 × 2（AdaLN weight[96768,8]+bias）+ final_layer 2**（与官方 pruned int8 的 F16 AdaLN 一致）；键集是官方 pruned int8（932）的**真子集**（缺 400 个 `comfy_quant`/`weight_scale`）⇒ **`b25-49` 是「块范围拼接」不是「块范围量化」**，本机 pruned 通路结构上能读。
+- **★★ 官方 int8 video-VAE 体积修正**：`vae/minimax_h3_video_vae_int8_convrot` = **2,811,065,184 B**（旧记 3,171,670,912 B；文件自 10-29 未动，与社区 `mt_video` 仅差 712 B ⇒ 旧记录串位）。同仓：`fp16` 5,207,808,496 / `sol_vae_fp16` 3,596,335,728 / `sol_vae_int8` 1,988,306,504。
+- **★★ 分发形态第 6、7 种**：⑥ **整机套装仓** `MistyViolet/MiniMax_H3`（66 文件：LLM GGUF + DiT + 23 LoRA + VAE + upscaler + 中文工作流目录，493 dl / **0 like**）；⑦ **无权重评测仓** `AI-KSK/minimax-h3-vbvr-v2-video-reasoning`（workflow + CHECKSUMS，9 场景 18 片段，外链 B 站 `BV1Bk1czaEu7` / YouTube `OO9yf4yLgng`）。
+- **★ 空壳族**：`RunningHubAI/rh-*` 本轮新仓 **3/3 只有 `.gitattributes`**（`rh-crown-hyperpdmd-hd-3-4-minimax-h3-turbo-lora` / `rh-minimax-h3-turbo-4step-ckpt500-comfyui-lora` / `rh-minimax-h3-lora-2090958230839570433`）。⇒ `siblings ≤ 2` 一律先当空壳。
+- **★ 跨平台文件数口径**：MS Turbo **31 项** vs HF **30 项**，差的是 `configuration.json`（非权重）；26 个 safetensors 逐名相同 ⇒ 比文件数先扣非权重项（K264 的兄弟坑）。
+- **★ gated 仓判据补充**：`linkqpsfa` 两仓 `README.md` **200 可读**、权重 **403** ⇒ **先读 README，能读到即仓在、只是权重 gated**。

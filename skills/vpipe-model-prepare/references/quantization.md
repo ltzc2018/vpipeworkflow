@@ -162,3 +162,25 @@ DiT residency ended at 24 of 50 blocks (9717 MB)
 1. **读头后第一件事：dump `__metadata__` 全部键**（不是只看 `format`）。结构化参数（块数、删块表、rank 倍数、组大小）大概率在里面。
 2. **`alpha == rank` 有两种语义**：Fusion（倍率惯例）与 8step v1.2（训练惯例）——行为都是 `mul = 1.0`，但**来源不同**，靠数值分不开，要看 metadata 里有没有 `conversion` / `floating_dtype` 之类的说明。
 3. **data 区偏移计算**：`绝对偏移 = 8（长度前缀）+ header_json_len + data_offsets[0]`。漏掉 8 字节会读出任意 bf16 位模式（如 `1.836e+37`）**且不报错**。
+
+---
+
+## `alpha` 的四义（2026-11-28 第 38 轮新增，含第 3 态）
+
+同一个键名 `alpha`，在不同 publisher 手里是四种完全不同的东西，**张量名 / shape / dtype 全都无异样**，只能靠 `__metadata__` 区分：
+
+| # | 语义 | 判据 | 例 | `mul` |
+|---|---|---|---|---|
+| 1 | **强度倍率** | `alpha == rank`，metadata 有 `conversion` 说明 | Fusion pruned（K212） | 1.0 |
+| 2 | **训练惯例** | `alpha == rank`，逐模块标量 | 8step v1.2（K270）、4 步 v1.1（α128） | 1.0 |
+| 3 | **per-tensor 反量化 scale** | `alpha ≈ 1e-5 ~ 1e-3` 且**与 rank 无关**；metadata `quantization: "int8_per_tensor_scales_in_lora_alpha_v1"` | SOLRICKS int8 refiner（K283） | 当强度算 ≈ 1.5e-6（**错**） |
+| 4 | **空模板 / 用途说明** | 多数键为空串；有意义的键是 `positive_phrase` / `negative_phrase` / `image_effect` | `H3_speed_slider_1.1`（K286） | 恒 1.0（α==rank） |
+
+**本机读取顺序（`runtime-lora.cc:446`）**：**逐模块 `.alpha` 张量优先** → 缺失才回落 `_meta_alpha`（`__metadata__.alpha` / `lora_alpha` / `lora_adapter_metadata`）。`scalar_f32`（`:48-82`）收 **F32 / F16 / BF16 / I64 / I32**。
+
+⇒ **P61 结案**：8step v1.2 的 51 个 rank-16 模块 **`mul = 16/16 = 1.0`**，**不会**因 metadata `alpha="128"` 变成 8。
+
+### 两条硬纪律
+
+1. **补 I8 因子读取时必须加负向断言**：`alpha < 1e-2 && alpha != rank` ⇒ **拒该模块并告警**，否则 SOLRICKS 类件会从「静默跳过」变成「静默乘 1e-6」（比现在更隐蔽）。
+2. **读 bf16 标量后必须自检**：`u16 << 16 → f32` 才对；按 IEEE half（`<e`）解会得到 29.0 → `2.96875` 这种「看起来合理」的小数**且不报错**。**自检断言：`alpha == rank` 应成立**（对 1/2/4 三态都成立），不成立先怀疑解码。
