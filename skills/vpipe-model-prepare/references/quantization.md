@@ -184,3 +184,50 @@ DiT residency ended at 24 of 50 blocks (9717 MB)
 
 1. **补 I8 因子读取时必须加负向断言**：`alpha < 1e-2 && alpha != rank` ⇒ **拒该模块并告警**，否则 SOLRICKS 类件会从「静默跳过」变成「静默乘 1e-6」（比现在更隐蔽）。
 2. **读 bf16 标量后必须自检**：`u16 << 16 → f32` 才对；按 IEEE half（`<e`）解会得到 29.0 → `2.96875` 这种「看起来合理」的小数**且不报错**。**自检断言：`alpha == rank` 应成立**（对 1/2/4 三态都成立），不成立先怀疑解码。
+
+
+---
+
+## 第 5 个量化家族：SVDQuant W4A4（2026-11-28 第 39 轮，K292）
+
+`QuantFunc/Minimax-H3-Quantfunc-4bit:minimax_h3_fl2va_4step_quantfunc_int4_r128.safetensors`
+`x-linked-size` **12,368,339,576 B / 2608 tensors / 274,992 B header**；BF16 1151 + I8 832 + F32 625。
+50 块 + token_refiner 2 块 + `final_layer`，**208 个线性 × 9 键**：
+
+| 键 | dtype | 形状（`blocks.0.attn.out_proj`） | 含义 |
+|---|---|---|---|
+| `qweight` | I8 | `[5376, 3584]` | 4 bit 码，**2 nibble / 字节** |
+| `wscales` | BF16 | `[112, 5376]` | **group 64 沿 INPUT**（7168/64=112） |
+| `wgsums` | BF16 | `[112, 5376]` | 与 `wscales` 同形（zero-point 侧） |
+| `proj_down(_scale)` | I8 / F32 | `[7168,128]` / `[8]` | **SVD 下投影，秩 128**（r64 档 64） |
+| `proj_up(_scale)` | I8 / F32 | `[5376,128]` / `[5376]` | SVD 上投影 |
+| `resq_vr(_scale)` | I8 / F32 | `[7168,128]` / `[7168]` | **残余低秩分支** |
+| `smooth_factor(_orig)` | BF16 | `[7168]` | 平滑因子（208 / 200 个） |
+
+**四组算术核验**（全对）：`qkv [21504,2688] & wscales[84,21504]`（5376/64=84）、`fc1 [28672,2688] & [84,28672]`、`fc2 [5376,7168] & [224,5376]`（14336/64=224）、`out [5376,3584] & [112,5376]`。
+
+⚠️ **`resq_vr` ≠ NVFP4 的 `weight_scale_2`**：前者是**低秩残余分支**（I8 `[·,rank]` + F32 行 scale），后者是**张量级二级 scale**（F32 标量/向量）。两者都叫「残余/二级」，**判「是不是同一族」不能看键名有 `res` 或 `scale_2`**。
+
+**本机结论（K293）**：`strings` 对 `qweight`/`wgsums`/`wscales`/`proj_down`/`proj_up`/`resq_vr`/`smooth_factor` **七键全 0 命中**（`qweight` 只在 `qwen3` / `drama3` 两条 LLM 通路）⇒ **不支持，且失败在判据层不是解码层**（无 `adaln_t_table`、无 `blocks.N.attn.qkv_proj.weight` ⇒ `metal-minimax-h3-transformer.cc:657-661` 直接 fail）。
+
+**社区自报（待复现）**：PSNR 23.7 dB（vs bf16 同 prompt 同 seed）、RTX 4090 768² 124 帧 3.2 s/步、SM75/86/89/120。
+
+## 量化家族现在有 5 个（能力矩阵要 5 列）
+
+| # | 家族 | 代表件 | 本机 |
+|---|---|---|---|
+| 1 | Fusion（LoRA 融合进 pruned） | `lightx2v/Minimax-H3-Turbo-Fusion` | 支持（K212/K250） |
+| 2 | Kijai W4A8 混合 | `minimax_h3_ref2va_pruned_w4a8_mixed` 11.77 GB | 支持（K178/K179） |
+| 3 | int8 TensorWise + ConvRot | `Comfy-Org …pruned_int8_convrot` 19.53 GiB | 支持（K180/K215） |
+| 4 | NVFP4 | `KalponicStudio/MiniMax-H3-Image-Ojon` | **部分**：已装二进制缺 `nvfp4_dequant`（K269 前身） |
+| 5 | **SVDQuant W4A4 int4** | `QuantFunc/…int4_r128` 12.37 GB | **不支持（判据层）** |
+
+## 判「409 / 404 / 000」的三类假信号（2026-11-28 补第三类）
+
+| 现象 | 真因 | 判据 |
+|---|---|---|
+| `http_code=000` 且 `time_total == timeout` | 网络不通 / DNS 无响应 | **不是 404**，换镜像重打 |
+| `http_code=403` 且 `content-length` 约 183 / 191 | gated 仓的**错误体长度** | 不是文件体积；先读 `README.md`（200 可读 ⇒ 仓在） |
+| **`http_code=404` 且响应体约 55 KB** | **URL 漏写 `/resolve/main/`** | **先用一个已知好件做对照**，对照不通就是 URL 形态错 |
+
+⇒ 批测体积前**必跑一次对照**（如 `Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_int8_convrot`）。

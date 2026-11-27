@@ -1335,3 +1335,36 @@ metadata 关键四句：`source_format "Diffusers PEFT LoRA"` / `target_format "
 **逐模块 alpha 实测**：`attn.out_proj` / `mlp.fc1` / `mlp.fc2` **128 → 8**；**`attn.qkv_proj` 384 → 24（恒 3×）**。
 
 ⇒ ① `training_scale` 与 `training_alpha` **同步 ÷16**（128/8 = 1/0.0625）；② **comfy 融合 qkv 的 alpha 恒为单投影 3×** ⇒ 本机 `alpha/rank` 读法**恰好正确**（384/384 = 1.0），**不需要特判**；③ 判「vX.Y 是否同一份」**必须 dump metadata 全键 diff + 抽样标量**，只看 keyset/体积会得出「无差异」。
+
+
+---
+
+## diffusers vs comfy 形态：同一步数也差 37%（2026-11-28 第 39 轮，K295）
+
+`lightx2v` 的 8step v1.2 两形态：
+
+| 文件 | 体积 | tensors | alpha | 模块 |
+|---|---|---|---|---|
+| `…8step_v1.2_768p_bf16`（diffusers） | **1,543,291,302 B** | 1089 | 363 | 726 |
+| `…8step_v1.2_768p_comfyui_bf16` | **2,115,772,012 B** | 777 | 259 | 259 |
+
+差 **+572,522,806 B（+37.1%）**，全部来自 **融合 qkv 的 block-diagonal B**：
+comfy `blocks.0.attn.qkv_proj.lora_B` = `[21504,384]` = **16,515,072 B**；
+diffusers `to_q/to_k/to_v` 各 `[7168,128]` 合计 **5,505,024 B** ⇒ 单块 **3×**（2/3 是零），50 块 ≈ +550 MB。
+metadata 自述 `qkv_fusion "block diagonal B; concat A; alpha multiplied by 3"`。
+
+⇒ **K151「4 步家族字节同构」不跨形态成立**。判「下哪个」看**基座形态**（pruned/released × diffusers/comfy），不看步数。
+
+## `avg_rank_N` 是加权均值，不是逐层上限（K297）
+
+`Kijai/MiniMax-H3_comfy:loras/minimax_h3_fl2v_turbo_8step_v1.2_768p_pruned_avg_rank_24_bf16.safetensors`
+（**335,604,966 B**）实测 rank：qkv **30** / out_proj **29** / fc1 **26** / adaln **2** / final_layer **2**。
+⇒ 文件名里的 24 是**全件加权平均**，不是「每层都裁到 24」。**判裁到什么程度必须逐层读**。
+
+## `pruned_conversion` = 裁秩 ≠ 只是裁秩（K297）
+
+metadata 原文：`pruned_conversion: "adaln alpha folded into lora_B; lora_A projected to the curve basis; constant term as diff_b"`、
+`adaln_curve_basis: "fl2va"`、`lora_A [2,8]`（官方对应 `[16,2688]`）、51 个 `diff_b BF16 [96768]`。
+
+⇒ 这类件**只能挂 pruned 基座**（有 8 宽曲线基），挂 released DiT 会**正常加载但 AdaLN 全部不生效，无告警**。
+⚠️ 反例判据：alpha 实测 qkv **30** / out **29**（≈1.03×）⇒ **「qkv alpha 恒为 3×」在裁秩件上失效**，不能当自检。

@@ -724,3 +724,35 @@ M5 Max 832×480×73 + Sol：**23.4 s / 22.9 GB** vs pi-H3 直接跑 pruned DiT *
 | `AI-KSK/minimax-h3-vbvr-v2-video-reasoning` | 7 | **无权重评测仓**：`workflow.json`(19 节点/22 链) + `CHECKSUMS.txt` + 中英 README，9 场景 18 片段、4 维判据，外链 B 站/YouTube/RunningHub |
 
 **空壳族**：`RunningHubAI/rh-*` 3/3 只有 `.gitattributes`。
+
+
+---
+
+## AdaLN 的三种形态（2026-11-28 第 39 轮，K294）
+
+| # | 形态 | `time_embedder.proj_out` | 时间表 | 例 |
+|---|---|---|---|---|
+| 1 | 官方 pruned | **无 t-MLP** | `adaln_t_table [1025,8]` | `Comfy-Org/…pruned_int8_convrot` |
+| 2 | 折叠进 t-MLP 输出（WaveCut） | `[8,16]` | 无 | K211 的 WaveCut 件 |
+| 3 | **预烘 t-MLP + 8 宽折叠基（QuantFunc / SVDQuant）** | `[2688,5376]` | 无（但有 `adaln_fold_basis [8,2688]`） | `QuantFunc/…int4_r128` |
+
+⇒ 判「像不像 pruned」**不能只看 `adaln_proj.linear.weight` 的宽度**（三者都是 8），要看 `time_embedder.proj_out` 的 **out 维**（无 / 8 / 16 / 2688）。
+本机 `comfy_saved` 判据硬性要 `adaln_t_table`（`metal-minimax-h3-transformer.cc:648-652`）⇒ 形态 3 **落在缝里**（fail「is neither a Comfy-Org H3 component…」）。
+
+## 分发形态第 8 种：整仓打包 diffusers 源码（K298）
+
+`ibyteohdear/MiniMax-H3-Pruned-{LightX8-hybrid,DMD-FL2VA-Turbo}-Fused` 各 **1423 文件**，其中 **1412 个在 `diffusers/` 下**
+（`diffusers/__init__.py`、`diffusers/commands/*.py`、`diffusers/__pycache__/*.cpython-311.pyc`），
+真权重只有根目录 **4 个 `diffusion_pytorch_model-0000{1..4}-of-00004.safetensors`**。
+
+⇒ 与「`siblings ≤ 2` 先当空壳」（K288）互补：**上界也要看**，上千的多半打包了源码/缓存。
+统计「有效仓」时先看 `topdir` 分布，`diffusers/` 下 `.py`/`.pyc` 一律不计。
+
+## 换编码器：TE-PK `pk_lora` 方言（K299 补）
+
+`Alissonerdx/TE-PK-Minimax-H3:gemma4/minimax_h3_32b_pk_lora_gemma4_e4b.safetensors` = **520 tensors 全 F16**：
+非 `te_lora` 只有 4 个（`scale F32 [1]` / `R F16 [15360,5120]` / `donor_mean [15360]` / `target_mean [5120]`），
+余 516 个是 `te_lora.layers.*.{self_attn.{q,k,v,o}_proj, mlp.{gate,up,down}_proj}.lora_{A,B}`，rank 32。
+
+**`grep sink` = 0** ⇒ README 里的 `inject_token0_sink = True` 是**运行时注入 Qwen3-VL-32B 的 20 KB Token-0 向量**（`<0.01 ms`，零训练），
+**不是**权重里的 `sink_embedding`。⇒ 判「能否塞进本机 connector」**不能靠 README 功能名对齐，要 dump 张量表**（本机要 6 张量含 `sink_embedding`，K237）。

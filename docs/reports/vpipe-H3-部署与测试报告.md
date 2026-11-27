@@ -6874,3 +6874,114 @@ metadata（关键四句）：`source_format "Diffusers PEFT LoRA"`、`target_for
 1. **「读代码优先于跑实验」在本轮价值最高**：P61 是上一轮标注「需 1.54 GB 实测」的题，实际 20 行代码就定论。⇒ **凡「本机如何取舍」的问题，先 grep 代码，再谈下载**。
 2. **`alpha` 已成为最不可靠的键**：四义并存，且**第三态（反量化 scale）会被现有读取逻辑当成强度** ⇒ 任何「补 I8 因子读取」的改动都必须带负向断言（P57 已登记）。
 3. **社区加工链正在「越走越远」**：原始 → resize（秩裁剪）→ 量化（scale 塞 alpha）→ 换 partition（块拼接）→ 换命名（comfy 融合）。每一跳都**不改张量名/形状的合法性**，只改语义 ⇒ **判据必须逐跳加，不能只看「能不能加载」**。
+
+### 18.49 2026-11-28 04:30 —— 第 39 轮：★★★ SVDQuant W4A4 int4 的 H3 首次剖到张量级（208 线性 × 9 键 / group 64 沿 input / 2 nibble 每字节）＋ ★★★ 本机「FP8 单文件 DiT 可直接跑」有官方文档与源码双证，而同族 SVDQuant 掉在判据层（第 4 类失败位）＋ ★★★ 推翻 K281 的「Kijai 丢 `norm_out`」（改名非删除）与「只是裁秩」（实为裁秩 + pruned 转换）
+
+> 轮次：**第 39 轮**（slot=04:30，P39 launchd + codebuddy 无头 CLI，守卫 R=39）。上游基线不变：`main` @ **`41a694a2`**（2026-11-26，第 3 日无后继）。
+> 与 18.48 的关系：上轮把 K275 的第 ① 条（QuantFunc = 首个 SVDQuant 4-bit）留成**存在性记录**；本轮**零下载拆到张量级**，并顺带复核 K281 的三条断言——结果两条要改。
+
+#### 18.49.1 检索范围
+
+| 源 | 方法 | 结果 |
+|---|---|---|
+| GitHub `tgo-app-dev/vpipe` | commits per_page=5 / repo / releases?per_page=3 / issues open / pulls open | HEAD **仍 `41a694a2`**（与 37/38 轮逐位相同）；275 star / 27 fork / 38,535 KB / 14 open issue / **PR=0**；release v0.1.110（11-01） |
+| HF 镜像 `api/models?search=` | `minimax_h3` 与 `minimax-h3` 两拼写各 40 条 | 与本轮相关的 4 个：QuantFunc（11-27T15:40Z）、`yichengup` zs05（11-27T08:40Z）、`ibyteohdear` Fused ×2（11-26）、pocis PixelHead（11-26） |
+| HF 镜像 Range 读头 | `resolve/main` + `-r` + `x-linked-size` | **6 件体积 + 8 份全 header**（详见 18.49.2）；下载 **0 字节** |
+| ModelScope `repo/files` | `lightx2v/Minimax-h3-Turbo` | 仍 **31 项**、合计 **75,804,462,395 B**；与 HF **30 项**只差 `configuration.json`（72 B） |
+| 官方仓零增量 | `MiniMaxAI/MiniMax-H3` / `Comfy-Org/MiniMax-H3` / `VideoRebirthAI/hyperflow-h3-flash` | 11-24T04:56Z / 11-15T09:54Z / 11-14T09:27Z，dl 逐位相同 |
+| GitHub `leejet/stable-diffusion.cpp` | commits per_page=12 | 11-27 新增 **`05adb5b9` Q8_0 运行时 INT8（#2445）**；**H3 面仍停在 11-26 的 `439e77a5`** |
+| 本机源码 / 二进制 | `libvpipe.0.dylib` `strings` + `repo/vpipe` 源码 | H3 单文件 DiT 分支 `:634-661`、`to_bf16_()` `:160-176`、`diffusers-layout.h` 改名表 |
+| WebSearch | 中英双语 1 次 | **仍不可用**（`Authentication required`，连续第 9 轮）⇒ 社区面全部走 HF 镜像 |
+
+#### 18.49.2 新增知识（K291–K300，详见 `vpipe-daily-knowledge.md` 第 39 轮）
+
+**① SVDQuant W4A4 int4 的完整结构（K292，本轮最重要）**
+
+`QuantFunc/Minimax-H3-Quantfunc-4bit:minimax_h3_fl2va_4step_quantfunc_int4_r128.safetensors`：
+`x-linked-size` **12,368,339,576 B** / **2608 tensors** / **274,992 B header**；dtype **BF16 1151 + I8 832 + F32 625**；
+**50 块 + token_refiner 2 块 + `final_layer`**，**208 个线性层 × 9 个键**：
+
+| 键 | dtype | 形状（`blocks.0.attn.out_proj` 为例） | 含义 |
+|---|---|---|---|
+| `qweight` | I8 | `[5376, 3584]` | 4 bit 码，**2 nibble / 字节**（7168/2 = 3584） |
+| `wscales` | BF16 | `[112, 5376]` | **group 64 沿 INPUT**（7168/64 = 112），每输出一行一组 |
+| `wgsums` | BF16 | `[112, 5376]` | 与 `wscales` 同形的权重和（zero-point 侧） |
+| `proj_down` / `proj_down_scale` | I8 / F32 | `[7168, 128]` / `[8]` | **SVD 低秩下投影，秩 128**（r64 档为 64） |
+| `proj_up` / `proj_up_scale` | I8 / F32 | `[5376, 128]` / `[5376]` | SVD 上投影 |
+| `resq_vr` / `resq_vr_scale` | I8 / F32 | `[7168, 128]` / `[7168]` | **残余分支**（SVD 未覆盖的残差） |
+| `smooth_factor(_orig)` | BF16 | `[7168]` | 平滑（activation 侧）因子，208 / 200 个 |
+
+算术核验（4 个线性全对）：`qkv [21504,2688] & wscales[84,21504]`（5376/64=84）、`fc1 [28672,2688] & [84,28672]`、`fc2 [5376,7168] & [224,5376]`（14336/64=224）。
+数据区合计 **12,368,064,576 B**，与文件差 275,000 B（= 8 + header），**对得上**。
+
+README 自报（**社区二手，待复现**）：PSNR **23.7 dB**（vs bf16 同 prompt 同 seed）、RTX 4090 768² 124 帧 **3.2 s/步**（INT8 ConvRot 8.5 s = 2.66×、FP8 10.2 s = 3.19×）、**SM75/86/89/120**、`adaln folding` 最大相对误差 FL2VA 7.58e-4 / Ref2VA 9.22e-4。
+
+**② 本机 FP8 单文件 DiT = 明确支持（K293）**
+
+- CLI 帮助原文：「a single .safetensors (a Comfy-Org repack, **or the diffusers naming, e.g. lightx2v's FP8 turbo DiT, read as it is with FP8 kept FP8**)」；`repo/vpipe/stages/generate-video-stage.cc:149` 同句。
+- `metal-minimax-h3-transformer.cc:160-176`：`fp8::format_of(info->dtype) != kNone` ⇒ `fp8::decode_tensor_bf16(...)` **整张解码**。
+- `minimax-h3-diffusers-layout.h`：diffusers ↔ 本机名三处改名 + **qkv 是 FLAT 行序**（`to_q/to_k/to_v` = `qkv_proj` 连续行，非 per-head）。
+- 实测 `minimax_h3_fl2v_turbo_4step_v1.1_768p_fp8` = **34,023,114,720 B / 988 tensors**（BF16 626 + F8_E4M3 350 + F32 12），`transformer_blocks.*` **950 键**、`weight_scale` **350 个 per-row** ⇒ **全量 DiT，不是 LoRA**。
+
+**③ 同族 SVDQuant 却掉在「判据层」（K293/K294）**
+
+- QuantFunc 件 **无 `adaln_t_table`**、**无 `blocks.N.attn.qkv_proj.weight`**（只有 `.qweight`）⇒ `:657-661` 的 `comfy_saved` 两条判据全不满足 → Fail。
+- `strings` 对 `qweight` / `wgsums` / `wscales` / `proj_down` / `proj_up` / `resq_vr` / `smooth_factor` **七键全 0 命中**（`qweight` 只在 `qwen3` / `drama3` 两条 LLM 通路）。
+- **AdaLN 是第三种形态**：`time_embedder.proj_in [5376,256]` + `proj_out [2688,5376]`（完整 t-MLP，2688 宽）+ `adaln_fold_basis [8,2688]` + 块内 `adaln_proj.linear [96768,8]`。对照官方 pruned（无 t-MLP + 表 `[1025,8]`）与 WaveCut（`proj_out [8,16]`，K211）。
+
+**④ K281 两条断言被推翻（K296/K297）**
+
+| K281 原话 | 本轮实测 | 处置 |
+|---|---|---|
+| 「resize 顺带做 comfy 融合，且**丢 `norm_out.linear`**」 | 官方 **diffusers** 的 `norm_out.linear` 在 **comfy** 词表里叫 **`final_layer.adaln_proj.linear`**（改名表明写）。归一化后 Kijai **310** 模块 vs 官方 comfy **259**，**`only_official = 0`**、`only_kijai = 51`（50 块 + `final_layer` 的 `diff_b`） | **作废**：一个模块都没丢 |
+| 「动态秩裁剪（SVD 重打包）」 | 还有 `pruned_conversion: "adaln alpha folded into lora_B; lora_A projected to the curve basis; constant term as diff_b"`、`adaln_curve_basis: "fl2va"`、`lora_A [2,8]`（官方对应 `[16,2688]`）+ 51 个 `diff_b [96768]` | **补正**：是「裁秩 **+ pruned 转换**」⇒ 只能挂 pruned 基座 |
+
+**⑤ 官方 comfy 8step v1.2 比 diffusers 版大 37%（K295）**
+
+`…8step_v1.2_768p_bf16` **1,543,291,302 B / 1089 tensors / 363 alpha**；`…comfyui_bf16` **2,115,772,012 B / 777 tensors / 259 alpha**，差 **+572,522,806 B（+37.1%）**。
+核到张量级：comfy `blocks.0.attn.qkv_proj.lora_B` = `[21504,384]` = **16,515,072 B**；diffusers `to_q/to_k/to_v` 各 `[7168,128]` 共 **5,505,024 B** ⇒ 单块 **3×**，50 块 ≈ +550 MB，正是全部差额。metadata `qkv_fusion "block diagonal B; concat A; alpha multiplied by 3"`。
+
+**⑥ 其余（K291 / K298 / K299 / K300）**：上游第 3 日静默且 **#59/#53/#48/#17/#15 从未被碰过**；`ibyteohdear` 两仓 1423 文件里 **1412 个是打包的 `diffusers/` 源码 + `.pyc`**；TE-PK `pk_lora` 520 张量**无 sink 权重**（`inject_token0_sink` 是运行时注入，`grep sink = 0`）；sd.cpp 11-27 走 **Q8_0 运行时 INT8**，H3 面零增量。
+
+#### 18.49.3 印证与冲突
+
+- **★★★ 冲突①（K281「丢 `norm_out`」作废）**：跨形态误判。`norm_out.linear` → `final_layer.adaln_proj.linear` 是**改名**，归一化后 `only_official = 0`。⇒ 「裁秩把最新特性丢了」这条结论撤销；真相是**一个没丢，还多 51 个 `diff_b`**。
+- **★★★ 冲突②（K281「只是裁秩」不完整）**：`pruned_conversion` 三个动作任一成立就足以让该件**不能挂 released DiT**（released 无 8 宽曲线基 ⇒ AdaLN 适配会**静默失效**）。
+- **★★★ 冲突③（K284「qkv alpha 恒 3×」边界收窄）**：在 4 步未裁秩（384 = 3×128、24 = 3×8）与 8step 未裁秩 comfy（384 = 3×128）都成立；但 Kijai 裁秩件是 **qkv 30 / out 29**（≈1.03×）⇒ **只在「未裁秩 + block-diagonal 全量」成立**，不能当 alpha 解码的自检。
+- **★★★ 印证（`x-linked-size` 是唯一可信体积源）**：本轮 6 件一次全准（12,368,339,576 / 11,950,870,730 / 2,115,772,012 / 1,543,291,302 / 335,604,966 / 95,858,352）。
+- **★★ 印证（FP8 支持是「官方明写」而非推断）**：三处独立文本（CLI 帮助 / 源码注释 / `diffusers-layout.h`）同句。
+- **★ 零增量（明日复查）**：三个官方仓 `lastModified` 不动（11-24 / 11-15 / 11-14），dl 逐位相同；MS Turbo 31 项不动。
+
+#### 18.49.4 本轮实验
+
+**无实验，仅零下载读头 + 本机源码/二进制定论**（约 **26 次 Range/HEAD**：`x-linked-size` 12 次 + 全 header 8 次 + alpha/结构切片 6 次；下载 **0 字节**；磁盘 0）。
+
+不跑的三条理由：
+
+1. 本轮高价值题**全部「读头 + 读代码」可结案**（K292 / K293 / K296 / K297），跑一次只能证明已能证明的事。
+2. 唯一可跑的新能力是 **34 GB 的 fp8 全量 DiT**（K293），而磁盘只剩 **35 GiB（92% 占用）** ⇒ 下载即触红线，且它只是「本机已支持」的再确认。
+3. 时间：04:30 起动，检索 04:55 收（~25 min），余下要装三份报告 + 技能包双源同步 + sync + release。
+
+#### 18.49.5 技能包脚本修改
+
+**本轮未改脚本/技能包代码**，仅追加知识（双侧字节校验见 18.49.6 坑⑥）：
+
+- `references/quantization.md`：追加「§ 第 5 个量化家族：SVDQuant W4A4（9 键/线性 + group 64 沿 input + `resq_vr` 与 NVFP4 `weight_scale_2` 的区别）」。
+- `references/768p-adapters.md`：追加「§ diffusers vs comfy 形态差 37%（block-diagonal B）+ `avg_rank_N` 是加权均值不是逐层上限」。
+- `references/h3-ecosystem-map.md`：追加「AdaLN 三种形态（官方 pruned / WaveCut / QuantFunc 预烘 t-MLP）+ `ibyteohdear` 打包事故」。
+- `references/ecosystem-tracking.md`：追加 2026-11-28 第 39 轮条目（K291–K300 摘要）。
+
+#### 18.49.6 踩坑与结论
+
+- **坑①（新，最易误判）漏写 `/resolve/main/` 会得到「404 + 55 KB 错误页」，看起来像「仓里的文件全没了」**。本轮第一批 6 个 URL 全写成 `https://hf-mirror.com/<repo>/<file>` ⇒ **6/6 `http=404`、`x-linked-size` 全空、响应体 55,690~55,746 B**；**对照组**（带完整 `/resolve/main/`）**一次 302 + 206 + `x-linked-size` 2,811,065,184**。⇒ 与「`000` 超时 ≠ 404」「gated 403 ≠ 删仓」并列**第三类假 404**。**纪律：批测前先用一个已知好件做对照**。
+- **坑②（新，与 18.48 坑① 同族但更隐蔽）F32 与 BF16 的 alpha 混在同一批里，只有 F32 误读会「响」**：官方 comfy 3 件是 **F32 alpha**（384.0 / 128.0 / 24.0 / 8.0）；Kijai 件是 **BF16 alpha**，按 F32 解得 `1.6e+19`（一眼垃圾），改 `u16<<16→f32` 才对（30.0 / 29.0 / 26.0 / 2.0）。⇒ **读标量前先看 header 的 `dtype`，不要套上一轮读法**。
+- **坑③（新，本轮最危险）模块集比对不先归一化，结论直接反向**：第一次直接比 `diffusion_model.blocks.0.attn.qkv_proj` 与 `blocks.0.attn.qkv_proj`，得到「official 518 / kijai 569，only_official 全是 `*.lora_A`/`*.lora_B`」——**完全无意义**。归一化（去前缀 `diffusion_model.` + 去 `.lora_{A,B}(.weight)` + 去 `.alpha`）后才是 **310 vs 259、`only_official = 0`**。**差一步就会写「Kijai 少了 259 个模块」**。
+- **坑④（新）`avg_rank_N` 的 N 不是任何单层 rank**：`avg_rank_24` 实测 qkv 30 / out 29 / fc1 26 / adaln 2 / final 2。⇒ 是**加权平均**，判「裁到多少」必须逐层读。
+- **坑⑤（复现 + 补上界）`siblings` 数会被打包事故放大 100 倍**：`ibyteohdear` 两仓各 1423 文件，1412 个是 `diffusers/` 的 `.py`/`.pyc`。⇒ 与 K288「`siblings ≤ 2` 先当空壳」互补：**上界也要看**。
+- **坑⑥（复现）技能包双源必须逐字节校验**：本轮 4 个 references 写入后，`wc -c` 两侧必须相等（`quantization.md` / `768p-adapters.md` / `h3-ecosystem-map.md` / `ecosystem-tracking.md`）。
+
+**结论三条**：
+
+1. **「本机支持某格式」与「本机能读某个文件」是两件事**：FP8 是**格式层支持**（`to_bf16_` 整张解码），但 QuantFunc 件连 `dim()` 都读不到（键叫 `.qweight`）⇒ **能力矩阵必须按「格式 × 键名方言 × 基座形态」三维判**，不能按「有没有 int4/FP8」一维判。
+2. **Kijai 那类「resize 件」的真正风险不是丢模块，而是悄悄换了基座前提**：`pruned_conversion` 把 AdaLN 适配折成「曲线基 + `diff_b`」，一旦挂到 released DiT 上，**框架会正常加载、只是 AdaLN 那部分不生效** ⇒ 这是比「少一个模块」更危险的失败形态（**无告警、无计数**）。
+3. **跨形态比对前必须先建词表映射**：diffusers ↔ comfy / pruned ↔ released / 官方 ↔ 社区，三组映射任一缺失都会得到反向结论。本轮坑③ 就是**只差一次归一化**。

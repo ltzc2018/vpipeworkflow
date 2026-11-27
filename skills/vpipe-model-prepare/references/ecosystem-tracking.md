@@ -31,3 +31,13 @@
 - **★ 空壳族**：`RunningHubAI/rh-*` 本轮新仓 **3/3 只有 `.gitattributes`**（`rh-crown-hyperpdmd-hd-3-4-minimax-h3-turbo-lora` / `rh-minimax-h3-turbo-4step-ckpt500-comfyui-lora` / `rh-minimax-h3-lora-2090958230839570433`）。⇒ `siblings ≤ 2` 一律先当空壳。
 - **★ 跨平台文件数口径**：MS Turbo **31 项** vs HF **30 项**，差的是 `configuration.json`（非权重）；26 个 safetensors 逐名相同 ⇒ 比文件数先扣非权重项（K264 的兄弟坑）。
 - **★ gated 仓判据补充**：`linkqpsfa` 两仓 `README.md` **200 可读**、权重 **403** ⇒ **先读 README，能读到即仓在、只是权重 gated**。
+
+
+## 2026-11-28（第 39 轮 · K291–K300）
+
+- **★★ 上游第 3 日静默（K291）**：HEAD 仍 `41a694a2`（commits per_page=5 与 37/38 轮逐位相同，已 **58 小时**无后继）；275 star（连续 8 日不动）/ 27 fork / 38,535 KB / 14 open issue / **PR=0**；release v0.1.110（11-01）落后 27 天；**#59/#53/#48/#17/#15 的 `updated_at == created_at`**（从未被碰过）。
+- **★★★ SVDQuant int4 H3 首次剖到张量级（K292）**：`QuantFunc/Minimax-H3-Quantfunc-4bit` FL2VA r128 = 12,368,339,576 B / 2608 tensors；208 线性 × 9 键；**group 64 切 INPUT 维**、**2 nibble / 字节**、SVD 秩 128（r64 档 64）、`resq_vr` 残余分支。社区自报 PSNR 23.7 dB、4090 3.2 s/步（**待复现**）。
+- **★★★ FP8 单文件 DiT 本机支持（K293）**：CLI 帮助 + `metal-minimax-h3-transformer.cc:160-176` + `diffusers-layout.h` 三处同证；`4step_v1.1_768p_fp8` = 34,023,114,720 B / 988 tensors / 950 个 `transformer_blocks.*` 键 = 全量 DiT。**同族 SVDQuant 却掉在判据层**（`strings` 7 键全 0）⇒ 第 4 类失败位「键名缺失层」。
+- **★★★ 推翻 K281 两条（K296/K297）**：① 「丢 `norm_out`」是**跨形态误判**（`norm_out.linear` ↔ `final_layer.adaln_proj.linear` 改名，归一化后 `only_official = 0`）；② 「只是裁秩」实为 **裁秩 + pruned 转换**（`pruned_conversion` 三动作）⇒ 只能挂 pruned 基座。
+- **★★ 官方 comfy 8step v1.2 比 diffusers 大 37%（K295）**：2,115,772,012 vs 1,543,291,302 B，全因 block-diagonal B（单块 qkv B 16.5 MB vs 5.5 MB）。
+- **★ 其余**：`ibyteohdear` 1423 文件里 1412 个是打包的 `diffusers/` 源码（K298）；TE-PK `pk_lora` 无 sink 权重（K299）；sd.cpp 11-27 Q8_0 运行时 INT8（#2445），H3 面零增量（K300）。
