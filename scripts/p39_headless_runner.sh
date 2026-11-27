@@ -81,53 +81,77 @@ SESSION_ID="p39-${SLOT//:/}-${TS}"
 log "获得运行权，本轮 R=$ROUND session=$SESSION_ID"
 
 # ---- 第 1 步：无头 CLI 执行 SOP（stdin 传 prompt，规避 lite 版参数解析 quirk）----
-log "启动无头 CLI: codebuddy -p model=$MODEL session=$SESSION_ID"
 SED_SCRIPT="s/__ROUND__/${ROUND}/g; s/__SLOT__/${SLOT}/g; s/__TS__/$(date '+%Y-%m-%d %H:%M')/g"
 
-# ★ K147 看门狗：agent 在 trace 里 trace_end（成功或失败）后，CLI 进程有时不自行退出
-#   （实测 2026-11-24 01:24 agent 已 error，但 CLI 挂 ESTABLISHED 连接僵死到 01:38+，
-#    占锁阻塞后续槽）。这里起后台守护：每 20s 查本 session 的 trace 是否出现 trace_end，
-#    出现即 kill CLI 进程组，让 runner 立刻进入校验/兜底，不再傻等 timeout。
-#   trace 与 session 可靠关联：trace 文件内含 8 处 session-id 字符串。
-WATCHDOG_PID=""
-(
-  for i in $(seq 1 270); do   # 270*20s = 90min，与硬超时对齐
-    sleep 20
-    # 找含本 session-id 且已 trace_end 的 trace 文件
-    DONE_TRACE=$(grep -rl -- "$SESSION_ID" "$HOME/.workbuddy/traces/" 2>/dev/null \
-      | while read -r tf; do grep -q '"type":"trace_end"' "$tf" 2>/dev/null && echo "$tf"; done \
-      | head -1)
-    if [ -n "$DONE_TRACE" ]; then
-      # agent 已结束：温和 kill CLI（含 timeout 包装进程），让主线程继续
-      echo "[watchdog $(date '+%H:%M:%S')] 检测到 agent trace_end，终止 CLI 进程" >> "$RUN_LOG"
-      pkill -f "codebuddy -p.*$SESSION_ID" 2>/dev/null
-      exit 0
-    fi
-  done
-) &
-WATCHDOG_PID=$!
+# 执行一次无头 CLI（含 K147 看门狗）。参数 $1=session-id；结果写入全局 CLI_EXIT。
+# ★ P41：抽成函数以便「cb_exit=0 假成功」时重试（每次用新 session-id，
+#         否则看门狗会命中上一次的 trace_end 立即 kill）。
+run_cli() {
+  local sid="$1"
+  log "启动无头 CLI: codebuddy -p model=$MODEL session=$sid (attempt ${ATTEMPT}/${MAX_ATTEMPTS})"
+  # ★ K147 看门狗：agent 在 trace 里 trace_end（成功或失败）后，CLI 进程有时不自行退出
+  #   （实测 2026-11-24 01:24 agent 已 error，但 CLI 挂 ESTABLISHED 连接僵死到 01:38+，
+  #    占锁阻塞后续槽）。每 20s 查本 session 的 trace 是否 trace_end，出现即 kill CLI。
+  #   trace 与 session 可靠关联：trace 文件内含多处 session-id 字符串。
+  local wpid=""
+  (
+    for i in $(seq 1 270); do   # 270*20s = 90min，与硬超时对齐
+      sleep 20
+      local dt
+      dt=$(grep -rl -- "$sid" "$HOME/.workbuddy/traces/" 2>/dev/null \
+        | while read -r tf; do grep -q '"type":"trace_end"' "$tf" 2>/dev/null && echo "$tf"; done \
+        | head -1)
+      if [ -n "$dt" ]; then
+        echo "[watchdog $(date '+%H:%M:%S')] 检测到 agent trace_end，终止 CLI 进程" >> "$RUN_LOG"
+        pkill -f "codebuddy -p.*$sid" 2>/dev/null
+        exit 0
+      fi
+    done
+  ) &
+  wpid=$!
+  sed "$SED_SCRIPT" "$PROMPT_FILE" | \
+    /usr/bin/timeout 5400 "$CB" -p \
+      --model "$MODEL" \
+      --permission-mode bypassPermissions \
+      --session-id "$sid" \
+      --add-dir "$LAB" >> "$RUN_LOG" 2>&1
+  CLI_EXIT=$?
+  if [ -n "$wpid" ]; then kill "$wpid" 2>/dev/null; wait "$wpid" 2>/dev/null; fi
+  log "无头 CLI 退出码=$CLI_EXIT"
+}
 
-sed "$SED_SCRIPT" "$PROMPT_FILE" | \
-  /usr/bin/timeout 5400 "$CB" -p \
-    --model "$MODEL" \
-    --permission-mode bypassPermissions \
-    --session-id "$SESSION_ID" \
-    --add-dir "$LAB" >> "$RUN_LOG" 2>&1
-CB_EXIT=$?
-# 收尾看门狗
-if [ -n "$WATCHDOG_PID" ]; then kill "$WATCHDOG_PID" 2>/dev/null; wait "$WATCHDOG_PID" 2>/dev/null; fi
-log "无头 CLI 退出码=$CB_EXIT"
+# ★ P41：cb_exit=0 但 round 未推进 = 「假成功」（实测多为 Upstream response stream
+#         was interrupted），自动重试 1 次；仅在 cb_exit=0 时重试（timeout 124 等真失败不重试）。
+MAX_ATTEMPTS=2
+RETRY_WAIT=30
+ATTEMPT=1
+SID="$SESSION_ID"
+while [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
+  run_cli "$SID"
 
-# ---- 第 2 步：校验闭环产物（成功 = round 已推进 且 有本轮同步日志）----
-NEW_ROUND=$(python3 -c "import json;print(json.load(open('report/.auto-round-state.json'))['round'])")
-SYNC_LOG="$LOG_DIR/nightly-sync-r${ROUND}.log"
-if [ "$CB_EXIT" -eq 0 ] && [ "$NEW_ROUND" -ge "$ROUND" ] && [ -f "$SYNC_LOG" ]; then
-  log "✅ 闭环成功: round $ROUND 已推进, 同步日志存在"
-  exit 0
-fi
+  # ---- 第 2 步：校验闭环产物（成功 = round 已推进 且 有本轮同步日志）----
+  NEW_ROUND=$(python3 -c "import json;print(json.load(open('report/.auto-round-state.json'))['round'])")
+  SYNC_LOG="$LOG_DIR/nightly-sync-r${ROUND}.log"
+  if [ "$CLI_EXIT" -eq 0 ] && [ "$NEW_ROUND" -ge "$ROUND" ] && [ -f "$SYNC_LOG" ]; then
+    log "✅ 闭环成功: round $ROUND 已推进, 同步日志存在 (attempt $ATTEMPT)"
+    exit 0
+  fi
+
+  # 假成功判定：cb_exit=0 但 round 未推进 —— 值得重试 1 次
+  if [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ] && [ "$CLI_EXIT" -eq 0 ] && [ "$NEW_ROUND" -lt "$ROUND" ]; then
+    log "⚠️ attempt $ATTEMPT: cb_exit=0 但 round 未推进（疑似流中断假成功），${RETRY_WAIT}s 后重试 1 次"
+    bash scripts/nightly_guard.sh release "$NEW_ROUND" "$(date '+%Y-%m-%d %H:%M')" >/dev/null 2>&1
+    sleep "$RETRY_WAIT"
+    ATTEMPT=$((ATTEMPT + 1))
+    SID="${SESSION_ID}-r${ATTEMPT}"   # 新 session-id，避免看门狗命中旧 trace_end
+    bash scripts/nightly_guard.sh "$MODE" >/dev/null 2>&1   # 重建并发锁供重试
+    continue
+  fi
+  break
+done
 
 # ---- 失败兜底：删锁但不推进轮次，供下个槽/下次重试 ----
-log "⚠️ 闭环未完整: cb_exit=$CB_EXIT round=${NEW_ROUND}(期望$ROUND) sync_log=$([ -f "$SYNC_LOG" ] && echo 有 || echo 无)"
+log "⚠️ 闭环未完整（共 $ATTEMPT 次）: cb_exit=$CLI_EXIT round=${NEW_ROUND}(期望$ROUND) sync_log=$([ -f "$SYNC_LOG" ] && echo 有 || echo 无)"
 OLD_ROUND=$(python3 -c "import json;print(json.load(open('report/.auto-round-state.json'))['round'])")
 bash scripts/nightly_guard.sh release "$OLD_ROUND" "$(date '+%Y-%m-%d %H:%M')" >/dev/null 2>&1
 log "已清理并发锁（未推进轮次），详细输出见 $RUN_LOG"
