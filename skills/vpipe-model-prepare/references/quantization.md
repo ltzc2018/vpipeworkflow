@@ -231,3 +231,38 @@ DiT residency ended at 24 of 50 blocks (9717 MB)
 | **`http_code=404` 且响应体约 55 KB** | **URL 漏写 `/resolve/main/`** | **先用一个已知好件做对照**，对照不通就是 URL 形态错 |
 
 ⇒ 批测体积前**必跑一次对照**（如 `Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_int8_convrot`）。
+
+---
+
+## 第 6 个量化家族：GGML block（Rust `candle` 档）与 MLX affine —— 两类「形状即信息」的载荷（2026-11-28 第 40 轮）
+
+> 来源：`SceneWorks/minimax-h3-candle`、`SarthakRawool/MiniMax-H3-Image-MLX-8bit-LowMem`（HF 镜像 `api/models` + header Range 读头）；本机判据出自 `metal-minimax-h3-transformer.cc:106-1160`、`shared/fp8-layout.cc`。**社区件均为待复现的存在性记录，未跑画质。**
+
+### 6.1 GGML block（candle）—— 本机拒载在「`.scales` 缺失」
+
+- 每个量化线性是**一个 3 维 `U8` 张量**：`{name}.weight = [out, in/32, block_bytes]`，**Q4_1 = 20 B / 32 权重（5.0 bpw）**、**Q8_0 = 34 B / 32（8.5 bpw）**；scale/min **内联在 block 内**，**没有 `.scales` / `.biases` 兄弟张量**。
+- `config.json` 只写 `{"quantization":{"bits":8,"storage":"ggml"}}` —— **`storage` 是本机不认的键**，且**缺 `group_size`**（本机默认 64）。
+- 本机路径（逐支推演）：`config_from_json` 能过（`MiniMaxH3Transformer3DModel` / bits=8）→ `linear_()` 找 `nm+".scales"` = **nullptr** ⇒ 量化分支整体跳过 → 回落 `weight_()` → `U8` → `to_bf16_()` 的 U8/I8 分支 → `decode_tensor_bf16` 因**无 `comfy_quant` 记录**失败 ⇒ 空 Linear ⇒ **`fail("not in the checkpoint")`**。
+- 体积实测：`q8/transformer` **35,301,767,680 B / 14 分片**（首片 2,649,323,752）、`q8/text_encoder` **33,711,827,808 B / 1003 键（含 `layers.50`/`layers.51`）**。
+- ⚠️ **算术陷阱**：**Q8_0 = 8.5 bpw > FP8 的 8.0 bpw** ⇒ `q8` 35.30 GB **比 `4step_v1.1_768p_fp8` 的 34.02 GB 还大 3.8%**。「q8 比 fp8 小」是错觉。
+
+### 6.2 MLX affine —— 本机拒载在「`config.json` 缺失」，且补 config 更危险
+
+- 形态：`weight U32`（**4 码 / 4 B 每字**）+ `scales` / `biases` **BF16**，`group_size = 32`（**只写在 README**）。
+- 结构上**完全合本机判据**：`adaln_t_table F32 [1025,8]` + 融合 `blocks.N.attn.qkv_proj.weight` ⇒ `comfy_saved` 两条满足；`adaln_proj.linear.weight [96768,8]` ⇒ 8 宽 pruned，`time_dim==8` gate 通过。
+- 实测：`transformer/` **23,327,880,544 B（154 分片 + 1 index）**、`text_encoder` 20,201,866,240（layers 0–49 / 4-bit g32）、`vae` 807,783,088、`vision` 1.2 GB、`vae_encoder` 0.36 GB；**`transformer/config.json` = 404**。
+- **★★★ 关键陷阱（补一半 config 就变静默错值）**：`out_proj.weight [5376,1792]` ⇒ 1792×4 = 7168 B/行 ⇒ 真值 **K=7168 / 8 bit**；`scales [5376,224]` = 7168/32 ✓。若按本机默认 **group 64** 推：`K = 224×64 = 14336`，`bits = 1792×32/14336 = 4.0` ⇒ `l.bits = 4`，**8 bit 码按 nibble 解**。**尺寸校验全过**，因为 `K` 与 `group` 同比缩放（`K = scols × group` 恒成立）。
+- ⇒ **纪律：`scales` 列数只能验「group 自洽」，不能验「bits 对」；`group_size` 必须来自文件声明，不得默认 64。**
+
+### 6.3 判据更新：「量化参数声明位」是能力矩阵第 4 维
+
+| 家族 | 载荷形态 | 兄弟张量 | 本机失败位 |
+|---|---|---|---|
+| Fusion int8 ConvRot | `I8 2-D` + 标量/逐行 `weight_scale` | 有 | 可读 |
+| Kijai W4A8 | `I8/U8 2-D`（2 nibble/B） | `weight_scale` | 可读 |
+| NVFP4 | `U8 2-D` swizzled | `weight_scale` + `weight_scale_2` | kernel 层（`nvfp4_dequant` 缺失） |
+| SVDQuant W4A4 | `I8 qweight` + 8 兄弟键 | 9 键 | 键名缺失层（无 `.weight`） |
+| **GGML block（candle）** | **`U8 3-D` `[out, in/32, block]`** | **无** | **量化参数内联层（`.scales` 缺失）** |
+| **MLX affine** | **`U32 2-D`（4 码/字）** | **`scales`/`biases` BF16** | **配置缺失层（`config.json` 404）** |
+
+⇒ **`dtype + shape 组合` 一眼定家族**：`U8 2-D` = int8 码 / `U8 3-D` = GGML block / `U32 2-D` = MLX / `I8 2-D` + `weight_scale` = ConvRot。

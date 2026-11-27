@@ -756,3 +756,27 @@ M5 Max 832×480×73 + Sol：**23.4 s / 22.9 GB** vs pi-H3 直接跑 pruned DiT *
 
 **`grep sink` = 0** ⇒ README 里的 `inject_token0_sink = True` 是**运行时注入 Qwen3-VL-32B 的 20 KB Token-0 向量**（`<0.01 ms`，零训练），
 **不是**权重里的 `sink_embedding`。⇒ 判「能否塞进本机 connector」**不能靠 README 功能名对齐，要 dump 张量表**（本机要 6 张量含 `sink_embedding`，K237）。
+
+## 官方 H3-Image 的三件套（2026-11-28 第 40 轮，K304）
+
+`MiniMaxAI/MiniMax-H3-Image` = **100 文件 / 1,084,642 dl / 2,629 like**（`created 11-03`，`lastModified 2026-11-16T10:00Z`）。
+
+| 文件 | 体积 / 结构 | 含义 |
+|---|---|---|
+| `pdd_fused_heads.safetensors` | **12,388,808 B / 2 tensors 全 F32**：`video_out.weight [6, 96, 5376]` + `video_out.bias [6, 96]` | **6 个 step 专用输出头**（96 = patch `1×2×2` × latents 24）；K94 的 `step_head_of` 从机制变实体 |
+| `pdd_config.json` | `num_inference_steps 6`、`sigmas [1.0, 0.9675237, 0.8875485, 0.75, 0.5327739, 0.2320089, 0.0]` | 六步**显式** sigmas（不是 sgm_uniform 网格） |
+| `transformer/` | **66,279,032,256 B / 12 分片 / 531 键** | DiT 本体；**同一份权重在 `transformer_diffusers/` 再存一遍**（14 文件） |
+| `transformer/config.json` | `_class_name = MiniMaxH3DiTModel`（**不是** `MiniMaxH3Transformer3DModel`）、`audio_enabled false`、`adaln_out_features 96768`、`final_adaln_out_features 10752` | ⚠️ **同一模型两种 `_class_name` 拼写**，引用必须带文件出处 |
+
+**体积口径三档**：DiT 单独 **66.28 GB** / 「图像包」（含 VAE + 文本编码器）**68.65 GB** / 全仓含 `transformer_diffusers` 重复份 **≈ 132 GB**。⇒ 引「H3-Image 多大」必须带口径。
+
+**社区二改的体积对照（待复现）**：MLX-8bit 全量 **42.6 GB**（DiT 22.4 + TE 20.2，README 自报 16 GB Mac / 512×640 / 62 s / 3.25 GB 峰值）；candle `q8` **68.9 GB**（DiT 35.30 + TE 33.71，**因 Q8_0=8.5 bpw 反比官方 fp8 大**）。⇒ 本机可用 **35 GiB**，**最省的 MLX 件仍差 8 GB**。
+
+## 适配形态第 7 种：独立 MLP semantic bridge（2026-11-28 第 40 轮，K305）
+
+`MistyViolet/MiniMax_H3:semantic_bridge/t8_compat/BUNNY_H3_ActionLogic_Bridge_V1_T8_Compat.safetensors`
+= **22,046,928 B / 6 tensors 全 F32**：`fc1 [512,5120]` / `fc2 [512,512]` / `fc3 [5120,512]`（**5120 → 512 → 5120 瓶颈 MLP**，≈5.51 M 参数）。
+
+`__metadata__` 要点：`bridge_type BUNNY_H3_ActionLogic_Bridge`、**`target_h3_layer "49"`**、`operation "lossless_metadata_wrap"`、`schema t8_semantic_bridge_v1`、`source {JOKER141/BUNNY_H3_Conditioning_Bridge, rev 658bfbb0}` + `source_sha256`、`activation silu`、`recommended_alpha_start "0.10"`、`recommended_magnitude_match per_token`、`teacher_val_cos 0.350` / `val_rep_cos 0.996` / `val_corr_cos 0.997`、`formal_prompts 2400`。
+
+⇒ **与 LoRA 的本质差别：不是权重增量，而是整层替换**（`lossless_metadata_wrap` 把原网关包进 metadata）。本机 `strings libvpipe` 对 `semantic_bridge` / `actionlogic` / `BUNNY` **全 0 命中**，源码树 `grep semantic_bridge` = 0 ⇒ **没有任何 hook 点，`runtime-lora` 任何路径都绑不上**。`teacher_val_cos 0.350` vs `val_rep_cos 0.996` ⇒ 自报「行为接近本体、但与老师差很远」，价值不明（**待复现，社区单源**）。

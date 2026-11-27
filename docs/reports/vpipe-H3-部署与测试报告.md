@@ -6985,3 +6985,152 @@ README 自报（**社区二手，待复现**）：PSNR **23.7 dB**（vs bf16 同
 1. **「本机支持某格式」与「本机能读某个文件」是两件事**：FP8 是**格式层支持**（`to_bf16_` 整张解码），但 QuantFunc 件连 `dim()` 都读不到（键叫 `.qweight`）⇒ **能力矩阵必须按「格式 × 键名方言 × 基座形态」三维判**，不能按「有没有 int4/FP8」一维判。
 2. **Kijai 那类「resize 件」的真正风险不是丢模块，而是悄悄换了基座前提**：`pruned_conversion` 把 AdaLN 适配折成「曲线基 + `diff_b`」，一旦挂到 released DiT 上，**框架会正常加载、只是 AdaLN 那部分不生效** ⇒ 这是比「少一个模块」更危险的失败形态（**无告警、无计数**）。
 3. **跨形态比对前必须先建词表映射**：diffusers ↔ comfy / pruned ↔ released / 官方 ↔ 社区，三组映射任一缺失都会得到反向结论。本轮坑③ 就是**只差一次归一化**。
+
+### 18.50 2026-11-28 06:30 —— 第 40 轮：★★★ 两条新运行时分支的失败位精确定位（GGML-block 掉在 `.scales` 缺失 / MLX-affine 掉在 `config.json` 缺失）＋ ★★★「补一半 config 会让明确拒载变成静默错值」＋ ★★ 官方 H3-Image 三件套（`pdd_fused_heads` 6×96×5376 / 六步显式 sigmas / DiT 66.28 GB）＋ ★★ T8 semantic bridge 是第 7 种适配形态
+
+> 上游第 **4** 日静默（HEAD 仍 `41a694a2`，≈82 小时无后继）。本轮为 **P39 无头 CLI 第 17 次完整链路**（slot=06:30，守卫 R=40）。
+> 与 18.49 的关系：上轮把「SVDQuant 拒载」定在第 4 类失败位（键名缺失层）；本轮把 11-27 刚冒出的**两条新运行时分支**（Rust `candle` 的 GGML-block、Apple `MLX` 的 affine）各自**落到具体 fail 行**，并发现一个比「拒载」更危险的中间态。
+
+#### 18.50.1 检索范围
+
+| # | 源 | 结果 |
+|---|---|---|
+| 1 | GitHub `repos/tgo-app-dev/vpipe` 的 `commits?per_page=5` / `repo` / `releases` / `issues?state=open` / `pulls` | **commits 与第 37/38/39 轮逐位相同**（HEAD `41a694a2`）；`pushed_at 2026-11-26T23:20:21Z` 未动、**`updated_at` 走到 `11-27T18:01Z`**；275 star / 27 fork / 38,535 KB / 14 open issue / **PR=0** / release 仍 v0.1.110 |
+| 2 | HF 镜像 `api/models?search=minimax_h3` 与 `minimax-h3`（两拼写各一次，各 40 条） | 两拼写**结果完全一致**（首条同 `2026-11-27T15:59`）；11-27 新增 6 个仓，全部已在第 39 轮登记或本轮解剖 |
+| 3 | HF 镜像 `api/models/<id>` ×10（官方 / Comfy-Org / hyperflow / QuantFunc / H3-Image / H3-Image-PE / candle / MLX / MistyViolet / SceneWorks-mlx） | 官方与 Comfy-Org **dl 逐位相同**（仅 like +1） |
+| 4 | HF 镜像 Range 读头 ×6（candle config + 首分片 + index、MLX 首分片 + index、H3-Image `pdd_config` / `pdd_fused_heads`、T8 bridge 全 header） | 见 18.50.2 |
+| 5 | ModelScope `lightx2v/Minimax-h3-Turbo` 的 `repo/files` + 仓元信息 | 31 项 / 27 safetensors / `LastUpdated 2026-11-24T14:36Z`（4 日） |
+| 6 | GitHub `leejet/stable-diffusion.cpp` `commits?per_page=10` | 11-27 仅 `3b0426f7`（显存记账）；**H3 面停 11-26 `439e77a5`，第 3 日零增量** |
+| 7 | **本机** `repo/vpipe` 源码（`metal-minimax-h3-transformer.cc` 的 `config_from_json` / `linear_` / `weight_` / `to_bf16_` / `tp_fast_affine_`、`shared/fp8-layout.cc` 的 `resolve` / `logical_numel`、`minimax-h3-diffusers-layout.cc` 的 `is_diffusers_layout` / `untranslatable_tensor` / `kTop`）+ 已装 `libvpipe.0.dylib` 的 `strings` | 定论依据 |
+
+**检索结论**：上游与权重生态**四日零实质变化**，本轮增量全部来自 **11-27 冒出的两个新运行时分支** 与 **官方 H3-Image 仓的内部结构**。
+
+#### 18.50.2 新增知识（K301–K308）
+
+**K301 · 上游第 4 日静默，`updated_at` 不能当活动信号。** `pushed_at` 停在 `11-26T23:20:21Z`，`updated_at` 却从 `11-27T18:01Z` 继续走 ⇒ 前者只反映代码，后者含 star/watch。前 39 轮一直用 `updated_at` 判静默，本轮起改用 `pushed_at` + `commits[0].sha`。issue 14 条全开、评论合计仍 9，`#59/#53/#48/#17/#15` 的 `updated_at == created_at`。
+
+**K302 · 第 6 个量化家族：GGML block（Rust `candle`）。** `SceneWorks/minimax-h3-candle`（110 文件）把每个量化线性存成 **一个 3 维 `U8` 张量** `{name}.weight = [out, in/32, block_bytes]`：
+
+| 档 | block 格式 | 每 32 权重字节 | bpw | 实测体积 |
+|---|---|---|---|---|
+| `q4/` | Q4_1 | 20 B | 5.0 | 54 文件（未公开 total） |
+| `q8/` | Q8_0 | 34 B | **8.5** | DiT **35,301,767,680 B / 14 分片**，TE **33,711,827,808 B / 1003 键** |
+
+**关键：没有 `.scales` / `.biases` 兄弟张量**（scale/min 内联在 block 里），`config.json` 只写 `{"quantization":{"bits":8,"storage":"ggml"}}`（`storage` 本机不认，**缺 `group_size`**）。
+
+本机拒载逐支推演：
+1. `config_from_json` 通过（`_class_name=MiniMaxH3Transformer3DModel`、bits=8）；
+2. `linear_()`（`:1106`）找 `nm+".scales"` → **nullptr** ⇒ 整个量化分支跳过；
+3. 回落 `weight_()`（`:1029`）→ dtype `U8` → `to_bf16_()`（`:150`）的 U8/I8 分支；
+4. `decode_tensor_bf16` 需要 `comfy_quant` 记录，本件没有 ⇒ 返回空；
+5. ⇒ 空 Linear ⇒ **`fail("not in the checkpoint")`**（`:1349`）。
+
+**算术副产物**：**Q8_0 = 8.5 bpw > FP8 的 8.0 bpw** ⇒ q8 档 35.30 GB **比 `4step_v1.1_768p_fp8` 的 34.02 GB 还大 3.8%**。「q8 比 fp8 小」是错觉。
+
+**K303 · MLX affine 件：结构全过，却卡在「没有 `config.json`」；而补半份 config 会比不补更糟。** `SarthakRawool/MiniMax-H3-Image-MLX-8bit-LowMem`：
+
+| 组件 | 体积 | 量化 |
+|---|---|---|
+| `transformer/` | **23,327,880,544 B**（154 分片 + 1 index） | **8-bit group 32**（仅写在 README），`weight U32`（4 码/字）+ `scales`/`biases` BF16 |
+| `text_encoder/` | 20,201,866,240 B | 4-bit g32（layers 0–49），`v_proj`/`down_proj` 8-bit |
+| `vae/` | 807,783,088 B | fp16 |
+| `vision/` | 1.2 GB | BF16（参考图用） |
+| `vae_encoder/` | 0.36 GB | fp16（参考图用） |
+
+**结构上完全合本机判据**：`adaln_t_table F32 [1025,8]` + 融合 `blocks.N.attn.qkv_proj.weight` ⇒ `comfy_saved` 两条判据（`:655-657`）满足；`blocks.0.adaln_proj.linear.weight [96768,8]` = 8 宽 pruned 曲线 ⇒ `time_dim==8` gate 通过。
+
+**但 `transformer/config.json` = 404**（实测）。`config_from_json` 的第一句就是：
+```cpp
+if (fs::is_directory(p)) { p = p / "config.json"; }
+std::ifstream f(p);
+if (!f) { return fail("cannot open " + p.string()); }
+```
+⇒ **连 hidden 都读不到**，与 K239（Fused 全量件）同族。
+
+**★★★ 补半份 config 的陷阱（本轮最贵）**：`out_proj.weight [5376,1792]` ⇒ 1792×4 = 7168 B/行 ⇒ 真值 **K=7168、8 bit**，`scales [5376,224] = 7168/32` ✓。若按本机**默认 `group 64`** 推：
+
+| 量 | 真值（group 32） | 按 group 64 推 |
+|---|---|---|
+| `K = scols × group` | 224×32 = **7168** ✓ | 224×64 = **14336** ✗ |
+| `bits = gcols×32/K` | 1792×32/7168 = **8.0** ✓ | 1792×32/14336 = **4.0** ✗ |
+| `scales` 列数校验 | 7168/32 = 224 ✓ | 14336/64 = 224 ✓ **也过** |
+
+⇒ `K` 与 `group` **同比缩放**，`scales` 列数**恒成立** ⇒ 尺寸校验全过，**只有 bits 与 K 同时错**。`l.bits = (bits==8)?8:4` 会把 3 和 4 一并吃成 4 ⇒ **8 bit 码按 nibble 解 = 静默错值**。
+
+**K304 · 官方 H3-Image 的三件套。** `MiniMaxAI/MiniMax-H3-Image`：100 文件 / **1,084,642 dl / 2,629 like**（`created 11-03`、`lastModified 2026-11-16T10:00Z`）。
+
+- **`pdd_fused_heads.safetensors` = 12,388,808 B / 2 tensors 全 F32**：`video_out.weight [6, 96, 5376]` + `video_out.bias [6, 96]` ⇒ **6 个 step 专用输出头**（96 = patch `1×2×2` × latents 24 = 4×24）。这是 **K94 `step_head_of` 机制的实体件**。
+- **`pdd_config.json`**：`num_inference_steps 6`、`sigmas [1.0, 0.9675237, 0.8875485, 0.75, 0.5327739, 0.2320089, 0.0]` ⇒ **六步显式 sigmas**，不是 sgm_uniform 网格。
+- **`transformer/` = 66,279,032,256 B / 12 分片 / 531 键**，且**同一份权重在 `transformer_diffusers/` 再存一遍**（14 文件）⇒ 全仓 Transformer 相关占 28 文件。
+- `transformer/config.json` 的 **`_class_name = MiniMaxH3DiTModel`**（**不是** `MiniMaxH3Transformer3DModel`），`audio_enabled false`、`adaln_out_features 96768`、`final_adaln_out_features 10752`。
+
+**体积口径三档**：DiT 单独 **66.28 GB** / 「图像包」含 VAE + 文本编码器 **68.65 GB** / 全仓含重复份 **≈132 GB**。历史「68.65 GB」没错，只是口径不同。
+
+**K305 · 第 7 种适配形态：独立 MLP semantic bridge。** `MistyViolet/MiniMax_H3:semantic_bridge/t8_compat/BUNNY_H3_ActionLogic_Bridge_V1_T8_Compat.safetensors` = **22,046,928 B / 6 tensors 全 F32**：
+
+| 张量 | shape | 参数 |
+|---|---|---|
+| `fc1.weight` / `fc1.bias` | `[512,5120]` / `[512]` | 2,621,952 |
+| `fc2.weight` / `fc2.bias` | `[512,512]` / `[512]` | 262,656 |
+| `fc3.weight` / `fc3.bias` | `[5120,512]` / `[5120]` | 2,626,560 |
+| 合计 | **5120 → 512 → 5120 瓶颈 MLP** | **≈5.51 M** × 4 B ≈ 22 MB ✓ |
+
+`__metadata__` 要点：`bridge_type BUNNY_H3_ActionLogic_Bridge`、**`target_h3_layer "49"`**、`operation "lossless_metadata_wrap"`、`schema t8_semantic_bridge_v1`、`source {JOKER141/BUNNY_H3_Conditioning_Bridge, rev 658bfbb0}` + `source_sha256 983380be…`、`activation silu`、`rms_epsilon 1e-06`、`recommended_alpha_start "0.10"`、`recommended_magnitude_match per_token`、`teacher_val_cos 0.35009735` / `val_rep_cos 0.99606692` / `val_corr_cos 0.99705868`、`formal_prompts 2400`。
+
+本机：`strings libvpipe` 对 `semantic_bridge` / `actionlogic` / `BUNNY` **全 0 命中**（`bridge` 10 次全是无关词），源码树 `grep semantic_bridge` = **0**。⇒ **与 LoRA 的本质差别：不是权重增量，而是整层替换**（`lossless_metadata_wrap` 把原网关包进 metadata）⇒ 没有任何 hook 点，`runtime-lora` 任何路径都绑不上。
+
+**K306 · 体积 vs 磁盘。** H3-Image 官方 DiT 66.28 GB / MLX 全量 **42.6 GB** / candle q8 68.9 GB / **本机可用 35 GiB（92% 占用）** ⇒ **最省的 MLX 件仍差 8 GB**。⚠️ 两条分支可靠性不对称：candle = 结构读不到、MLX = 结构能过但 config 缺 ⇒ **若要试 H3-Image，MLX 是唯一有希望的一条，且必须自带正确 config（bits 8 + group_size 32）**。
+
+**K307 · ModelScope 四日未动，K151 边界维持。** `lightx2v/Minimax-h3-Turbo` = **31 项 / 27 safetensors**、`LastUpdatedTime 2026-11-24T14:36:39Z`（**4 日**）、**67,119 dl / 129 star**。4 步 FL2VA：v1.0–v1.3 的 `_768p_bf16` **同为 1,383,677,808 B**；`_768p_comfyui_bf16` v1.1–v1.3 **同为 1,956,193,000 B**。8 步 v1.2 分叉仍在（1,543,291,302 / 2,115,772,012），**8 步 v1.3 不存在**。
+
+**K308 · sd.cpp 第 4 日无 H3 增量。** 11-27T20:44Z `3b0426f7`（显存记账，`#2446`）；前序 `05adb5b9`（Q8_0 运行时 INT8）、`908965df`（Ming-Image vs Z-Image pad-token 判别）。**H3 面仍停 11-26 `439e77a5`**。
+
+#### 18.50.3 印证与冲突
+
+**★★★ 冲突①：「补配置」比「不补」更危险。** 见 K303。MLX 件当前**明确拒载**（`cannot open config.json`）；补一份只写 `bits:8` 的上游格式 config 后，本机按默认 `group 64` 推导 ⇒ `K` 翻倍、`bits` 8→4，而 `scales` 列数两种解读都成立 ⇒ **静默错值**。⇒ 与 K283/P57（int8 alpha 修好后静默乘 1e-6）构成**同一族两例**：**「修复缺失通路」必须先补「单位/参数一致性断言」**。
+
+**★★★ 冲突②：`updated_at` 不能当上游活动信号。** 见 K301。前 39 轮一直用它，本轮起改用 `pushed_at`。
+
+**★★ 印证：K275 的两个「存在性」记录现在有失败位了。** K302（candle → `.scales` 缺失 → `not in the checkpoint`）与 K303（MLX → `config.json` 缺失）**落在两个不同位置，都不是「格式不认」**。⇒ K293 的失败位分类再补两条：第 4 类「键名缺失层」（QuantFunc `qweight`）、**第 5 类「量化参数内联层」**（GGML block 无 `.scales`）。
+
+**★★ 印证：官方 H3-Image 体积口径。** K304 的 `transformer/` 66,279,032,256 B 与历史「68.65 GB 图像包」**不矛盾**——后者含 VAE + 文本编码器。⇒ 引「H3-Image 多大」必须带口径。
+
+**★★ 印证：「不活跃」的三种形态要分开记。** ① `hyperflow-h3-flash` 四日 dl/like 逐位相同 = **真零**；② 官方 `MiniMax-H3` dl 逐位相同但 **like +1** = 有人看没人下；③ 上游 repo `updated_at` 走而 `pushed_at` 停 = **只有 star 在动**。
+
+**★ 零增量（须明日复查）**：`MiniMaxAI/MiniMax-H3` `11-24T04:56Z` / 5,971,579 dl（逐位同）/ 7,444 like（+1）；`Comfy-Org/MiniMax-H3` `11-15T09:54Z` / 33,581,705 dl（逐位同）/ 2,889 like（+1）；`hyperflow-h3-flash` **四日不改**（1,019,175 dl / 370 like）；`QuantFunc/…-4bit` `11-27T15:40Z` / 7,566 dl / 36 like；**`MiniMaxAI/MiniMax-H3-Image-PE` 首次登记**（提示词扩写器，Qwen3.8-27B 基底，tag `fp4`/`sglang`，22 文件 / 5,895 dl / 120 like / 11-10 未动）——官方 H3 家族第 3 个仓，与本机 connector 无关。
+
+#### 18.50.4 本轮实验
+
+**无实验，仅零下载读头 + 本机源码/二进制定论**（约 **18 次 Range/HEAD 请求**：`x-linked-size` 7 次 + 全 header 5 次 + index/config 6 次；下载 **0 字节**；磁盘 0）。
+
+**不跑的三条理由**：
+
+1. **两条高价值题都是「读代码定论」**：K302 连 35 GB 都不用下；K303 **下了也跑不出结论**（缺 config 就是 fail，补 config 就是错值，两种都不是「能跑」）。
+2. **唯一可跑的是 MLX 42.6 GB H3-Image**，磁盘 **35 GiB（92%）** ⇒ 下载即触红线（K206 已作废过一次「清盘」假设，不重复）。
+3. **时间**：06:30 起动，06:52 检索收（~22 min），余下装三份报告 + 技能包双源同步 + sync + release。
+
+#### 18.50.5 技能包脚本修改
+
+**本轮未改脚本/技能包代码**，仅追加知识（双源逐字节校验，见 18.50.6 坑⑥）：
+
+| 文件 | 追加内容 | 字节（lab = inst） |
+|---|---|---|
+| `references/quantization.md` | 「第 6 个量化家族：GGML block（candle）与 MLX affine」+ 6 家族「载荷形态 / 兄弟张量 / 失败位」判据表 + `dtype+shape → 家族`速查 | 12,248 → **16,115** |
+| `references/h3-ecosystem-map.md` | 「官方 H3-Image 三件套」（`pdd_fused_heads` / `pdd_config` / DiT 66.28 GB / 三档口径）+ 「适配形态第 7 种：独立 MLP bridge」 | 72,372 → **75,338** |
+| `references/ecosystem-tracking.md` | 2026-11-28 第 40 轮条目（K301–K308 摘要） | 6,307 → **9,388** |
+
+#### 18.50.6 踩坑与结论
+
+- **坑①（新，本轮最贵）把「缺 config」当成「格式不认」，差一步写成反向结论**：K303 的 MLX 件结构上完全合本机判据（`adaln_t_table 1025×8` + 融合 `qkv_proj` + 8 宽 AdaLN），第一反应会写「本机能读 MLX 件」；实测 `transformer/config.json` **404**，而 `config_from_json` 第一句就是 `if (!f) return fail("cannot open …")`。⇒ **纪律：目录形态的件，先 `curl -sI <dir>/config.json` 看 200/404，再谈结构**（单文件形态不受此限）。
+- **坑②（新，比坑①更危险）「尺寸校验全过」不等于「解码参数对」**：`scales [5376,224]` 同时满足 `group 32 / K=7168` 与 `group 64 / K=14336`，因为 **`K = scols × group` 恒成立**。唯一破口是 `bits = gcols×32/K`：真 8 bit 算成 **4.0**，而 `l.bits = (bits==8)?8:4` 把 3 和 4 一并吃成 4。⇒ **`scales` 列数只能验「group 自洽」，不能验「bits 对」；`group` 必须来自声明，不能默认 64。**
+- **坑③（复现 + 加严）文件数在跨运行时仓再次失准**：`candle` 110 文件看着是「q4 54 + q8 54」，实际每个 tier 只有 3 个组件（`text_encoder` / `transformer` / `transformer_ref`）各 14 分片；MLX `transformer/` 154 文件里 153 个是分片。⇒ 与 K298（1423 里 1412 是源码）、K288（`≤2` 当空壳）合看：**文件数三面都要看过小、看正常、看过大**。
+- **坑④（新）`_class_name` 同一模型两种拼写，别当两个模型**：H3-Image 官方是 **`MiniMaxH3DiTModel`**，candle 的 `q8/transformer/config.json` 是 **`MiniMaxH3Transformer3DModel`**（diffusers 视频 DiT 名）。本机两个都收（`:735-760`），但**引用「H3-Image DiT 配置」必须带文件出处**，否则字段名对不上（`ffn_hidden_size` vs `ffn_dim`）。
+- **坑⑤（复现，本轮未踩）`resolve/main/` 漏写 = 404 + 55 KB 错误页**（18.49 坑①）：本轮全部 URL 带完整路径，另用 `r 0-8` 读 header 长度做前置校验，未复现。
+- **坑⑥（复现）技能包双源必须逐字节校验**：三份 references 写入后 `cmp -s` 两侧 **IDENTICAL**（16,115 / 75,338 / 9,388）。
+
+**结论四条**：
+
+1. **「结构合规」和「能跑」之间还隔着一层「声明完整性」**：MLX 件的键名、形状、AdaLN 宽度**全部合规**，唯独 `group_size` 没在文件里声明。⇒ 能力矩阵从第 39 轮的「格式 × 键名方言 × 基座形态」三维，扩为**四维：再加「量化参数声明位」**。
+2. **「补配置」是一个需要负向断言的高风险动作**：K303 与 K283 是同一族的两个实例——补上缺失的通路后，**错误从「显式报错」退化为「静默错值」**。⇒ P65 的验收必须是**负例**（只声明 bits 的件必须被拒），不是正例。
+3. **新运行时分支的价值不在「能不能跑」而在「跑不了时的失败位」**：candle 与 MLX 都属于「社区为别的运行时准备的件」，本机天生不认。但它们**失败的位置不同**（量化内联层 vs 配置层），这个差异直接决定「是否值得为它写转换器」——candle 需要写 GGML 解码器（工作量 ≈ 一个新量化家族），MLX 只需要补一份 config（但必须自带 `group_size`）。
+4. **上游四日静默 + 权重生态零变化 ⇒ 本轮价值全在「把已知件判死」**：K301–K308 没有一条是「新能力」，但它把「candle / MLX / H3-Image / T8 bridge」四类件的**可读性从猜测变成结论**，这正是 P43/P53/P65 要沉淀的判据。

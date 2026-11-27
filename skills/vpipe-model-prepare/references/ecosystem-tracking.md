@@ -41,3 +41,14 @@
 - **★★★ 推翻 K281 两条（K296/K297）**：① 「丢 `norm_out`」是**跨形态误判**（`norm_out.linear` ↔ `final_layer.adaln_proj.linear` 改名，归一化后 `only_official = 0`）；② 「只是裁秩」实为 **裁秩 + pruned 转换**（`pruned_conversion` 三动作）⇒ 只能挂 pruned 基座。
 - **★★ 官方 comfy 8step v1.2 比 diffusers 大 37%（K295）**：2,115,772,012 vs 1,543,291,302 B，全因 block-diagonal B（单块 qkv B 16.5 MB vs 5.5 MB）。
 - **★ 其余**：`ibyteohdear` 1423 文件里 1412 个是打包的 `diffusers/` 源码（K298）；TE-PK `pk_lora` 无 sink 权重（K299）；sd.cpp 11-27 Q8_0 运行时 INT8（#2445），H3 面零增量（K300）。
+
+
+## 2026-11-28（第 40 轮 · K301–K308）
+
+- **★★ 上游第 4 日静默，且首次「`updated_at` 变 / `pushed_at` 不变」（K301）**：HEAD 仍 `41a694a2`（≈82 小时无后继）；`pushed_at` **`2026-11-26T23:20:21Z`** 未动，但 `updated_at` 走到 `11-27T18:01Z`。275 star（第 9 日）/ 27 fork / 38,535 KB / 14 open issue / **PR=0** / release v0.1.110 落后 27 天。⇒ **判上游活动改用 `pushed_at` 或 `commits[0].sha`，`updated_at` 会因 star 单独跳动**。
+- **★★★ 第 6 个量化家族：GGML block（K302）**：`SceneWorks/minimax-h3-candle` 每个量化线性是 **3 维 `U8 [out, in/32, block]`**（Q4_1 20 B/32、Q8_0 34 B/32），**无 `.scales`/`.biases`**；`q8/transformer` **35.30 GB / 14 分片**、`q8/text_encoder` **33.71 GB / 1003 键（含 layers 50/51）**。本机拒载位置 = `linear_()` 找 `.scales` 得 nullptr → 回落 `to_bf16_` → 无 `comfy_quant` 记录 → **`not in the checkpoint`**。⚠️ **Q8_0 = 8.5 bpw ⇒ q8 档比 fp8 档（34.02 GB）还大 3.8%**。
+- **★★★ MLX affine 件被「缺 config」挡住，补半份 config 反而更糟（K303）**：`SarthakRawool/MiniMax-H3-Image-MLX-8bit-LowMem` DiT **23,327,880,544 B（154 分片 + index）**，`adaln_t_table [1025,8]` + 融合 `qkv_proj` ⇒ **结构上完全合本机判据**，但 `transformer/config.json` **404** ⇒ `config_from_json` 第一步 `fail("cannot open")`。**若补一份只写 `bits:8` 的 config**：默认 `group 64` 把 `K` 翻倍（7168→14336）、`bits` 从 8 算成 **4.0**，**而 `scales` 列数在两种解读下都成立** ⇒ 尺寸校验全过 ⇒ **8 bit 码按 nibble 解（静默错值）**。
+- **★★ 官方 H3-Image 三件套（K304）**：`pdd_fused_heads` **12,388,808 B / 2 张量**（`video_out.weight [6,96,5376]` = **6 个 step 专用头**）；`pdd_config.json` 六步显式 sigmas；`transformer/` **66,279,032,256 B / 531 键**，且 `transformer_diffusers/` **再存一遍**。`_class_name` 是 **`MiniMaxH3DiTModel`**（与 candle 的 `MiniMaxH3Transformer3DModel` 双拼写）。
+- **★★ 适配形态第 7 种：独立 MLP bridge（K305）**：T8 `BUNNY_H3_ActionLogic_Bridge_V1_T8_Compat` = **22,046,928 B / 6 张量 F32**（5120→512→5120），`operation "lossless_metadata_wrap"`、`target_h3_layer "49"`、`teacher_val_cos 0.350` vs `val_rep_cos 0.996`。本机 `strings` 三关键词 **0 命中**，**无 hook 点**。
+- **★★ 体积 vs 磁盘（K306）**：H3-Image 官方 DiT 66.28 GB / MLX 全量 42.6 GB / 本机可用 **35 GiB** ⇒ **最省的仍差 8 GB**；candle q8 68.9 GB（量化没换来收益）。
+- **★ 零增量**：ModelScope `lightx2v/Minimax-h3-Turbo` **31 项 / 27 safetensors / LastUpdated 11-24T14:36Z（4 日）**，4 步 v1.0–v1.3 `_768p_bf16` **同为 1,383,677,808 B**（K151 边界维持，K307）；sd.cpp 11-27 仅 `3b0426f7` 显存记账，**H3 面第 3 日零增量**（K308）。官方 `MiniMax-H3-Image-PE` **首次登记**（提示词扩写器，Qwen3.8-27B 基底，fp4/sglang，22 文件 / 5,895 dl / 11-10 未动）。
