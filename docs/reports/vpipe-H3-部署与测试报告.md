@@ -7134,3 +7134,137 @@ if (!f) { return fail("cannot open " + p.string()); }
 2. **「补配置」是一个需要负向断言的高风险动作**：K303 与 K283 是同一族的两个实例——补上缺失的通路后，**错误从「显式报错」退化为「静默错值」**。⇒ P65 的验收必须是**负例**（只声明 bits 的件必须被拒），不是正例。
 3. **新运行时分支的价值不在「能不能跑」而在「跑不了时的失败位」**：candle 与 MLX 都属于「社区为别的运行时准备的件」，本机天生不认。但它们**失败的位置不同**（量化内联层 vs 配置层），这个差异直接决定「是否值得为它写转换器」——candle 需要写 GGML 解码器（工作量 ≈ 一个新量化家族），MLX 只需要补一份 config（但必须自带 `group_size`）。
 4. **上游四日静默 + 权重生态零变化 ⇒ 本轮价值全在「把已知件判死」**：K301–K308 没有一条是「新能力」，但它把「candle / MLX / H3-Image / T8 bridge」四类件的**可读性从猜测变成结论**，这正是 P43/P53/P65 要沉淀的判据。
+
+### 18.51 2026-11-29 02:30 —— 第 41 轮：★★★ 第 7 个量化家族「MLX ConvRot W8A8」与其**旋转基声明位**（Sylvester ≠ regular，错基反旋转 relL2 2.06 / 余弦 −0.02）＋ ★★★ 预烘 AdaLN 表 `[7,2,6,5376]` 是第 5 种 AdaLN 形态且此件**没有 `adaln_proj`** ＋ ★★★ bnb LLM.int8 的第三套 scale 拼写 `SCB`/`weight_format` ＋ ★★ sd.cpp 已把 GGML K-quant 接进 INT8 线性层
+
+#### 18.51.1 检索范围
+
+| 源 | 抓取内容 | 结论 |
+|---|---|---|
+| GitHub `tgo-app-dev/vpipe` | `commits?per_page=5` / `releases?per_page=3` / `repos` metadata / `issues?state=open` / `pulls?state=open` | HEAD 仍 `41a694a2`；**277 star / 28 fork / 14 open issue / PR=0**；release 仍 v0.1.110 |
+| HF（`hf-mirror.com` 镜像优先） | `api/models?search=` 双拼写各 60 条；新仓逐个 api/models + README + tree | 命中 5 个本轮首见件（MLX w8a8、chdp207 双件、combined、ROCmFPX） |
+| safetensors 头（Range） | 9 次 header 读 + 4 次 payload 取回 | 得到 K310/K312/K314/K315 的全部结构结论 |
+| ModelScope | `lightx2v/MiniMax-H3-Turbo` `repo/files` | 仍 **31 项**、`8step_v1.2_768p_bf16` 仍 **1,543,291,302 B** |
+| sd.cpp | `commits?per_page=8` + PR `#2431` / `#2454` 正文 | **11-28 六提交，H3 面破静默**（K317） |
+| 官方 | `MiniMaxAI/MiniMax-H3` / `-Image` / `-Image-PE` / `Comfy-Org/MiniMax-H3` 的 dl/like/lastModified | 全部零结构变化（K318） |
+| 本机 | 源码树 `d72c22f` 的 `fp8.h` / `fp8-layout.cc` / `minimax-h3-diffusers-layout.cc` / `metal-minimax-h3-transformer.cc`；`strings libvpipe.0.dylib` | 得到 K311/K313 的定性 |
+
+**未使用 WebSearch**（连续多轮不可用，按记忆里的通路清单直接走镜像）。**0 下载**，约 21 次 Range/HEAD。
+
+#### 18.51.2 新增知识
+
+**K309 上游第 5 日静默。** HEAD 仍 `41a694a2`（`commit 2026-11-26T22:40:05Z` / `pushed_at 11-26T23:20:21Z`，≈**106 小时**无后继）；`updated_at` 走到 `11-28T14:25:33Z` 但 `pushed_at` 一字未动 ⇒ 继续印证 K301「`updated_at` 只跟 star/fork」。**277 star（+2）/ 28 fork（+1）** / 38,535 KB / **14 open issue、评论合计仍 9** / **PR=0** / release **v0.1.110（11-01）落后 28 天**。
+
+**K310 第 7 个量化家族：MLX ConvRot W8A8。** `Joyboyreturns/MiniMax-H3-Image-MLX-w8a8`（167 文件 / 0 dl / 0 like / `lastModified 11-28T16:23:40Z`，首日）。`dit/dit.json` = `{"quantized":true,"format":"w8a8_convrot","bits":8,"rot_group":256,"hadamard":"sylvester","fused_qkv":true}`；`te/te.json` 同 + `"fused_gate_up":true`。
+
+| 组件 | 体积（`x-linked-size` / index） | 结构 |
+|---|---|---|
+| `dit/blocks/00..49` | **385,618,778 B × 50 ≈ 19.28 GB** | 每块 **12 张量**：`attn.to_qkv [21504,5376]` / `attn.to_out.0 [5376,7168]` / `ff.net.0.proj [28672,5376]` / `ff.net.2 [5376,14336]` 各 `I8` + 同形 `F32 [N] weight_scale`；`norm1`/`norm2`/`norm_q`/`norm_k` 为 BF16（`[5376]`/`[128]`） |
+| `dit/core.safetensors` | 190,712,784 B / **23 张量** | `context_embedder [5376,5120]` BF16、`norm_out.linear [10752,2688]`、**`pdd_proj_out.0..5` 各 `[96,5376]` F32**、`proj_in [5376,96]` **F32**、`time_embedder.linear_1 [5376,256]` / `linear_2 [2688,5376]` |
+| `dit/refiner.safetensors` | 1,541,464,152 B | token refiner |
+| `dit/modulation/` | 52 文件 | 预烘 AdaLN 表（K312） |
+| `te/embed` + `te/layers/00..49` + `te/visual` | 1,555,824,872 + 24.39 GB + 1,190,572,992 | Qwen3-VL 层 0–49，每层 12 张量（4×`I8` + 4×`F32 [N]` + 4×`BF16`），`qkv_proj [10240,5120]` 与 `gate_up_proj [51200,5120]` **均已融合** |
+| `vae/` | 2,336,973,400 B | F32 |
+| **合计** | **≈ 50.5 GB** | vs 官方 DiT 66.28 GB |
+
+**K311 「错基反旋转」的量化后果（本轮最贵的一条）。** 本机 `fp8.h:184-190` 的 `convrot_unrotate` 用 **regular** Hadamard：4×4 `[[1,1,1,-1],[1,1,-1,1],[1,-1,1,1],[-1,1,1,1]]/2` 的 `kron` 幂。本机 Python 复算（n = 4 / 16 / 64 / 256）：
+
+| n | regular vs Sylvester 不同项 | 错基反旋转 relL2 | RMSE 比 | 余弦 |
+|---|---|---|---|---|
+| 4 | **10 / 16** | — | — | — |
+| 16 | **120 / 256** | — | — | — |
+| 64 | — | **2.044** | 1.430 | **−0.0218** |
+| 256 | — | **2.058** | 1.435 | **−0.0290** |
+
+两者**都正交、都是 256 阶、都叫 ConvRot**，但**不是同一个算子**。用错基反旋转，权重与真值**近乎正交**（= 噪声），**不报错、不崩、不出 NaN**。⇒ 与 K303「补半份 config」同族：**声明位从 2 件扩到 4 件（`bits` / `group_size` / `rot_group` / `basis`）**。
+
+**K312 第 5 种 AdaLN 存储形态：按 t 预烘表。** `dit/modulation/NN.safetensors`（50 个，每块一个文件）= `table BF16 [7,2,6,5376]` + `timesteps F32 [7]`；`modulation/norm_out.safetensors` = `[7,2,5376]`；`modulation/temb.safetensors` = `temb F32 [7,2688]` + `silu_temb_bf16 BF16 [7,2688]` + `timesteps F32 [7]`。三维读法（据 `config.json` 的 `"adaln"` 字段）：**7 = 采样器实际用到的 t**（`t = 1 − σ`，编辑参考另加 `0.999`）、**2 = 两套**、**6 = shift/scale/gate 各 2**。
+
+对比已有 4 种：
+
+| # | 形态 | 键 | 出处 |
+|---|---|---|---|
+| 1 | pruned 曲线 | `adaln_t_table [1025,8]` | 官方 pruned / Fusion / Kijai |
+| 2 | H3-Tiny | `adaln_t_table [1025,16]` | K162 |
+| 3 | FewStep 双段 | `linear_1 [8,2688]` + `linear_2 [96768,8]` | K162 |
+| 4 | 预烘 t-MLP | `proj_out [2688,5376]` + 8 宽折叠基 | SVDQuant / K292 |
+| **5** | **按 t 预烘 6 参数表** | **`[7,2,6,5376]` + `timesteps [7]`** | **MLX w8a8 / 本轮** |
+
+本机只覆盖 1–3。
+
+**K313 融合投影只有「拆」没有「合拢」。** `minimax-h3-diffusers-layout.cc:246-248` 的 `kBlock` 有 `{"attn.to_q.","attn.to_qkv.q."}` / `to_k` / `to_v`（**拆**），`assembled_parts()` 只在 `to_q/.k/.v` **已存在**时才拼成融合件。**没有 `to_qkv → q/k/v` 的逆**，`gate_up_proj → (gate,up)` 同理。MLX w8a8 的 `to_qkv [21504,5376]`（21504 = 3 × 7168）与 `gate_up_proj [51200,5120]`（51200 = 2 × 25600）正好落在缺口上。
+
+**K314 混合「按块切档」第三例 + 两件结构上本机都可读。**
+
+| 件 | 体积 / 张量 | 块 2–47 | 块 0/1/48/49 |
+|---|---|---|---|
+| `…W4A8_EdgeFP8` | **13,214,260,168 B / 1300** | `asym_w4a8_int8`：`I8 [21504,**2688**]`（半字节，K = 2688×2 = 5376）+ `weight_s_rel E4M3 [21504,336]` + `weight_s_channel F32 [21504]` + `weight_codebook F32 [16]`，`group_size 16`、`convrot 256` | `F8_E4M3 [21504,5376]` + `weight_scale F32 []` |
+| `…W8A8` | **20,969,407,312 B / 932** | `int8_tensorwise`：`I8 [21504,**5376**]`（整字节）+ `weight_scale F32 [21504,1]`（列向量）+ `comfy_quant`（72 B） | 同上 |
+
+- 两件**唯一分辨点 = `comfy_quant.format` + `shape[1]` 是否等于 K**（2688 ≠ 5376 ⇒ 半字节；5376 = K ⇒ 整字节）。**只看 dtype 与体积必然判错。**
+- **本机可读性**：`resolve_w4a8_` 要求 `s_rel == [N, K/16]` ⇒ `5376/16 = 336` ✓、`codebook == 16 F32` ✓；`fp8-layout.cc:436-440` 的 `col` 判定接受 `[N,1]` 2-D 列向量 ✓ ⇒ **两件都过全部门**。
+- 命名 `EdgeFP8` 指**块序两端**（0/1/48/49），不是图像边缘。
+- ⚠️ metadata 的 **`nvfp4_reference_vessel = 10Eros_Max_h3_8stepTURBO_beta6_pruned_nvfp4`** 指向**另一个仓的另一份权重** ⇒ metadata 字段分四类：**说自身 / 说来源 / 说对标 / 说工艺**，不能一律当「描述本件」。
+
+**K315 bnb LLM.int8 的第三套 scale 拼写。** `addlabsviral/minimax-h3-combined` 的 `text_encoder/model.safetensors` = **35,527,751,672 B / 1954 tensors**（BF16 610 / F32 448 / **I8 448** / U8 448；后缀 `weight 883` / **`SCB 448`** / **`weight_format 448`** / `bias 175`）。每个量化线性 = `<layer>.weight I8 [N,K]` + **`<layer>.SCB F32 [N]`**（per-output-channel）+ **`<layer>.weight_format U8 []`**（0-d，载荷实测 **1 字节 `0x00`**，**不是 JSON**）。`text_encoder/config.json` 的 `quantization_config` 是 **bitsandbytes**（`load_in_8bit true`、`llm_int8_threshold 6.0`、`llm_int8_skip_modules = [model.visual, model.language_model.embed_tokens, model.language_model.norm, lm_head]`）。本机 `grep -r "SCB"` = **0**、`weight_format` = **0**。
+
+⇒ **判别表（补第 40 轮四维）**
+
+| 拼写 | 伴随记录 | 旋转 | 本机 |
+|---|---|---|---|
+| `.weight_scale` + `comfy_quant{int8_tensorwise,convrot,256}` | 有 | 是（regular） | ✅ |
+| `.weight_scale` + 无 `comfy_quant` | 无 | 未知 | ❌ **明确拒载**（`fp8-layout.cc:415-421`） |
+| **`.SCB` + `.weight_format`（bnb）** | 无 | **否** | ❌ 键名缺失层 |
+
+**K316 社区洪水与空壳。** `AI-KSK` 单组织 **139 仓**，H3 相关 **≥20 个在 9 分钟内（13:18–13:27Z）批量上传**，全部 0 dl ⇒ **「H3 生态仓数」不能当活跃度**，要看独立作者数与有 dl 的仓数。`RunningHubAI/rh-*` 空壳本轮 **2/2**、累计 **5/5**；`Rex38rus/MiniMax-H3-GGUF`、`elismasilva/minimax_h3_video_custom_blocks` 亦只有 `.gitattributes`。`Harsha001/MiniMax-H3-Image-ROCmFPX` = **gated 第二档：`api/models` 正常列 8 siblings（4 GGUF + `sdcpp-rocmfpx.patch`），但 `raw/README.md` 与 `resolve` 全 403** ⇒ 与 K251（README 可读、权重 403）是**两档**。
+
+**K317 sd.cpp 破 H3 静默。** 11-28 共 **6 提交**：`3d0df004`（CUDA fusions, #2458）、`fb226da6`（#2457）、**`51866c1a`（#2454 K-quant 权重接进 INT8 线性层）**、**`d68f2883`（#2452 Q4/Q5 同上）**、**`3771ef24`（#2431 fp8 上 LoRA 按 `ggml_backend_supports_op(CPY)` 决定「立即合并 / 运行时应用」）**、`cab31f12`、`58d1126f`。⇒ **sd.cpp 已在做「GGML block → INT8 线性」的自适应桥**，这正是 K302 判本机「要自写 GGML 解码器（工作量 ≈ 新量化家族）」的那件事 —— **上游有现成参考实现**，P59 追更时应优先 diff 这条。
+
+**K318 官方权重零结构变化（时效快照）。** `MiniMaxAI/MiniMax-H3` `11-24T04:56Z` / **5,974,796 dl（+8）** / 7,449 like（+1）；`Comfy-Org/MiniMax-H3` `11-15T09:54Z` / **33,871,716 dl（+320）** / 2,899 like（+10）；`MiniMaxAI/MiniMax-H3-Image` 仍 `11-16T10:00Z` / 1,102,421 dl；`-Image-PE` `11-10T15:16Z` / 6,044 dl（+149）。MS `lightx2v` 仍 **31 项**、`8step_v1.2_768p_bf16` 仍 **1,543,291,302 B**。
+
+#### 18.51.3 印证与冲突
+
+- **★★★ 冲突①（本轮最贵）「`convrot: true` ≠ 本机会解」**：`comfy_quant` 的 `convrot` 只说「转过」，**基是第二个必读声明位**。错基反旋转 relL2 2.06、余弦 −0.02，**不报错**。⇒ 与 K303「补半份 config」同一族：**能力矩阵第 4 维再裂一格（`bits`/`group_size`/`rot_group`/`basis` 四件套）**。
+- **★★★ 冲突②「有 I8 + 有逐行 scale」不能判 ConvRot**：bnb `.SCB` 是纯 per-channel、**无 256 组旋转**。少一次 undo 与多一次 undo **都是错值** ⇒ 旋转的有无必须来自声明。
+- **★★★ 冲突③「metadata 字段都描述自身」**：`nvfp4_reference_vessel` 指向别处（K314）。与 K283「alpha 四义」同型的坑。
+- **★★★ 印证「AdaLN 五形态」**：本轮的 `[7,2,6,5376]` 与 K292 的 `proj_out [2688,5376]` 是**两种不同的「把 t 提前算掉」**；加 K162 的两种与官方 `[1025,8]` ⇒ **5 种，本机覆盖 3 种**。
+- **★★ 印证「键名契约的不对称是本机第二大类拒载原因」**：K267（上游删块重编号）与 K313（融合投影无逆）是同一问题的两个方向；第一大类仍是量化参数声明（K283/K303/本轮 K310/K315）。
+- **★★ 印证 K301**：`updated_at` 继续只跟 star（`11-28T14:25Z` vs `pushed_at 11-26T23:20:21Z`）。
+- **★ 印证 K288/K251**：空壳与 gated 都已有稳定判据（`siblings == 1` 判空；`resolve` 403 + `api/models` 正常 ⇒ gated），本轮各补一例。
+
+#### 18.51.4 本轮实验
+
+**无实验，仅知识同步。** 三条理由：
+
+1. **两个最高价值结论都是「读代码 + 算术」**：K311 的错基误差是 4 行 Python 算完的（不需要任何权重）；K313 的「无逆映射」是一条 `grep` 即定论。
+2. **唯一「结构上可跑」的两件（K314 的 13.2 / 21.0 GB）磁盘不允许**：`/System/Volumes/Data` 可用 **3.4 GiB（100% 已用）**，连 15 GiB 红线都不到。
+3. **K310 那套 50.5 GB 即使下载也跑不出结论**：旋转基不对 ⇒ 要么静默错值、要么被拒，两者都不是「能跑」。
+
+**检索耗时 ≈ 32 min（02:30–03:02）**，0 下载。省下的时间全部给「两份报告 + 三份 references 双源同步 + nightly_sync + release」最小闭环。
+
+#### 18.51.5 技能包脚本修改
+
+**本轮未改脚本/技能包代码**，仅追加知识（双源逐字节校验，见 18.51.6 坑⑥）：
+
+| 文件 | 追加内容 | 字节（lab = inst） |
+|---|---|---|
+| `references/quantization.md` | §7「`hadamard` 声明位」：两类 256 阶基的数值差异表 + 错基反旋转误差表 + 「预烘 AdaLN 表 = 第 5 形态」+「bnb `SCB` 第三套拼写」+「I8 + 逐行 scale 三拼写判别表」 | 16,115 → **20,618** |
+| `references/h3-ecosystem-map.md` | 「MLX w8a8 全家桶：第三个 Apple 运行时分支」（组件体积表 + 本机判死四条）+「第四个整机套装仓（`base_model_relation: merge` / `aoti` 862 KB）」+「社区洪水与空壳量化」+「混合量化按块切档第三例（EdgeFP8 两件对照）」 | 75,338 → **84,498** |
+| `references/ecosystem-tracking.md` | 2026-11-29 第 41 轮条目（K309–K318 摘要） | 9,388 → **13,442** |
+
+#### 18.51.6 踩坑与结论
+
+- **坑①（新，本轮最贵）「同一 `comfy_quant` 的 `convrot` 字段，两家 publisher 是两个算子」**：Fusion/Kijai/官方 pruned 全用 **regular**（`fp8.h:186` 的 4×4 kron 幂），MLX w8a8 用 **Sylvester**（`dit.json` 明写）。两者**都正交、都是 256 阶、都叫 ConvRot**，n=4 就已有 **10/16** 项不同。⇒ **纪律：见到 `convrot: true` 必须再问「哪个基」；`dit.json` / `te.json` 这类旁挂 JSON 本机完全不读，但对判读至关重要。**
+- **坑②（新）「第 5 种 AdaLN」不是「第 4 种的变体」**：起初按「AdaLN 预烘」去找 `adaln_proj`，而这个件**根本没有** ⇒ `is_diffusers_layout()` 第一条（`transformer_blocks.0.adaln_proj.linear.weight`）直接挂掉，连 diffusers 翻译都不会触发。⇒ **纪律：判 diffusers 形态必须三条判据逐条打勾，不能只看 `transformer_blocks.` 前缀。**
+- **坑③（复现 + 加重）`siblings[].size` 在镜像上仍全 `None`**（第 4 日），但 **`x-linked-size` 本轮 12/12 全准**（385,618,778 / 190,712,784 / 1,541,464,152 / 487,897,107 / 1,190,572,992 / 1,555,824,872 / 2,336,973,400 / 13,214,260,168 / 20,969,407,312 / 35,527,751,672 / 862,601 / 64,489）。**分片仓总体积读 `index.json` 的 `metadata.total_size` 最快**（`transformer/` = 66,280,430,080 B，与逐片 HEAD 一致）。
+- **坑④（新）读 `comfy_quant` 载荷必须加数据段偏移 `8 + header_len`**：第一遍直接按 `data_offsets` 取，读出来是二进制乱码（`P\xef\xbf\xbdS[...`）；加 `D = 8 + n` 后才是 `{"format":"float8_e4m3fn"}`。⇒ **`safetensors` 的 `data_offsets` 相对数据段起点，不是文件起点**（第 3 次踩，前两次在 K292/K303）。
+- **坑⑤（复现）gated 有两档**：K251 那次 README 可读、权重 403；本轮 `Harsha001/…ROCmFPX` **连 `raw/README.md` 都 403**。⇒ **不能用「README 读不到」反推「仓不存在」。**
+- **坑⑥（复现）技能包双源必须逐字节校验**：三份 references 写入后 `cmp -s` 两侧 **IDENTICAL**（20,618 / 84,498 / 13,442）。
+- **坑⑦（新，流程）编号在三次编辑后漂移了一次**：先按 K309–K318 分配，中途插入 K313b 导致后续相位全错，最后整段重写才对上。⇒ **纪律：一轮的编号必须先在纸上定死（含占位），再落笔。**
+
+**结论四条**：
+
+1. **「声明位」比「载荷形态」更值钱**：本轮三条新知识（K310/K313/K315）全都在「同一个 dtype、同一个体积区、同一个字段名，但语义不同」这一类 —— **能力矩阵的判据必须从「看张量长什么样」转到「看声明写了什么，缺声明即拒」。**
+2. **「错误静默」有两个等级**：K303/K283 是**数值级静默**（乘错一个常数，画质崩但形状对）；本轮 K311 是**算子级静默**（换了一个正交基，权重直接变噪声）。后者更危险，因为**任何形状/范围校验都发现不了**。
+3. **键名契约的不对称（只拆不合）是第二大类缺口**，且它的「正确做法」不难（写逆映射），难在**行序未知**——融合件的行序（q 全部头 → k 全部头 → v 全部头 vs 逐头 q,k,v）**必须从 publisher 侧求证，不能猜**。
+4. **上游在替我们走这条路**：K317 说明 sd.cpp 已把 GGML K-quant 接进 INT8 线性层。⇒ **P59（追更）的价值第一次超过「防冲突」，变成「捡现成」**：若 `41a694a2` 之后跟同一路线，K302 的「不投入」结论应被重新评估。

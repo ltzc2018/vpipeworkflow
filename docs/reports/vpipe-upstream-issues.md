@@ -344,3 +344,21 @@ A/B 在外观层面不具区分度（"窗台 + 暖阳 + 猫"本身就是模型�
 
 **内部量化佐证**：参考图让 DiT 的打包序列多出 2,056 行（16,999 vs 14,943），AdaLN 烘焙表多 6 行（17 vs 11 rows）。
 
+
+---
+
+## 上游 issue 状态快照（2026-11-29 02:45 抓取 · 第 41 轮）
+
+`api.github.com/repos/tgo-app-dev/vpipe/issues?state=open&per_page=100` ⇒ **14 条全开、0 条关闭、无 label / milestone / assignee**，评论合计 **9**（#52/#45/#34 各 2，#49/#41/#31 各 1）。`pulls?state=open` ⇒ **0**。与第 39/40 轮**逐字相同**，第 5 日无变化。
+
+`updated_at == created_at`（**从未被维护者碰过**）共 **7 条**：#59、#58、#56、#53、#48、#17、#15。
+
+**与本机相关的三条仍无回应**：
+
+| # | 标题 | 创建 | 与本机实测的关系 |
+|---|---|---|---|
+| 59 | RelayVSR: support the native 2x checkpoint | 11-16 | 与本机 P29/P32 的 2× 档结论一致（欠估增强）；上游未收 |
+| 56 | FastH3-Omni: the VSA compression gate and its routing budget | 10-22 | 与 K181/P45 的 `gate_compress` 缺口逐字一致；**已 38 天无回应** |
+| 55 | MiniMax-H3 persistent temporal texture "boiling" | 10-21 | 与 K96/K122 的纹理沸腾结论同源；`updated_at` 比 `created_at` 晚 10 min（仅自动标签） |
+
+⇒ **本轮不新增提案**：本轮 8 条知识里没有一条是「本机发现的上游缺陷」——K310–K315 全是**社区件的可读性判据**，属本机能力矩阵，不是上游 bug。P68 的 `hadamard` 声明位若要提给上游，**应等上游真的开始读 Sylvester 件再说**（当前 `41a694a2` 连 `dit.json` 都不读，提了也无从验证）。

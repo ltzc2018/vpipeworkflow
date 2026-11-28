@@ -266,3 +266,54 @@ DiT residency ended at 24 of 50 blocks (9717 MB)
 | **MLX affine** | **`U32 2-D`（4 码/字）** | **`scales`/`biases` BF16** | **配置缺失层（`config.json` 404）** |
 
 ⇒ **`dtype + shape 组合` 一眼定家族**：`U8 2-D` = int8 码 / `U8 3-D` = GGML block / `U32 2-D` = MLX / `I8 2-D` + `weight_scale` = ConvRot。
+
+---
+
+## 7. 第 41 轮（2026-11-29）：`hadamard` 声明位 —— 错基反旋转 = 静默错值
+
+### 7.1 `convrot` 的两个 256 阶基不是同一个算子
+
+- 本机 `fp8.h:184-190` 的 `convrot_unrotate` 用 **regular Hadamard**：4×4 `[[1,1,1,-1],[1,1,-1,1],[1,-1,1,1],[-1,1,1,1]]/2` 的 `kron` 幂。
+- 社区新件 `Joyboyreturns/MiniMax-H3-Image-MLX-w8a8` 的 `dit/dit.json` 显式声明 **`"hadamard": "sylvester"`** + `"rot_group": 256` + `"bits": 8` + `"fused_qkv": true`。
+- 实测（pure-Python，n = 4 / 16 / 64 / 256）：`kron(M4)` 与 Sylvester 阵 **n=4 就有 10/16 项不同**、n=16 有 120/256 项不同；两者都正交，但**不是同一个算子**。
+- **★ 后果（本轮最重要的数值结论）**：把「Sylvester 基下量化」的码用「regular 基」反旋转，n=64/256 随机向量实测 **relL2 = 2.04 / 2.06（RMSE 1.43×）、余弦 ≈ −0.02** ⇒ **权重与真值近乎正交（等同噪声），日志零错误**。
+
+| 基 | 生成方式 | 本机 | 声明位 |
+|---|---|---|---|
+| regular | `kron` 幂 M4 | ✅ `convrot_unrotate` | `comfy_quant` 的 `convrot` + `convrot_groupsize` |
+| sylvester | `kron` 幂 `[[1,1],[1,-1]]` | ❌ **无分支** | `dit.json` / `te.json` 的 `hadamard`（**本机不读这两个文件**） |
+
+⇒ 量化家族表加第 7 行「MLX w8a8 ConvRot（Sylvester 基）」，失败位 = **旋转基声明层**。
+⇒ **纪律：`comfy_quant` 的 `"convrot": true` 只说明「转了」，不说明「用哪个基」。基是第二个必读声明位。**
+
+### 7.2 预烘 AdaLN 表：第 5 种 AdaLN 存储形态
+
+| 形态 | 键 | 出处 |
+|---|---|---|
+| pruned 曲线 | `adaln_t_table [1025,8]` | 官方 pruned / Kijai |
+| H3-Tiny | `adaln_t_table [1025,16]` | K162 |
+| FewStep | `linear_1 [8,2688]` + `linear_2 [96768,8]` | K162 |
+| 预烘 t-MLP | `proj_out [2688,5376]` + 8 宽折叠基 | SVDQuant / K292 |
+| **按 t 预烘 6 参数表** | **`modulation/NN.safetensors`：`table BF16 [7,2,6,5376]` + `timesteps F32 [7]`**（`norm_out` 为 `[7,2,5376]`、`temb` 为 `[7,2688]`@`silu_temb_bf16`） | **MLX w8a8，K310** |
+
+`[7,2,6,5376]` 的三维读法（据 `config.json`）：**7 = 采样器实际用到的 t**（`t = 1 - sigma`，编辑参考另加 `0.999`）、**2 = 两套**（首/末帧或 ref/align）、**6 = shift/scale/gate 各 2**。
+⇒ 本机只有「表 + 宽度」与「MLP」两支，**没有「按 t 预烘」这一支**；且这套件**同时没有 `adaln_proj`**，所以 `is_diffusers_layout()` 的三条判据（要 `transformer_blocks.0.adaln_proj.linear.weight`）也过不了。
+
+### 7.3 bnb LLM.int8 的第三个 scale 拼写：`SCB` / `weight_format`
+
+`addlabsviral/minimax-h3-combined` 的 `text_encoder/model.safetensors` = **1954 tensors**（BF16 610 / F32 448 / **I8 448** / U8 448），后缀 `weight 883 / SCB 448 / weight_format 448 / bias 175`。
+
+- 每个量化线性 = `weight I8 [N,K]` + **`SCB F32 [N]`**（per-output-channel scale）+ **`weight_format U8 []`**（0-d 标量，载荷实测是 **1 字节 `0x00`**，**不是 JSON**）。
+- `config.json` 的 `quantization_config` 是 **bitsandbytes**：`load_in_8bit true`、`llm_int8_threshold 6.0`、`llm_int8_skip_modules = [model.visual, model.language_model.embed_tokens, model.language_model.norm, lm_head]`。
+- 本机源码树 `grep -r "SCB"` = **0**、`weight_format` = **0** ⇒ **第 6 类不可读形态：scale 的第三个拼写**（已有 `.weight_scale` / `.scale_weight` / `.i8x_scales`）。
+- ⚠️ **与 ConvRot 的区别**：`SCB` **无 `comfy_quant` 记录、无 256 组旋转**（bnb 是纯 per-channel）。⇒ **「有 I8 + 有 per-row scale」不能自动判成 ConvRot**：少了旋转就少一次 undo，读进来是「少一个旋转」的错值 —— 比错基轻，但仍是**静默错**。
+
+### 7.4 「I8 + 逐行 scale」三种拼写的判别表（补第 40 轮四维）
+
+| 拼写 | 伴随记录 | 要 undo 旋转? | 本机 |
+|---|---|---|---|
+| `.weight_scale` + `comfy_quant{int8_tensorwise, convrot, 256}` | 有 | 是（regular 基） | ✅ 可读 |
+| `.SCB` + `.weight_format`（bnb） | 无 | **否** | ❌ 键名缺失层 |
+| `.weight_scale` 但**无** `comfy_quant` | 无 | 未知 | ❌ **明确拒载**（`fp8-layout.cc:415-421`：`I8 with a scale beside it -- not an FP8 encoding`） |
+
+⇒ 第三条正是 MLX w8a8 件的落点：**「无记录」被正确拒载**，比「补一条错记录」安全。**修复方向必须是补「基 + 组大小 + 逐行」三件套，缺一即拒。**

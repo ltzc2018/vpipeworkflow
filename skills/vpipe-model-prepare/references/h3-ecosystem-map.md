@@ -780,3 +780,73 @@ M5 Max 832×480×73 + Sol：**23.4 s / 22.9 GB** vs pi-H3 直接跑 pruned DiT *
 `__metadata__` 要点：`bridge_type BUNNY_H3_ActionLogic_Bridge`、**`target_h3_layer "49"`**、`operation "lossless_metadata_wrap"`、`schema t8_semantic_bridge_v1`、`source {JOKER141/BUNNY_H3_Conditioning_Bridge, rev 658bfbb0}` + `source_sha256`、`activation silu`、`recommended_alpha_start "0.10"`、`recommended_magnitude_match per_token`、`teacher_val_cos 0.350` / `val_rep_cos 0.996` / `val_corr_cos 0.997`、`formal_prompts 2400`。
 
 ⇒ **与 LoRA 的本质差别：不是权重增量，而是整层替换**（`lossless_metadata_wrap` 把原网关包进 metadata）。本机 `strings libvpipe` 对 `semantic_bridge` / `actionlogic` / `BUNNY` **全 0 命中**，源码树 `grep semantic_bridge` = 0 ⇒ **没有任何 hook 点，`runtime-lora` 任何路径都绑不上**。`teacher_val_cos 0.350` vs `val_rep_cos 0.996` ⇒ 自报「行为接近本体、但与老师差很远」，价值不明（**待复现，社区单源**）。
+
+## MLX w8a8 全家桶：第三个「Apple 运行时」分支（2026-11-29 第 41 轮，K310/K311）
+
+`Joyboyreturns/MiniMax-H3-Image-MLX-w8a8`（167 文件，`lastModified 2026-11-28T16:23Z`，0 dl / 0 like，**首日**）——与 `SarthakRawool/…-MLX-8bit-LowMem`（K303）**不是同一份**：那份是 MLX affine（`U32` + `scales`/`biases`），这份是 **MLX ConvRot W8A8（`I8` + `F32 [N]` 逐行）**。
+
+| 组件 | 体积 | 结构 |
+|---|---|---|
+| `dit/blocks/00..49` | 每片 **385,618,778 B** × 50 ≈ **19.28 GB** | 每块 **12 张量**：4 × `I8 weight`（`to_qkv [21504,5376]` / `to_out [5376,7168]` / `ff.0.proj [28672,5376]` / `ff.2 [5376,14336]`）+ 4 × `F32 [N] weight_scale` + 4 × `BF16` norm（`norm1/norm2/norm_q/norm_k [128]`） |
+| `dit/core.safetensors` | 190,712,784 B / **23 张量全 BF16/F32** | 含 **`pdd_proj_out.0..5` 各 `[96,5376]`**（= 官方 `pdd_fused_heads` 的展开式，逐个 step 一个 Linear）、`proj_in [5376,96]` **F32**、`time_embedder.linear_1 [5376,256]` / `linear_2 [2688,5376]` |
+| `dit/refiner.safetensors` | 1,541,464,152 B | token refiner（2 层） |
+| `dit/modulation/` | 52 文件 | **预烘 AdaLN 表**（见 quantization.md §7.2） |
+| `te/embed` + `te/layers/00..49` + `te/visual` | 1.56 + 24.39 + 1.19 GB | Qwen3-VL 层 0–49，每层 12 张量（4 × `I8` + 4 × `F32 [N]` + 4 × `BF16`），`qkv_proj [10240,5120]` **已融合**、`gate_up_proj [51200,5120]` **已融合** |
+| `vae/` | 2,336,973,400 B | F32 全量 |
+| **合计** | **≈ 50.5 GB**（不含 modulation） | vs 官方 66.28 GB DiT、MLX bf16 同构；**本机 3.4 GiB 可用** |
+
+README 自报（**待复现，社区单源**）：16 GB M4 Air / 1024² / 6 步 = **99.80 s**（TE 7.39 + DiT 89.36 + VAE 3.05），峰值 **1.58 GB**（SSD 流式，零 swap）。
+
+**本机判死四条（逐条读代码，未下载）**：
+1. **`hadamard: sylvester`** —— 本机 `convrot_unrotate` 只有 regular 基（错基 ⇒ relL2 2.06，见 quantization.md §7.1）。
+2. **`is_diffusers_layout()` 三条判据全不满足** —— 缺 `transformer_blocks.0.adaln_proj.linear.weight`（此件**根本没有 `adaln_proj`**，AdaLN 是预烘表）、缺 `token_refiner.refiner_blocks.0.attn.to_q.weight`（refiner 单独成文件且命名未知）、有 `context_embedder.weight` 但前两条已挂 ⇒ `native_()` 不触发，`blocks.0.attn.to_qkv.weight` 无人翻译成 `attn.qkv_proj`。
+3. **融合投影无反翻译** —— `minimax-h3-diffusers-layout.cc:246-248` 只有 **拆**（`to_q → to_qkv.q`），**没有 `to_qkv → q/k/v` 的逆**；`assembled_parts()` 只在 `to_q/.k/.v` 存在时才拼。
+4. **`fused_gate_up` 同理** —— 本机 `mlp.fc1.ug` 是「up|gate 一文件两半」，此件 `gate_up_proj` 是**单张量融合**，没有拆分支。
+
+⇒ **不是「格式不认」，而是「命名契约 + 旋转基 + AdaLN 形态」三处同时不同**。要读需：写 Sylvester 基分支 + 补 `to_qkv→qkv` 拆解 + 补「预烘表」AdaLN 分支。**工作量 ≈ 一个新的适配形态，且本机磁盘 3.4 GiB 连 50 GB 都放不下 ⇒ 不投入。**
+
+## 第四个「整机套装仓」：diffusers modular + AoTI（2026-11-29 第 41 轮，K313）
+
+`addlabsviral/minimax-h3-combined`（62 文件 / 1,144 dl / 0 like / `11-28T13:20Z`）——为 **HF ZeroGPU Spaces** 打包的部署件，README 自报全仓 **≈112 GB**（Hub 150 GB/Space 配额内）。
+
+| 目录 | 内容 | 体积 |
+|---|---|---|
+| `transformer/` | 50 块，**BF16 且 Turbo LoRA 已折进权重** | index `total_size` **66,280,430,080 B**（7 分片） |
+| `transformer_ref/` | 同结构 ref 分区 | 14 分片 |
+| `text_encoder/` | Qwen3-VL **8-bit（bitsandbytes LLM.int8）** | **35,527,751,672 B** 单文件 |
+| `vae/` + `audio_vae/` | F32 未量化 | 3 分片 |
+| `aoti/.../package.pt2` | **AoTI 编译的 transformer_block 包** | **862,601 B**（仅 862 KB，编译成 torch 归档而非权重） |
+| `lora/` | Turbo LoRA 原档（已折入，仅供对照） | — |
+
+**两处新增知识**：
+- **`base_model_relation: merge`** —— 首个把「权重融合」写进 metadata 的整机仓（前三个 K285/K287/`MistyViolet` 都是「多件并列」）。⇒ 判「要不要再挂 LoRA」先读这个字段：`merge` 表示**再挂一次等于双倍**。
+- **`aoti/` 是第五种「非 safetensors 权重容器」**（前四：GGUF / `.pt2` 在此首次出现 / MLX `safetensors+json` / candle `safetensors` 分片 / `adaln_t_table.bin` 裸 f32）。862 KB 说明**它不含权重**，只是编译产物，本机无任何理由解析。
+- **`text_encoder` 是 bnb LLM.int8，`SCB`/`weight_format` 拼写本机不认识**（见 quantization.md §7.3）。
+
+## 社区工作流洪水与空壳的量化（2026-11-29 第 41 轮，K314）
+
+- **`AI-KSK/*` 单组织 139 个仓**，其中 H3 相关 **≥20 个**（`minimax-h3-*-NNN` 系列，编号 288–331），全部 `0 dl / 0–3 like`、`lastModified 11-28T13:18–13:27Z`（**9 分钟内批量上传**）。命名规律 = `<主题>-<流水号>`。
+- ⇒ **「H3 生态仓数」不能直接当活跃度**：单日 20+ 仓来自一个组织的批量搬运。**判活跃要看「独立作者数」与「有 dl 的仓数」**。
+- **`RunningHubAI/rh-*` 空壳率本轮 2/2**（`rh-minimax-h3-image-123-2250-lora`、`rh-minimax-h3-dmd-8step-turbo.safetensors-lora` 均只有 `.gitattributes`）；累计 K288 的 3/3 ⇒ **总 5/5 = 100% 空壳**。⇒ 见 `rh-` 前缀先查 siblings 数，`==1` 即判空。
+- **`Rex38rus/MiniMax-H3-GGUF`、`elismasilva/minimax_h3_video_custom_blocks`** 也只有 `.gitattributes`（`dl=0`）⇒ **空壳不止 `rh-` 一家**。
+- **`Harsha001/MiniMax-H3-Image-ROCmFPX`** = **gated**（`api/models` 正常列 8 siblings 含 4 个 GGUF + `sdcpp-rocmfpx.patch`，但 `raw/README.md` 与 `resolve` 全 403）。⇒ 与 K251 同型，**且这次是「连 README 都 403」**（K251 那条 README 可读）⇒ **gated 有两档：只挡权重 / 连 README 一起挡**。
+
+## 混合量化「按块切档」的第三种排布（2026-11-29 第 41 轮，K314）
+
+`chdp207/minimax_h3_ref2va_LightX2V4step_Mystic05_NDE05mlp_W4A8_EdgeFP8` 两件同仓、同一 `converted_by` 流程：
+
+| 件 | 体积 | 块分布 |
+|---|---|---|
+| `…_W4A8_EdgeFP8.safetensors` | **13,214,260,168 B** / 1300 tensors | 块 **2–47 = W4A8**（`I8 [N,K/2]` + `s_rel E4M3 [N,K/16]` + `s_channel F32 [N]` + `codebook F32 [16]`，`comfy_quant {"asym_w4a8_int8","group_size":16,"convrot":true,"convrot_groupsize":256}`）；块 **0,1,48,49 = FP8**（`F8_E4M3` + `weight_scale F32 []`） |
+| `…_W8A8.safetensors` | **20,969,407,312 B** / 932 tensors | 块 **2–47 = int8 ConvRot**（`I8` + `weight_scale F32 []` + `comfy_quant {"int8_tensorwise","convrot":true,"256"}`）；块 **0,1,48,49 = FP8** |
+
+- **命名 `EdgeFP8` 的含义** = **首尾 4 块（0/1/48/49）保 FP8、中间 46 块压到 W4A8**（metadata `quant_recipe` 原话：「blocks 2-47; TensorCoreFP8E4M3Layout blocks 0,1,48,49」）。「Edge」指**块序的两端**，不是图像边缘。
+- **第三处「按块切档」证据**（前两处：Kijai `b25-49` 前 25 块 BF16 / 后 24 块 int8 的**误读**（K282 已推翻）、`Fusion hybrid`）。
+- **`nvfp4_reference_vessel`** = metadata 里点名**用于对标但不在本件的 NVFP4 件**（`10Eros_Max_h3_8stepTURBO_beta6_pruned_nvfp4`）⇒ **metadata 里可以出现「指向别处的参考件」**，读 metadata 不能假设所有字段都描述自身。
+- 两件都是 **pruned 形态**（`adaln_t_table [1025,8]`），`lora_merge` 字段记录了融合公式与两个 LoRA（`4step_v1.0_768p_comfyui_bf16 ×1` 208 模块 + `MysticXXX V5 ref2va ×0.75` 82 模块，`lora_exclude_regex = adaln_proj`）。
+- **本机可读性（逐字段核对，两件都过）**：
+  - **W8A8 件**：块 2–47 `I8 [21504, 5376]`（**整字节，K = 5376 不翻倍**）+ `weight_scale F32 [21504, 1]`（2-D 列向量，本机 `fp8-layout.cc:436-440` 的 `col` 判定接受 `shape[1]==1`）+ `comfy_quant{"int8_tensorwise",convrot,256}` ⇒ **与本机常规 int8 ConvRot 完全同形，结构上可读**。
+  - **W4A8 件**：块 2–47 `I8 [21504, **2688**]`（**半字节，K = 2688×2 = 5376**）+ `weight_s_rel E4M3 [21504, 336]` + `s_channel F32 [21504]` + `codebook F32 [16]`，`resolve_w4a8_` 要求 `s_rel == [N, K/16]`，`5376/16 = 336` ✓、`codebook == 16 F32` ✓ ⇒ **也过全部门**。
+  - ⚠️ **唯一分辨点就是 `shape[1]` 是否等于 `K`**：两件的 `comfy_quant` 都是 72/89 B 的小 JSON，**`format` 字段是唯一分清 `int8_tensorwise`（整字节）与 `asym_w4a8_int8`（半字节）的东西**；同为 `I8`、同为 `convrot 256`、同样 4 个块是 FP8。**只看 dtype + 体积判断会错**。
+  - ⚠️ 但**两件都要求 `comfy_quant` 记录在**；若某转换器像 K303 那样把它剥掉，两件会同时落入「I8 有 scale 无记录 ⇒ 明确拒载」，而不是静默错值。
+  - ⇒ 这两件是**目前唯一「结构上本机直接可读」的 pruned + 混合量化 + LoRA 已融合**件，但体积 13.2 / 21.0 GB，**本机 3.4 GiB 可用 ⇒ 登记不下载**（P67）。
